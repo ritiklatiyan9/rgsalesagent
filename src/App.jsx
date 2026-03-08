@@ -24,6 +24,7 @@ const ColonyMapView = lazy(() => import('@/pages/ColonyMapView'));
 const ManagePlots = lazy(() => import('@/pages/ManagePlots'));
 const PlotDetail = lazy(() => import('@/pages/PlotDetail'));
 const SharedPlot = lazy(() => import('@/pages/SharedPlot'));
+const SharedMap = lazy(() => import('@/pages/SharedMap'));
 const Reminders = lazy(() => import('@/pages/Reminders'));
 const TeamMembers = lazy(() => import('@/pages/TeamMembers'));
 const TeamManagement = lazy(() => import('@/pages/TeamManagement'));
@@ -55,6 +56,7 @@ export default function App() {
           {/* Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/share/plot/:plotId" element={<SharedPlot />} />
+          <Route path="/share/map/:mapId" element={<SharedMap />} />
 
           {/* Protected — AGENT & TEAM_HEAD */}
           <Route

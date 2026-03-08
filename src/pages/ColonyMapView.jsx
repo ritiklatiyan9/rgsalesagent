@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Image as ImageIcon, Ruler, MapPin, Search, LayoutGrid, Map } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Ruler, MapPin, Search, LayoutGrid, Map, Share2 } from 'lucide-react';
 import ColonyLayoutMap from '@/components/ColonyLayoutMap';
 
 const STATUS_COLORS = {
@@ -84,6 +84,24 @@ const ColonyMapView = () => {
         </Button>
         <span className="h-5 w-px bg-slate-200 hidden sm:block" />
         <h2 className="text-lg sm:text-2xl font-bold text-slate-800 tracking-tight">{mapData?.name}</h2>
+
+        {/* Share Map */}
+        <Button variant="outline" size="sm"
+          onClick={() => {
+            const origin = window.location.origin;
+            const refParam = user?.sponsor_code ? `?ref=${encodeURIComponent(user.sponsor_code)}` : '';
+            const shareUrl = `${origin}/share/map/${id}${refParam}`;
+            if (navigator.share) {
+              navigator.share({ title: `${mapData?.name || 'Colony'} — Map`, url: shareUrl }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(shareUrl);
+              toast.success('Map share link copied!');
+            }
+          }}
+          className="rounded-xl cursor-pointer text-violet-600 border-violet-200 hover:bg-violet-50 ml-auto sm:ml-0">
+          <Share2 className="w-4 h-4 mr-1.5" />
+          Share Map
+        </Button>
 
         {/* View toggle: only when layout_config exists */}
         {hasLayoutConfig && (
