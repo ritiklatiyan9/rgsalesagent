@@ -49,7 +49,7 @@ const getNavItems = (isTeamHead) => {
         { to: '/calls', icon: LayoutDashboard, label: 'Call Dashboard' },
         { to: '/calls/dialer', icon: PhoneCall, label: 'Leads Dialer' },
         { to: '/calls/history', icon: History, label: 'Call History' },
-        { to: '/calls/log', icon: PhoneOutgoing, label: 'Log Call' },
+      
         { to: '/calls/daily', icon: ClipboardList, label: 'Daily Entry' },
         { to: '/calls/scheduled', icon: CalendarClock, label: 'Scheduled' },
         { to: '/calls/missed', icon: PhoneMissed, label: 'Missed Calls' },
