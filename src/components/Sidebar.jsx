@@ -127,6 +127,8 @@ const PREFETCH_MAP = {
   '/calls/scheduled': ['/followups/scheduled'],
   '/calls/missed': ['/followups/missed'],
   '/calls/analytics': ['/calls/analytics'],
+  '/all-contacts': ['/contacts?page=1&limit=25'],
+  '/all-contacts/bulk': [],
   '/reminders': ['/followups/counts'],
   '/colony-maps': ['/colony-maps'],
   '/colony-maps/plots': ['/colony-maps'],
@@ -262,7 +264,7 @@ const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
         'fixed md:relative z-50 flex flex-col bg-white shrink-0 transition-all duration-300 ease-in-out shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-slate-100',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         collapsed ? 'md:w-22' : 'w-70',
-        'h-screen overflow-visible block'
+        'h-dvh overflow-visible block'
       )}>
         {mobileMenuOpen && (
           <button

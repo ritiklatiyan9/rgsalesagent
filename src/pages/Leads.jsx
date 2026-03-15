@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -169,13 +169,18 @@ const fmt2 = (n) => String(n).padStart(2, '0');
 const DialerDialog = () => null; // Dialer removed
 
 const Leads = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const initialSearch = searchParams.get('search') || '';
+  const initialStatus = searchParams.get('status') || 'ALL';
+
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
 
   // Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -223,6 +228,14 @@ const Leads = () => {
     }, 500);
     return () => clearTimeout(timer);
   }, [searchQuery, statusFilter, fetchLeads]);
+
+  // Keep URL in sync with active filters so dashboard quick-search works reliably.
+  useEffect(() => {
+    const next = {};
+    if (searchQuery) next.search = searchQuery;
+    if (statusFilter !== 'ALL') next.status = statusFilter;
+    setSearchParams(next, { replace: true });
+  }, [searchQuery, statusFilter, setSearchParams]);
 
   // Pre-fetch next page
   useEffect(() => {

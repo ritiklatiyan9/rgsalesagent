@@ -97,7 +97,7 @@ const Layout = () => {
       : 'Dashboard');
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f7fc]">
+    <div className="flex h-dvh overflow-hidden bg-[#f4f7fc]">
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 bg-slate-900/20 z-40 md:hidden backdrop-blur-sm"
@@ -274,7 +274,7 @@ const Layout = () => {
 
         <BackgroundPermissionBanner />
 
-        <main className="flex-1 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-[#f8fafc]">
+        <main className="flex-1 min-h-0 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-[#f8fafc]">
           <div className="p-5 md:p-8 pb-10 max-w-400 mx-auto">
             <Suspense fallback={<PageSkeleton />}>
               <Outlet />

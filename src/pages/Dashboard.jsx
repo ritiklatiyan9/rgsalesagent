@@ -60,6 +60,29 @@ const KpiSkeleton = () => (
   </div>
 );
 
+const SECONDARY_CARD_STYLES = {
+  orange: {
+    hoverBorder: 'hover:border-orange-200',
+    iconBg: 'bg-orange-50',
+    iconColor: 'text-orange-600',
+  },
+  teal: {
+    hoverBorder: 'hover:border-teal-200',
+    iconBg: 'bg-teal-50',
+    iconColor: 'text-teal-600',
+  },
+  purple: {
+    hoverBorder: 'hover:border-purple-200',
+    iconBg: 'bg-purple-50',
+    iconColor: 'text-purple-600',
+  },
+  amber: {
+    hoverBorder: 'hover:border-amber-200',
+    iconBg: 'bg-amber-50',
+    iconColor: 'text-amber-600',
+  },
+};
+
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -71,6 +94,7 @@ const Dashboard = () => {
   const [todayFollowups, setTodayFollowups] = useState([]);
   const [missedFollowups, setMissedFollowups] = useState([]);
   const [allFollowups, setAllFollowups] = useState([]);
+  const [contactsTotal, setContactsTotal] = useState(0);
   const [fupActionLoading, setFupActionLoading] = useState(null);
   const [loading, setLoading] = useState(true);
   const [browseCat, setBrowseCat] = useState('ALL');
@@ -106,10 +130,11 @@ const Dashboard = () => {
 
   useEffect(() => {
     const load = async () => {
-      const [leadsRes, calls, counts] = await Promise.allSettled([
+      const [leadsRes, calls, counts, contactsRes] = await Promise.allSettled([
         cachedGet('/leads?limit=100', { ttl: 60_000 }),
         cachedGet('/calls/analytics', { ttl: 60_000 }),
         cachedGet('/followups/counts', { ttl: 30_000 }),
+        cachedGet('/contacts?page=1&limit=5', { ttl: 30_000 }),
       ]);
       if (leadsRes.status === 'fulfilled' && leadsRes.value?.success) {
         setLeads(leadsRes.value.leads ?? []);
@@ -123,6 +148,9 @@ const Dashboard = () => {
           today: countsData.today ?? 0,
           missed: countsData.missed ?? 0,
         });
+      }
+      if (contactsRes.status === 'fulfilled' && contactsRes.value?.success) {
+        setContactsTotal(contactsRes.value.pagination?.total ?? contactsRes.value.contacts?.length ?? 0);
       }
       setLoading(false);
     };
@@ -244,7 +272,7 @@ const Dashboard = () => {
       </div>
 
       {/* Advanced Search & Filtering (Glassmorphism) */}
-      <div className="rounded-2xl border border-border/40 bg-white/70 backdrop-blur-md shadow-sm px-4 py-4 flex flex-col md:flex-row md:items-center gap-4">
+      <div className="rounded-2xl border border-border/40 bg-white/70 backdrop-blur-md shadow-sm px-4 py-4 grid grid-cols-1 lg:grid-cols-[auto_minmax(0,1fr)_260px] items-center gap-4">
         <div className="flex items-center gap-3 shrink-0">
           <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center">
             <Users className="h-5 w-5 text-indigo-600" />
@@ -254,11 +282,11 @@ const Dashboard = () => {
             <p className="text-[10px] text-muted-foreground/60">Find leads instantly</p>
           </div>
         </div>
-        <div className="flex-1">
+        <div className="w-full min-w-0">
           <LeadSearchWidget />
         </div>
-        <Separator className="hidden md:block h-8 w-px bg-border/40" />
-        <div className="flex items-center gap-2 max-w-xs w-full lg:w-64">
+        <Separator className="hidden lg:block h-8 w-px bg-border/40" />
+        <div className="flex items-center gap-2 w-full lg:w-[260px] lg:shrink-0">
           <Select value={browseCat} onValueChange={setBrowseCat}>
             <SelectTrigger className="h-10 text-sm rounded-xl bg-white/50 border-border/60">
               <SelectValue placeholder="Browse Category..." />
@@ -285,9 +313,9 @@ const Dashboard = () => {
       </div>
 
       {/* Primary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
         {loading ? (
-          Array.from({ length: 3 }).map((_, i) => <KpiSkeleton key={i} />)
+          Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)
         ) : (
           <>
             <div
@@ -317,7 +345,7 @@ const Dashboard = () => {
 
             <div
               className="stat-card border-l-4 border-l-indigo-500 bg-white/60 hover:shadow-lg hover:shadow-indigo-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/calls')}
+              onClick={() => navigate('/calls/analytics')}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="space-y-1">
@@ -364,6 +392,48 @@ const Dashboard = () => {
                 )}
               </div>
             </div>
+
+            <div
+              className="stat-card border-l-4 border-l-rose-500 bg-white/60 hover:shadow-lg hover:shadow-rose-100/50 transition-all cursor-pointer group"
+              onClick={() => navigate('/calls/missed')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Missed Follow-ups</p>
+                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-rose-600 transition-colors">
+                    {fmtNum(followupCounts?.missed ?? 0)}
+                  </p>
+                </div>
+                <div className="h-12 w-12 rounded-2xl bg-rose-100/50 flex items-center justify-center group-hover:bg-rose-500 group-hover:rotate-6 transition-all duration-300">
+                  <AlertCircle className="h-6 w-6 text-rose-600 group-hover:text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
+                <Flame className="h-3.5 w-3.5 text-rose-500" />
+                <span className="font-semibold text-rose-700">Needs attention now</span>
+              </p>
+            </div>
+
+            <div
+              className="stat-card border-l-4 border-l-cyan-500 bg-white/60 hover:shadow-lg hover:shadow-cyan-100/50 transition-all cursor-pointer group"
+              onClick={() => navigate('/all-contacts')}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">All Contacts</p>
+                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-cyan-600 transition-colors">
+                    {fmtNum(contactsTotal)}
+                  </p>
+                </div>
+                <div className="h-12 w-12 rounded-2xl bg-cyan-100/50 flex items-center justify-center group-hover:bg-cyan-500 group-hover:-rotate-6 transition-all duration-300">
+                  <Users className="h-6 w-6 text-cyan-600 group-hover:text-white" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
+                <Tag className="h-3.5 w-3.5 text-cyan-500" />
+                <span className="font-semibold text-cyan-700">Direct dialer-ready contacts</span>
+              </p>
+            </div>
           </>
         )}
       </div>
@@ -375,15 +445,17 @@ const Dashboard = () => {
           { label: 'Booking Requests', value: pipeline.BOOKED ?? 0, icon: CheckCircle2, color: 'teal', nav: '/leads?status=BOOKED' },
           { label: 'Visit Scheduled', value: pipeline.SITE_VISIT ?? 0, icon: Activity, color: 'purple', nav: '/leads?status=SITE_VISIT' },
           { label: 'Negotiations', value: pipeline.NEGOTIATION ?? 0, icon: Target, color: 'amber', nav: '/leads?status=NEGOTIATION' },
-        ].map(({ label, value, icon: Icon, color, nav }) => (
+        ].map(({ label, value, icon: Icon, color, nav }) => {
+          const styles = SECONDARY_CARD_STYLES[color] || SECONDARY_CARD_STYLES.orange;
+          return (
           <div
             key={label}
-            className={`stat-card bg-white/50 border border-border/30 py-3.5 hover:bg-white hover:border-${color}-200 hover:shadow-md transition-all cursor-pointer group`}
+            className={`stat-card bg-white/50 border border-border/30 py-3.5 hover:bg-white ${styles.hoverBorder} hover:shadow-md transition-all cursor-pointer group`}
             onClick={() => navigate(nav)}
           >
             <div className="flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-xl bg-${color}-50 flex items-center justify-center shrink-0 transition-colors group-hover:rotate-12`}>
-                <Icon className={`h-5 w-5 text-${color}-600`} />
+              <div className={`h-10 w-10 rounded-xl ${styles.iconBg} flex items-center justify-center shrink-0 transition-colors group-hover:rotate-12`}>
+                <Icon className={`h-5 w-5 ${styles.iconColor}`} />
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">{label}</p>
@@ -394,7 +466,7 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Today's Follow-ups & Analytics Row */}

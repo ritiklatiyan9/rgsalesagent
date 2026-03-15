@@ -94,18 +94,28 @@ const LeadSearchWidget = () => {
   };
 
   const handleKeyDown = (e) => {
-    if (!open || leads.length === 0) return;
     switch (e.key) {
       case 'ArrowDown':
-        e.preventDefault();
-        setActiveIdx((i) => Math.min(i + 1, leads.length - 1));
+        if (open && leads.length > 0) {
+          e.preventDefault();
+          setActiveIdx((i) => Math.min(i + 1, leads.length - 1));
+        }
         break;
       case 'ArrowUp':
-        e.preventDefault();
-        setActiveIdx((i) => Math.max(i - 1, -1));
+        if (open && leads.length > 0) {
+          e.preventDefault();
+          setActiveIdx((i) => Math.max(i - 1, -1));
+        }
         break;
       case 'Enter':
-        if (activeIdx >= 0 && leads[activeIdx]) handleSelect(leads[activeIdx]);
+        if (open && activeIdx >= 0 && leads[activeIdx]) {
+          e.preventDefault();
+          handleSelect(leads[activeIdx]);
+        } else if (query.trim().length >= 2) {
+          e.preventDefault();
+          navigate(`/leads?search=${encodeURIComponent(query.trim())}`);
+          setOpen(false);
+        }
         break;
       case 'Escape':
         setOpen(false);
@@ -126,7 +136,7 @@ const LeadSearchWidget = () => {
           onKeyDown={handleKeyDown}
           onFocus={() => query.length >= 1 && setOpen(true)}
           placeholder="Quick search leads by name or phone..."
-          className="pl-10 pr-9 h-10 text-sm bg-white border-border/60 shadow-sm rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50 transition-all placeholder:text-muted-foreground/60"
+          className="w-full min-w-0 pl-10 pr-9 h-10 text-sm bg-white border-border/60 shadow-sm rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50 transition-all placeholder:text-muted-foreground/60"
           autoComplete="off"
         />
         {loading && (
