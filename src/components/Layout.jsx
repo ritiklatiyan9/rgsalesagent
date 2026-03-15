@@ -6,12 +6,15 @@ import { Bell, Menu, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRi
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import api from '@/lib/axios';
+import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
 
 const routeNames = {
   '/dashboard': 'Dashboard',
   '/leads': 'My Leads',
   '/leads/add': 'Add Lead',
   '/calls': 'Call Dashboard',
+  '/calls/dialer': 'Dialer',
+  '/calls/leads-dialer': 'Leads Dialer',
   '/calls/log': 'Log Call',
   '/calls/daily-entry': 'Daily Entry',
   '/calls/scheduled': 'Scheduled Calls',
@@ -268,6 +271,8 @@ const Layout = () => {
           </div>
          </div>
         </header>
+
+        <BackgroundPermissionBanner />
 
         <main className="flex-1 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-[#f8fafc]">
           <div className="p-5 md:p-8 pb-10 max-w-400 mx-auto">

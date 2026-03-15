@@ -44,10 +44,19 @@ const getNavItems = (isTeamHead) => {
       ]
     },
     {
+      id: 'contacts-menu', icon: List, label: 'Contacts', iconColor: 'text-cyan-500',
+      subItems: [
+        { to: '/all-contacts', icon: List, label: 'All Contacts' },
+        { to: '/all-contacts/bulk', icon: FileSpreadsheet, label: 'Bulk Import' },
+        { to: '/calls/dialer', icon: Phone, label: 'Dialer' },
+      ]
+    },
+    {
       id: 'calls-menu', icon: Phone, label: 'Call Management', iconColor: 'text-indigo-500',
       subItems: [
         { to: '/calls', icon: LayoutDashboard, label: 'Call Dashboard' },
-        { to: '/calls/dialer', icon: PhoneCall, label: 'Leads Dialer' },
+        { to: '/calls/dialer', icon: Phone, label: 'Dialer' },
+        { to: '/calls/leads-dialer', icon: PhoneCall, label: 'Leads Dialer' },
         { to: '/calls/history', icon: History, label: 'Call History' },
       
         { to: '/calls/daily', icon: ClipboardList, label: 'Daily Entry' },
@@ -112,6 +121,7 @@ const PREFETCH_MAP = {
   '/leads/assignment-history': [],
   '/calls': ['/calls?limit=10', '/followups/counts'],
   '/calls/dialer': ['/calls/outcomes'],
+  '/calls/leads-dialer': ['/calls/leads-dialer?page=1&limit=25'],
   '/calls/history': ['/calls?limit=20'],
   '/calls/daily': ['/calls/outcomes'],
   '/calls/scheduled': ['/followups/scheduled'],

@@ -22,7 +22,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/react-router')) return 'vendor-router';
-          if (id.includes('node_modules/@radix-ui') || id.includes('node_modules/radix-ui')) return 'vendor-ui';
+          // NOTE: @radix-ui MUST stay in vendor-misc with React to avoid
+          // "Cannot read properties of undefined" errors during initialization.
           if (id.includes('node_modules')) return 'vendor-misc';
         },
       },

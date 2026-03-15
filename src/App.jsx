@@ -32,8 +32,18 @@ const TeamPerformance = lazy(() => import('@/pages/TeamPerformance'));
 const MemberPerformance = lazy(() => import('@/pages/MemberPerformance'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const LeadsDialer = lazy(() => import('@/pages/LeadsDialer'));
+const DialerPage = lazy(() => import('@/pages/DialerPage'));
 const CallHistory = lazy(() => import('@/pages/CallHistory'));
 const ContentShare = lazy(() => import('@/pages/ContentShare'));
+const AllContacts = lazy(() => import('@/pages/AllContacts'));
+const BulkImportContacts = lazy(() => import('@/pages/BulkImportContacts'));
+
+const CallDetectorBridge = lazy(() =>
+  import('@/components/CallDetectorBridge').catch((err) => {
+    console.warn('[CallDetectorBridge] chunk load failed:', err);
+    return { default: () => null };
+  })
+);
 
 // Bookings
 const PlotBookings = lazy(() => import('@/pages/PlotBookings'));
@@ -46,7 +56,16 @@ const MyAttendance = lazy(() => import('@/pages/MyAttendance'));
 // Chat
 const Chat = lazy(() => import('@/pages/Chat'));
 
-const PageLoader = () => null;
+const PageLoader = () => (
+  <div className="flex items-center justify-center h-screen bg-[#f8fafc]">
+    <div className="w-80 space-y-4 animate-pulse">
+      <div className="h-8 bg-muted rounded-lg mx-auto w-40" />
+      <div className="h-10 bg-muted rounded-xl" />
+      <div className="h-10 bg-muted rounded-xl" />
+      <div className="h-10 bg-muted rounded-xl" />
+    </div>
+  </div>
+);
 
 export default function App() {
   return (
@@ -84,6 +103,8 @@ export default function App() {
             <Route path="calls/scheduled" element={<ScheduledCalls />} />
             <Route path="calls/missed" element={<MissedCalls />} />
             <Route path="calls/analytics" element={<CallAnalytics />} />
+            <Route path="calls/dialer" element={<DialerPage />} />
+            <Route path="calls/leads-dialer" element={<LeadsDialer />} />
             <Route path="calls/lead/:leadId" element={<LeadCallHistory />} />
 
             {/* Colony Maps */}
@@ -98,9 +119,6 @@ export default function App() {
 
             {/* Reminders */}
             <Route path="reminders" element={<Reminders />} />
-
-            {/* Leads Dialer */}
-            <Route path="calls/dialer" element={<LeadsDialer />} />
 
             {/* Call History */}
             <Route path="calls/history" element={<CallHistory />} />
@@ -123,11 +141,19 @@ export default function App() {
 
             {/* Chat */}
             <Route path="chat" element={<Chat />} />
+
+            {/* Contacts */}
+            <Route path="all-contacts" element={<AllContacts />} />
+            <Route path="all-contacts/bulk" element={<BulkImportContacts />} />
           </Route>
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <CallDetectorBridge />
       </Suspense>
     </AuthProvider>
   );

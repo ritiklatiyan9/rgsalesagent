@@ -196,7 +196,7 @@ const BookingDetail = () => {
             )}
             <Row label="Booking Date" value={
               booking.booking_date ? new Date(booking.booking_date).toLocaleDateString('en-IN')
-              : (booking.created_at ? new Date(booking.created_at).toLocaleDateString('en-IN') : '—')
+                : (booking.created_at ? new Date(booking.created_at).toLocaleDateString('en-IN') : '—')
             } />
             {booking.notes && <Row label="Notes" value={<span className="text-slate-500 italic">{booking.notes}</span>} />}
           </div>

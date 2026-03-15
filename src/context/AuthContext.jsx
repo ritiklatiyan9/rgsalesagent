@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api, { authAxios, setAccessToken } from '@/lib/axios';
+import api, { authAxios, setAccessToken, saveAuthData, clearAuthData, getStoredAuthData, dispatchLogout } from '@/lib/axios';
 import { warmCache, invalidateCache } from '@/lib/queryCache';
 
 const WARM_URLS = [
@@ -25,7 +25,6 @@ export const AuthProvider = ({ children }) => {
   const initialized = useRef(false);
 
   // Resolve whether the user is the team head by checking team.head_id
-  // (assignTeamHead sets head_id on the team but does NOT change user.role)
   const resolveTeamHead = async (userData) => {
     if (!userData?.team_id) { setIsTeamHead(false); return; }
     try {
@@ -45,20 +44,30 @@ export const AuthProvider = ({ children }) => {
 
     const initAuth = async () => {
       try {
-        const { data } = await authAxios.post('/auth/refresh');
-        if (data.success && data.accessToken) {
-          setAccessToken(data.accessToken);
-          const meRes = await api.get('/auth/me');
-          if (meRes.data.success) {
-            const userData = meRes.data.user;
-            setUser(userData);
-            await resolveTeamHead(userData);
-            // Warmup cache in background to avoid blocking UI and infinite loops
-            Promise.resolve().then(() => warmCache(WARM_URLS)).catch(() => {});
-          }
+        // Immediate load from native storage for "Instant UI"
+        const { token, user: storedUser } = await getStoredAuthData();
+        
+        if (token && storedUser) {
+          setAccessToken(token);
+          setUser(storedUser);
+          await resolveTeamHead(storedUser);
+          
+          // Background sync profile (don't block UI or wait for Render)
+          api.get('/auth/me').then(async (res) => {
+            if (res.data.success) {
+              const updatedUser = res.data.user;
+              setUser(updatedUser);
+              await saveAuthData(token, updatedUser);
+              await resolveTeamHead(updatedUser);
+            }
+          }).catch(err => {
+            console.log('[Auth] Background profile sync failed (possibly server sleeping):', err.message);
+          });
+
+          Promise.resolve().then(() => warmCache(WARM_URLS)).catch(() => {});
         }
-      } catch {
-        // Not logged in
+      } catch (err) {
+        console.error('[Auth] initAuth error:', err.message);
       } finally {
         setLoading(false);
       }
@@ -68,9 +77,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    const handleForceLogout = () => {
+    const handleForceLogout = async () => {
       setUser(null);
       setAccessToken(null);
+      await clearAuthData();
       navigate('/login', { replace: true });
     };
     window.addEventListener('auth:logout', handleForceLogout);
@@ -84,10 +94,13 @@ export const AuthProvider = ({ children }) => {
         await authAxios.post('/auth/logout').catch(() => {});
         throw new Error('Access denied. Agent or Team Lead account required.');
       }
+      
       setAccessToken(data.accessToken);
+      // Persist the 100-year session data
+      await saveAuthData(data.accessToken, data.user);
+      
       setUser(data.user);
       await resolveTeamHead(data.user);
-      // Warmup cache in background after setting token
       Promise.resolve().then(() => warmCache(WARM_URLS)).catch(() => {});
     }
     return data;
@@ -97,21 +110,27 @@ export const AuthProvider = ({ children }) => {
     try {
       await api.post('/auth/logout');
     } catch {
-      // ignore — token may already be expired
+      // ignore
     } finally {
       setUser(null);
       setIsTeamHead(false);
       setAccessToken(null);
+      await clearAuthData();
       invalidateCache();
     }
   };
+
 
   // Refresh user data from server (e.g. after profile update)
   const refreshUser = async () => {
     try {
       const meRes = await api.get('/auth/me');
       if (meRes.data.success) {
-        setUser(meRes.data.user);
+        const updatedUser = meRes.data.user;
+        setUser(updatedUser);
+        const { token } = await getStoredAuthData();
+        await saveAuthData(token, updatedUser);
+        await resolveTeamHead(updatedUser);
       }
     } catch {
       // ignore

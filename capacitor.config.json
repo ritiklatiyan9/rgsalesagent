@@ -3,20 +3,29 @@
   "appName": "RiverGreen Agent",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
-  },
-  "android": {
-    "backgroundColor": "#f8fafc",
-    "allowMixedContent": true
+    "androidScheme": "https",
+    "iosScheme": "https"
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 0,
-      "launchAutoHide": true
+      "launchShowDuration": 2000,
+      "backgroundColor": "#f8fafc",
+      "showSpinner": true,
+      "spinnerColor": "#6366f1"
     },
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#4f46e5"
+      "style": "LIGHT",
+      "backgroundColor": "#ffffff"
+    },
+    "Permissions": {
+      "phone": [
+        "android.permission.CALL_PHONE",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_CALL_LOG"
+      ],
+      "notifications": [
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     }
   }
 }

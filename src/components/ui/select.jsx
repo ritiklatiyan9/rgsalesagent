@@ -28,11 +28,7 @@ const Select = (props) => {
 };
 
 const SelectGroup = SelectPrimitive.Group
-
-const SelectValue = React.forwardRef(({ ...props }, ref) => (
-  <SelectPrimitive.Value ref={ref} {...props} />
-))
-SelectValue.displayName = SelectPrimitive.Value.displayName
+const SelectValue = SelectPrimitive.Value
 
 const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
@@ -128,25 +124,12 @@ const SelectSeparator = React.forwardRef(({ className, ...props }, ref) => (
 ))
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName
 
-const SelectScrollUpButton = React.forwardRef(({ ...props }, ref) => (
-  <SelectPrimitive.ScrollUpButton ref={ref} {...props}>
-    <ChevronUp className="h-4 w-4" />
-  </SelectPrimitive.ScrollUpButton>
-))
-const SelectScrollDownButton = React.forwardRef(({ ...props }, ref) => (
-  <SelectPrimitive.ScrollDownButton ref={ref} {...props}>
-    <ChevronDown className="h-4 w-4" />
-  </SelectPrimitive.ScrollDownButton>
-))
-
 export {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
   SelectLabel,
-  SelectScrollDownButton,
-  SelectScrollUpButton,
   SelectSeparator,
   SelectTrigger,
   SelectValue,
