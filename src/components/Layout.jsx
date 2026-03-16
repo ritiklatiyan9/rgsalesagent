@@ -1,9 +1,9 @@
 import { useState, Suspense, useEffect, useRef, useTransition } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, Menu, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Bell, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, List, MoreHorizontal } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import api from '@/lib/axios';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
@@ -61,12 +61,12 @@ const timeAgo = (dateStr) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-const Layout = () => {
+const LayoutBody = () => {
+  const { openMobile, setOpenMobile } = useSidebar();
   const { pathname } = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [calls, setCalls] = useState([]);
@@ -97,28 +97,20 @@ const Layout = () => {
       : 'Dashboard');
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[#f4f7fc]">
-      {mobileMenuOpen && (
+    <>
+      {openMobile && (
         <div
           className="fixed inset-0 bg-slate-900/20 z-40 md:hidden backdrop-blur-sm"
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={() => setOpenMobile(false)}
         />
       )}
 
-      <Sidebar mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+      <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="bg-white shrink-0 z-20 border-b border-slate-200/60 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)]" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <header className="bg-white/80 backdrop-blur-lg shrink-0 z-20 border-b border-slate-100 shadow-sm sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
          <div className="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 md:px-8">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden shrink-0 hover:bg-slate-50 text-slate-500 hover:text-indigo-600 rounded-xl h-9 w-9 sm:h-10 sm:w-10"
-              onClick={() => setMobileMenuOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
             <h2 className="text-[15px] sm:text-[17px] font-bold text-slate-800 tracking-tight truncate">{pageTitle}</h2>
           </div>
 
@@ -274,16 +266,70 @@ const Layout = () => {
 
         <BackgroundPermissionBanner />
 
-        <main className="flex-1 min-h-0 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-[#f8fafc]">
-          <div className="p-5 md:p-8 pb-10 max-w-400 mx-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-white sm:bg-[#f8fafc]">
+          <div className="p-2 sm:p-5 md:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-10 max-w-7xl mx-auto">
             <Suspense fallback={<PageSkeleton />}>
               <Outlet />
             </Suspense>
           </div>
         </main>
       </div>
-    </div>
+
+      {/* Mobile floating dock navigation */}
+      <nav
+        className="md:hidden fixed bottom-2 left-0 right-0 z-30 px-3"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        <div className="mx-auto max-w-md rounded-[1.35rem] border border-slate-200/80 bg-white/90 backdrop-blur-md p-1.5 shadow-[0_12px_24px_-10px_rgba(0,0,0,0.15)]">
+          <div className="grid grid-cols-5 gap-1">
+            {[
+              { to: '/dashboard', icon: LayoutDashboard, label: 'Home', iconColor: 'text-indigo-600', activeBg: 'from-indigo-50/80 to-slate-50/50' },
+              { to: '/leads', icon: Users, label: 'Leads', iconColor: 'text-emerald-600', activeBg: 'from-emerald-50/80 to-slate-50/50' },
+              { to: '/all-contacts', icon: List, label: 'Contacts', iconColor: 'text-cyan-600', activeBg: 'from-cyan-50/80 to-slate-50/50' },
+              { to: '/calls/dialer', icon: Phone, label: 'Calls', iconColor: 'text-rose-600', activeBg: 'from-rose-50/80 to-slate-50/50' },
+            ].map(({ to, icon: Icon, label, iconColor, activeBg }) => {
+              const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to + '/')) || (to === '/leads' && pathname.startsWith('/leads'));
+              return (
+                <button
+                  key={to}
+                  onClick={() => navigate(to)}
+                  className={`rounded-xl px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-all ${
+                    isActive
+                      ? `bg-linear-to-b ${activeBg} border border-slate-200/60 shadow-[0_4px_8px_-4px_rgba(0,0,0,0.1)]`
+                      : 'border border-transparent active:bg-slate-100'
+                  }`}
+                >
+                  <span className={`h-6 w-6 rounded-full grid place-items-center ${isActive ? 'bg-white shadow-sm' : 'bg-transparent'}`}>
+                    <Icon className={`h-4 w-4 ${iconColor} ${isActive ? 'opacity-100' : 'opacity-70'}`} strokeWidth={isActive ? 2.5 : 2.1} />
+                  </span>
+                  <span className={`text-[9px] leading-none font-medium ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>{label}</span>
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setOpenMobile(true)}
+              className="rounded-xl px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 border border-transparent active:bg-slate-100 transition-all"
+            >
+              <span className="h-6 w-6 rounded-full grid place-items-center bg-transparent">
+                <MoreHorizontal className="h-4 w-4 text-violet-600 opacity-75" strokeWidth={2.1} />
+              </span>
+              <span className="text-[9px] leading-none font-medium text-slate-500">More</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+    </>
   );
 };
+
+const Layout = () => (
+  <SidebarProvider
+    defaultOpen
+    style={{ '--sidebar-width': '17.5rem', '--sidebar-width-icon': '4.75rem' }}
+    className="h-dvh overflow-hidden bg-[#f4f7fc]"
+  >
+    <LayoutBody />
+  </SidebarProvider>
+);
 
 export default Layout;

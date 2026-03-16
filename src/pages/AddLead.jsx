@@ -13,7 +13,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   ArrowLeft, UserPlus, Phone, Mail, MapPin, Briefcase, AlertCircle, Users, List,
-  FileSpreadsheet, ArrowRightLeft, History, Camera, X,
+  FileSpreadsheet, ArrowRightLeft, History, Camera, X, CalendarDays, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -56,6 +56,8 @@ const AddLead = () => {
   const [formError, setFormError] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({ date: '', time: '10:00', notes: '' });
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -65,6 +67,7 @@ const AddLead = () => {
 
     if (!form.name.trim()) return setFormError('Lead name is required');
     if (!form.phone.trim() && !form.email.trim()) return setFormError('Either phone or email is required');
+    if (showScheduleForm && !scheduleForm.date) return setFormError('Please choose a schedule date');
 
     try {
       setLoading(true);
@@ -83,8 +86,25 @@ const AddLead = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (data.success) {
+        if (showScheduleForm && scheduleForm.date && data.lead?.id) {
+          try {
+            await api.post('/followups', {
+              lead_id: data.lead.id,
+              followup_type: 'CALL',
+              scheduled_date: scheduleForm.date,
+              scheduled_time: scheduleForm.time || '10:00',
+              ...(scheduleForm.notes.trim() ? { notes: scheduleForm.notes.trim() } : {}),
+            });
+            invalidateCache('/followups');
+            invalidateCache('/followups/counts');
+            toast.success('Lead added and follow-up scheduled!');
+          } catch {
+            toast.error('Lead added, but scheduling failed. You can schedule from lead details.');
+          }
+        } else {
+          toast.success('Lead added successfully!');
+        }
         invalidateCache('/leads');
-        toast.success('Lead added successfully!');
         navigate('/leads');
       }
     } catch (err) {
@@ -253,6 +273,64 @@ const AddLead = () => {
             <FormField label="Notes">
               <Textarea placeholder="Any remarks, source of lead, etc." value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className="rounded-xl resize-none" />
             </FormField>
+
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Make Schedule</p>
+                  <p className="text-[11px] text-violet-600/90 mt-0.5">Create a follow-up reminder while adding this lead</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowScheduleForm((v) => !v);
+                    setFormError('');
+                  }}
+                  className="gap-1.5 text-xs text-violet-600 border-violet-200 hover:bg-violet-100 h-8"
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  {showScheduleForm ? 'Cancel' : 'Schedule Call'}
+                </Button>
+              </div>
+
+              {showScheduleForm && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-slate-600 mb-1 block">Select Date</Label>
+                      <Input
+                        type="date"
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={scheduleForm.date}
+                        onChange={(e) => setScheduleForm((f) => ({ ...f, date: e.target.value }))}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-600 mb-1 block">Time</Label>
+                      <Input
+                        type="time"
+                        value={scheduleForm.time}
+                        onChange={(e) => setScheduleForm((f) => ({ ...f, time: e.target.value }))}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-600 mb-1 block">Notes (optional)</Label>
+                    <Textarea
+                      placeholder="Add notes for this follow-up..."
+                      value={scheduleForm.notes}
+                      onChange={(e) => setScheduleForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={2}
+                      className="text-sm resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -268,7 +346,7 @@ const AddLead = () => {
           <Button type="submit" disabled={loading} className="rounded-xl px-6 gap-2 bg-indigo-600 hover:bg-indigo-700">
             {loading ? (
               <span className="flex items-center gap-2">
-                <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Saving...
               </span>
             ) : (

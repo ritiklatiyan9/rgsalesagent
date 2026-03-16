@@ -1,34 +1,65 @@
-import { useState, useEffect, useCallback } from 'react';
-import React from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { useAuth } from '@/context/AuthContext';
+import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import { prefetch } from '@/lib/queryCache';
 import {
-  LayoutDashboard, LogOut, ChevronLeft, ChevronRight, ChevronDown,
-  UsersRound, Layers, X, Phone, PhoneOutgoing,
-  CalendarClock, PhoneMissed, BarChart3, Zap,
-  UserPlus, List, Map, MapPin, BookOpen, DollarSign,
-  Activity, CreditCard, Users, ClipboardList, PhoneCall,
-  BellRing, Crown, TrendingUp, Settings, History, ArrowRightLeft, FileSpreadsheet,
-  Share2, FileText, Send,
-  Fingerprint, CalendarDays, ClipboardCheck,
+  LayoutDashboard,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  UsersRound,
+  X,
+  Phone,
+  CalendarClock,
+  PhoneMissed,
+  BarChart3,
+  Zap,
+  UserPlus,
+  List,
+  Map,
+  MapPin,
+  BookOpen,
+  CreditCard,
+  Users,
+  ClipboardList,
+  PhoneCall,
+  BellRing,
+  Crown,
+  TrendingUp,
+  Settings,
+  History,
+  ArrowRightLeft,
+  FileSpreadsheet,
+  Share2,
+  FileText,
+  Fingerprint,
+  CalendarDays,
   MessageSquare,
 } from 'lucide-react';
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from '@/components/ui/tooltip';
+  SidebarProvider,
+  Sidebar as ShadSidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 
-// forwardRef wrappers to avoid React 19 "element.ref" warning from Radix asChild
-const FwdNavLink = React.forwardRef(({ to, onMouseEnter, children, ...props }, ref) => (
-  <NavLink ref={ref} to={to} onMouseEnter={onMouseEnter} {...props}>{children}</NavLink>
-));
-FwdNavLink.displayName = 'FwdNavLink';
-
-const FwdDiv = React.forwardRef(({ children, ...props }, ref) => (
-  <div ref={ref} {...props}>{children}</div>
-));
-FwdDiv.displayName = 'FwdDiv';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://rivergreenbackend.onrender.com';
 
 const getNavItems = (isTeamHead) => {
   const items = [
@@ -58,7 +89,6 @@ const getNavItems = (isTeamHead) => {
         { to: '/calls/dialer', icon: Phone, label: 'Dialer' },
         { to: '/calls/leads-dialer', icon: PhoneCall, label: 'Leads Dialer' },
         { to: '/calls/history', icon: History, label: 'Call History' },
-      
         { to: '/calls/daily', icon: ClipboardList, label: 'Daily Entry' },
         { to: '/calls/scheduled', icon: CalendarClock, label: 'Scheduled' },
         { to: '/calls/missed', icon: PhoneMissed, label: 'Missed Calls' },
@@ -95,8 +125,6 @@ const getNavItems = (isTeamHead) => {
     { to: '/chat', icon: MessageSquare, label: 'Chat', iconColor: 'text-green-500' },
   ];
 
-  // Team Lead exclusive section — use isTeamHead flag, NOT user.role
-  // (assignTeamHead sets team.head_id but never changes users.role in DB)
   if (isTeamHead) {
     items.push({
       id: 'team-lead-menu', icon: Crown, label: 'Team Leader', iconColor: 'text-violet-500',
@@ -141,15 +169,19 @@ const PREFETCH_MAP = {
   '/attendance/history': ['/attendance/my-history?page=1&limit=31'],
 };
 
-const NavItem = ({ item, collapsed }) => {
+function MenuNode({ item, unreadTotal, onChatClick }) {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+  const { state, isMobile, setOpenMobile } = useSidebar();
+  const collapsed = state === 'collapsed';
+  const isChatItem = item.to === '/chat';
 
   const isActive = item.to ? (location.pathname === item.to || location.pathname.startsWith(item.to + '/')) : false;
-  const hasActiveChild = item.subItems?.some(sub => location.pathname === sub.to || location.pathname.startsWith(sub.to + '/'));
+  const hasActiveChild = item.subItems?.some((sub) => location.pathname === sub.to || location.pathname.startsWith(sub.to + '/'));
+
+  const [open, setOpen] = useState(Boolean(hasActiveChild));
 
   useEffect(() => {
-    if (hasActiveChild) setIsOpen(true);
+    if (hasActiveChild) setOpen(true);
   }, [hasActiveChild]);
 
   const handlePrefetch = useCallback((url) => {
@@ -157,101 +189,130 @@ const NavItem = ({ item, collapsed }) => {
     if (urls) urls.forEach((u) => prefetch(u));
   }, []);
 
-  if (collapsed) {
-    const active = isActive || hasActiveChild;
-    const content = (
-      <div className={cn(
-        "flex items-center justify-center shrink-0 transition-all duration-300 rounded-2xl w-11 h-11 mx-auto my-1",
-        active ? "bg-slate-100" : "bg-transparent hover:bg-slate-50"
-      )}>
-        <item.icon className={cn("w-5 h-5", active ? "text-[#1e6091]" : "text-slate-400")} strokeWidth={active ? 2.5 : 2} />
-      </div>
-    );
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {item.to ? (
-            <FwdNavLink to={item.to} onMouseEnter={() => handlePrefetch(item.to)}>
-              {content}
-            </FwdNavLink>
-          ) : (
-            <FwdDiv onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
-              {content}
-            </FwdDiv>
-          )}
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={12} className="font-semibold text-xs border-none shadow-md">
-          {item.label}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
+  const handleItemClick = useCallback(() => {
+    if (isChatItem) onChatClick?.();
+    if (isMobile) setOpenMobile(false);
+  }, [isChatItem, onChatClick, isMobile, setOpenMobile]);
 
-  if (item.subItems) {
+  if (!item.subItems) {
     return (
-      <div className="flex flex-col mb-1.5">
-        <div
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-colors font-medium text-[14.5px] text-slate-700 hover:bg-slate-50"
-        >
-          <div className="flex items-center gap-3">
-            <item.icon className={cn("w-5.5 h-5.5", item.iconColor || "text-sky-500")} strokeWidth={hasActiveChild ? 2.5 : 2} />
-            <span className="truncate">{item.label}</span>
-          </div>
-          <ChevronDown className={cn("w-4.5 h-4.5 text-slate-400 transition-transform duration-200", isOpen && "rotate-180")} />
-        </div>
-
-        {isOpen && (
-          <div className="flex flex-col ml-5.5 pl-4 border-l border-slate-200 space-y-1 mt-1 mb-2">
-            {item.subItems.map((sub) => {
-              const isSubActive = location.pathname === sub.to || location.pathname.startsWith(sub.to + '/');
-              return (
-                <NavLink
-                  key={sub.to}
-                  to={sub.to}
-                  onMouseEnter={() => handlePrefetch(sub.to)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg font-medium text-[14px] transition-colors",
-                    isSubActive ? "text-blue-600 bg-slate-50/50" : "text-slate-600 hover:text-blue-600 hover:bg-slate-50/50"
-                  )}
-                >
-                  <sub.icon className="w-4.5 h-4.5" strokeWidth={isSubActive ? 2.5 : 2} />
-                  <span>{sub.label}</span>
-                </NavLink>
-              )
-            })}
-          </div>
-        )}
-      </div>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={isActive} className="relative h-10 rounded-xl text-[14px] font-medium data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-700 hover:bg-slate-50">
+          <NavLink to={item.to} title={item.label} onMouseEnter={() => handlePrefetch(item.to)} onClick={handleItemClick}>
+            <span className={cn('h-7 w-7 rounded-lg grid place-items-center transition-colors', isActive ? 'bg-indigo-100' : 'bg-slate-100')}>
+              <item.icon className={cn('h-4.5 w-4.5', isActive ? 'text-indigo-700' : (item.iconColor || 'text-blue-500'))} />
+            </span>
+            <span>{item.label}</span>
+            {isChatItem && unreadTotal > 0 && (
+              <span className={cn(
+                'ml-auto inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white',
+                collapsed && 'absolute right-1 top-1 min-w-4 h-4 px-1 text-[9px]'
+              )}>
+                {unreadTotal > 99 ? '99+' : unreadTotal}
+              </span>
+            )}
+          </NavLink>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
     );
   }
 
   return (
-    <NavLink
-      to={item.to}
-      onMouseEnter={() => handlePrefetch(item.to)}
-      className={cn(
-        "flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-[14.5px] transition-colors outline-none mb-1.5",
-        isActive ? "bg-[#f0f4f8] text-[#1e6091]" : "text-slate-700 hover:bg-slate-50"
-      )}
-    >
-      <item.icon className={cn("w-5.5 h-5.5", isActive ? "text-[#1e6091]" : (item.iconColor || "text-blue-500"))} strokeWidth={isActive ? 2.5 : 2} />
-      <span className="truncate">{item.label}</span>
-    </NavLink>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton isActive={hasActiveChild} className="h-10 rounded-xl text-[14px] font-medium hover:bg-slate-50 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-700">
+            <span className={cn('h-7 w-7 rounded-lg grid place-items-center transition-colors', hasActiveChild ? 'bg-indigo-100' : 'bg-slate-100')}>
+              <item.icon className={cn('h-4.5 w-4.5', hasActiveChild ? 'text-indigo-700' : (item.iconColor || 'text-sky-500'))} />
+            </span>
+            <span>{item.label}</span>
+            <ChevronDown className={cn('ml-auto h-4 w-4 transition-transform', hasActiveChild ? 'text-indigo-500' : 'text-slate-400', open && 'rotate-180')} />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub className="mt-1 border-slate-200/90">
+            {item.subItems.map((sub) => {
+              const isSubActive = location.pathname === sub.to || location.pathname.startsWith(sub.to + '/');
+              return (
+                <SidebarMenuSubItem key={sub.to}>
+                  <SidebarMenuSubButton asChild isActive={isSubActive} className="h-8 rounded-lg text-[13.5px]">
+                    <NavLink to={sub.to} onMouseEnter={() => handlePrefetch(sub.to)} onClick={() => isMobile && setOpenMobile(false)}>
+                      <sub.icon className="h-4.5 w-4.5" />
+                      <span>{sub.label}</span>
+                    </NavLink>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              );
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
   );
-};
+}
 
-const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
+function SidebarInner() {
   const { user, isTeamHead, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
+  const { open, setOpen, openMobile, setOpenMobile } = useSidebar();
+  const navItems = useMemo(() => getNavItems(isTeamHead), [isTeamHead]);
+  const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
+  const currentPathRef = useRef(location.pathname);
 
   useEffect(() => {
-    if (setMobileMenuOpen) setMobileMenuOpen(false);
-  }, [location.pathname, setMobileMenuOpen]);
+    currentPathRef.current = location.pathname;
+    setOpenMobile(false);
+  }, [location.pathname, setOpenMobile]);
 
-  const toggleSidebar = () => setCollapsed(!collapsed);
+  useEffect(() => {
+    if (/^\/chat\/?$/.test(location.pathname)) {
+      setChatUnreadTotal(0);
+    }
+  }, [location.pathname]);
+
+  const loadUnreadFromConversations = useCallback(async () => {
+    try {
+      const { data } = await api.get('/chat/conversations');
+      if (!data?.success || !Array.isArray(data.conversations)) return;
+      const hasServerUnread = data.conversations.some((conv) => (
+        conv?.unread_count !== undefined || conv?.unreadCount !== undefined
+      ));
+      if (!hasServerUnread) return;
+      const total = data.conversations.reduce((sum, conv) => {
+        const raw = conv?.unread_count ?? conv?.unreadCount ?? 0;
+        const count = Number(raw);
+        return sum + (Number.isFinite(count) && count > 0 ? count : 0);
+      }, 0);
+      setChatUnreadTotal(total);
+    } catch {
+      // Ignore intermittent chat fetch issues for sidebar.
+    }
+  }, []);
+
+  useEffect(() => {
+    let socket;
+    const token = getAccessToken();
+    if (!token || !user?.id) return;
+
+    loadUnreadFromConversations();
+
+    socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+
+    socket.on('chat:message', (msg) => {
+      const senderId = String(msg?.sender_id ?? msg?.senderId ?? '');
+      if (senderId === String(user.id)) return;
+      if (/^\/chat\/?$/.test(currentPathRef.current)) return;
+      setChatUnreadTotal((prev) => prev + 1);
+    });
+
+    return () => {
+      socket?.disconnect();
+    };
+  }, [user?.id, loadUnreadFromConversations]);
 
   const handleLogout = async () => {
     await logout();
@@ -259,93 +320,93 @@ const Sidebar = ({ mobileMenuOpen, setMobileMenuOpen }) => {
   };
 
   return (
-    <TooltipProvider delayDuration={0}>
-      <aside className={cn(
-        'fixed md:relative z-50 flex flex-col bg-white shrink-0 transition-all duration-300 ease-in-out shadow-[0_8px_30px_rgb(0,0,0,0.04)] ring-1 ring-slate-100',
-        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
-        collapsed ? 'md:w-22' : 'w-70',
-        'h-dvh overflow-visible block'
-      )}>
-        {mobileMenuOpen && (
-          <button
-            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 md:hidden bg-slate-100 rounded-full"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-
+    <ShadSidebar collapsible="icon" className="border-r border-slate-200/70 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+      <SidebarHeader className="relative border-b border-slate-100 px-3 py-4">
         <button
-          onClick={toggleSidebar}
-          className="hidden md:flex absolute -right-3.5 top-11 w-7 h-7 bg-white border border-slate-200 rounded-full items-center justify-center shadow-sm text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-colors z-60"
+          onClick={() => setOpen((v) => !v)}
+          className="hidden md:flex absolute right-2 top-3 h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:text-indigo-600"
+          title={open ? 'Collapse sidebar' : 'Expand sidebar'}
         >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {open ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
-        <div className="flex-1 flex flex-col overflow-y-auto relative h-full [scrollbar-width:auto] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
-          <div className={cn(
-            "flex items-center shrink-0 pt-8 pb-6",
-            collapsed ? "justify-center px-2" : "px-5"
-          )}>
-            <div className="flex items-center gap-3 w-full">
-              <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center shrink-0 shadow-sm border border-indigo-700/20">
-                <Zap className="w-7 h-7 text-white drop-shadow-sm" />
-              </div>
-              {!collapsed && (
-                <div className="flex flex-col overflow-hidden">
-                  <span className="font-semibold text-[17px] text-slate-800 leading-tight truncate tracking-tight">
-                    RiverGreen
-                  </span>
-                  <span className="text-[13px] text-slate-500 mt-0.5 tracking-wide">{isTeamHead ? 'Team Lead Portal' : 'Agent Portal'}</span>
-                </div>
-              )}
-            </div>
+        <div className="flex items-center gap-3 pr-9">
+          <div className="grid h-10 w-10 place-items-center rounded-lg bg-indigo-600 shadow-sm">
+            <Zap className="h-5 w-5 text-white" />
           </div>
-
-          <div className="px-4 mt-2 mb-4">
-            {!collapsed && (
-              <div className="text-[13.5px] text-slate-500 mb-3 px-2 font-medium">Navigation</div>
-            )}
-            <nav className="space-y-1">
-              {getNavItems(isTeamHead).map((item, idx) => (
-                <NavItem key={item.id || item.to || idx} item={item} collapsed={collapsed} />
-              ))}
-            </nav>
-          </div>
-
-          <div className="p-4 mt-auto space-y-4 pb-10">
-            {!collapsed && (
-              <div className="flex items-center gap-3 px-2">
-                <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 shadow-sm overflow-hidden">
-                  {user?.profile_photo ? (
-                    <img src={user.profile_photo} alt={user?.name} className="h-full w-full object-cover" />
-                  ) : (
-                    <Zap className="w-5 h-5 text-indigo-600" />
-                  )}
-                </div>
-                <div className="flex flex-col min-w-0 pr-2">
-                  <span className="text-[14px] font-semibold text-slate-800 truncate tracking-tight">{user?.name || 'Agent'}</span>
-                  <span className="text-[12px] text-slate-500 truncate">{user?.email || 'agent@rivergreen.com'}</span>
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={handleLogout}
-              className={cn(
-                "flex items-center gap-3 w-full text-[#e63946] hover:text-red-700 transition-colors py-1",
-                collapsed ? "justify-center" : "px-2"
-              )}
-              title="Logout"
-            >
-              <LogOut className="w-5 h-5" strokeWidth={2.5} />
-              {!collapsed && <span className="font-medium text-[15px]">Logout</span>}
-            </button>
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+            <div className="truncate text-[16px] font-semibold tracking-tight text-slate-800">RiverGreen</div>
+            <div className="truncate text-[12px] text-slate-500">{isTeamHead ? 'Team Lead Portal' : 'Agent Portal'}</div>
           </div>
         </div>
-      </aside>
-    </TooltipProvider>
-  );
-};
 
-export default Sidebar;
+        <button
+          className="absolute right-2 top-3 rounded-full bg-slate-100 p-2 text-slate-500 md:hidden"
+          onClick={() => setOpenMobile(false)}
+          title="Close menu"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </SidebarHeader>
+
+      <SidebarContent
+        className="min-h-0 overflow-y-auto px-0 py-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400 [&::-webkit-scrollbar-track]:bg-slate-200/60"
+        style={{ scrollbarColor: '#94a3b8 #e2e8f0' }}
+      >
+        <div className="px-2 py-3">
+          <SidebarGroup className="p-0">
+            <SidebarGroupLabel className="px-2 text-[12px] font-semibold uppercase tracking-wide text-slate-500 group-data-[collapsible=icon]:hidden">
+              Navigation
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="mt-1 gap-0.5">
+                {navItems.map((item, idx) => (
+                  <MenuNode
+                    key={item.id || item.to || idx}
+                    item={item}
+                    unreadTotal={chatUnreadTotal}
+                    onChatClick={() => setChatUnreadTotal(0)}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </div>
+      </SidebarContent>
+
+      <SidebarFooter className="border-t border-slate-100 p-3">
+        <div className="flex items-center gap-3 px-1 group-data-[collapsible=icon]:hidden">
+          <div className="h-9 w-9 overflow-hidden rounded-lg border border-indigo-100 bg-indigo-50">
+            {user?.profile_photo ? (
+              <img src={user.profile_photo} alt={user?.name} className="h-full w-full object-cover" />
+            ) : (
+              <div className="grid h-full w-full place-items-center">
+                <Zap className="h-4.5 w-4.5 text-indigo-600" />
+              </div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[13.5px] font-semibold text-slate-800">{user?.name || 'Agent'}</div>
+            <div className="truncate text-[11.5px] text-slate-500">{user?.email || 'agent@rivergreen.com'}</div>
+          </div>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          className={cn(
+            'mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[14px] font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700',
+            !open && 'justify-center px-0'
+          )}
+          title="Logout"
+        >
+          <LogOut className="h-5 w-5" />
+          <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+        </button>
+      </SidebarFooter>
+    </ShadSidebar>
+  );
+}
+
+export default function Sidebar(props) {
+  return <SidebarInner {...props} />;
+}

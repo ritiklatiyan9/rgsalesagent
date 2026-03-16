@@ -6,10 +6,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import LeadSearchWidget from '@/components/LeadSearchWidget';
 import { cachedGet, invalidateCache } from '@/lib/queryCache';
 import api from '@/lib/axios';
@@ -17,70 +13,34 @@ import { format, isToday, parseISO } from 'date-fns';
 import {
   Target, Calendar, PhoneCall,
   Activity, Plus, ArrowRight, Flame,
-  BarChart2, CheckCircle2, Clock, AlertCircle,
-  BellRing, Check, AlarmClock, Phone, Tag, TrendingUp, Users,
+  CheckCircle2, Clock, AlertCircle,
+  BellRing, Check, AlarmClock, Phone, TrendingUp, Users,
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 
 const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
 const LEAD_CATEGORY_VALUES = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
 const CATEGORY_COLORS = {
-  PRIME:  'bg-amber-100 text-amber-700 border-amber-200',
-  HOT:    'bg-rose-100 text-rose-700 border-rose-200',
-  NORMAL: 'bg-blue-100 text-blue-700 border-blue-200',
-  COLD:   'bg-sky-100 text-sky-700 border-sky-200',
+  PRIME:  'bg-slate-100 text-slate-700 border-slate-200',
+  HOT:    'bg-slate-200 text-slate-700 border-slate-300',
+  NORMAL: 'bg-slate-100 text-slate-700 border-slate-200',
+  COLD:   'bg-slate-100 text-slate-700 border-slate-200',
   DEAD:   'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'BOOKED', 'LOST'];
 const LEAD_STATUS_META = {
-  NEW:         { label: 'New',         color: 'bg-sky-500',     light: 'bg-sky-50',     text: 'text-sky-700'     },
-  CONTACTED:   { label: 'Contacted',   color: 'bg-indigo-500',  light: 'bg-indigo-50',  text: 'text-indigo-700'  },
-  INTERESTED:  { label: 'Interested',  color: 'bg-amber-500',   light: 'bg-amber-50',   text: 'text-amber-700'   },
-  SITE_VISIT:  { label: 'Site Visit',  color: 'bg-orange-500',  light: 'bg-orange-50',  text: 'text-orange-700'  },
-  NEGOTIATION: { label: 'Negotiation', color: 'bg-purple-500',  light: 'bg-purple-50',  text: 'text-purple-700'  },
-  BOOKED:      { label: 'Booked',      color: 'bg-emerald-500', light: 'bg-emerald-50', text: 'text-emerald-700' },
-  LOST:        { label: 'Lost',        color: 'bg-rose-500',    light: 'bg-rose-50',    text: 'text-rose-700'    },
-};
-
-const KpiSkeleton = () => (
-  <div className="stat-card border-l-4 border-l-muted">
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-4 w-24 rounded" />
-        <Skeleton className="h-9 w-9 rounded-lg" />
-      </div>
-      <Skeleton className="h-8 w-16 rounded" />
-      <Skeleton className="h-3 w-28 rounded" />
-    </div>
-  </div>
-);
-
-const SECONDARY_CARD_STYLES = {
-  orange: {
-    hoverBorder: 'hover:border-orange-200',
-    iconBg: 'bg-orange-50',
-    iconColor: 'text-orange-600',
-  },
-  teal: {
-    hoverBorder: 'hover:border-teal-200',
-    iconBg: 'bg-teal-50',
-    iconColor: 'text-teal-600',
-  },
-  purple: {
-    hoverBorder: 'hover:border-purple-200',
-    iconBg: 'bg-purple-50',
-    iconColor: 'text-purple-600',
-  },
-  amber: {
-    hoverBorder: 'hover:border-amber-200',
-    iconBg: 'bg-amber-50',
-    iconColor: 'text-amber-600',
-  },
+  NEW:         { label: 'New',         color: 'bg-slate-500', light: 'bg-slate-50', text: 'text-slate-700' },
+  CONTACTED:   { label: 'Contacted',   color: 'bg-slate-500', light: 'bg-slate-50', text: 'text-slate-700' },
+  INTERESTED:  { label: 'Interested',  color: 'bg-slate-600', light: 'bg-slate-100', text: 'text-slate-700' },
+  SITE_VISIT:  { label: 'Site Visit',  color: 'bg-slate-600', light: 'bg-slate-100', text: 'text-slate-700' },
+  NEGOTIATION: { label: 'Negotiation', color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
+  BOOKED:      { label: 'Booked',      color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
+  LOST:        { label: 'Lost',        color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
 };
 
 const Dashboard = () => {
@@ -208,6 +168,72 @@ const Dashboard = () => {
 
   const maxPipelineCount = Math.max(...Object.values(pipeline), 1);
 
+  const snapshotRows = [
+    {
+      key: 'leads',
+      label: 'Leads',
+      hint: 'Total pipeline',
+      value: leadTotal,
+      nav: '/leads',
+      icon: Target,
+      tone: 'sky',
+    },
+    {
+      key: 'today_calls',
+      label: 'Today Calls',
+      hint: `Week ${fmtNum(weekCalls)}`,
+      value: todayCalls,
+      nav: '/calls/analytics',
+      icon: PhoneCall,
+      tone: 'orange',
+    },
+    {
+      key: 'tasks',
+      label: 'Open Tasks',
+      hint: `${fmtNum(followupCounts?.today ?? 0)} due today`,
+      value: followupCounts?.scheduled ?? 0,
+      nav: '/reminders',
+      icon: Clock,
+      tone: 'emerald',
+    },
+    {
+      key: 'missed',
+      label: 'Missed',
+      hint: 'Needs action',
+      value: followupCounts?.missed ?? 0,
+      nav: '/calls/missed',
+      icon: AlertCircle,
+      tone: 'rose',
+    },
+    {
+      key: 'bookings',
+      label: 'Bookings',
+      hint: 'Closed leads',
+      value: pipeline.BOOKED ?? 0,
+      nav: '/leads?status=BOOKED',
+      icon: CheckCircle2,
+      tone: 'amber',
+    },
+    {
+      key: 'visits',
+      label: 'Visits',
+      hint: 'Site visit stage',
+      value: pipeline.SITE_VISIT ?? 0,
+      nav: '/leads?status=SITE_VISIT',
+      icon: Activity,
+      tone: 'orange',
+    },
+    {
+      key: 'contacts',
+      label: 'Contacts',
+      hint: 'Saved in CRM',
+      value: contactsTotal ?? 0,
+      nav: '/all-contacts',
+      icon: Users,
+      tone: 'amber',
+    },
+  ];
+
   const remindersStatusData = useMemo(() => {
     if (allFollowups.length === 0) return [];
     const counts = { pending: 0, completed: 0, snoozed: 0, escalated: 0 };
@@ -238,247 +264,180 @@ const Dashboard = () => {
   }, [callAnalytics]);
 
   return (
-    <div className="space-y-6 pt-1">
-      {/* Premium Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Welcome back, {user?.name || 'Agent'} 👋
-          </h1>
-          <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
-            <Calendar className="h-4 w-4 text-primary/70" />
-            {todayDateStr}
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5 shrink-0">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 gap-1.5 text-xs font-semibold border-emerald-200 text-emerald-700 bg-emerald-50/30 hover:bg-emerald-50 hover:border-emerald-300 rounded-xl"
-            onClick={() => navigate('/leads/add')}
-          >
-            <Plus className="h-4 w-4" />
-            Add Lead
-          </Button>
-          <Button
-            size="sm"
-            className="h-9 gap-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 rounded-xl"
-            onClick={() => navigate('/calls/log')}
-          >
-            <PhoneCall className="h-4 w-4" />
-            Log Call
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4 sm:space-y-6 pt-1">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-3 sm:gap-4">
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-linear-to-b from-white to-slate-50 p-4 sm:p-5 text-card-foreground shadow-[0_10px_28px_-18px_rgba(2,6,23,0.32)] sm:shadow-[0_24px_44px_-28px_rgba(2,6,23,0.35)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-linear-to-b from-slate-200/65 to-transparent" />
 
-      {/* Advanced Search & Filtering (Glassmorphism) */}
-      <div className="rounded-2xl border border-border/40 bg-white/70 backdrop-blur-md shadow-sm px-4 py-4 grid grid-cols-1 lg:grid-cols-[auto_minmax(0,1fr)_260px] items-center gap-4">
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-            <Users className="h-5 w-5 text-indigo-600" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Agent Dashboard</p>
+              <h1 className="mt-1.5 text-xl sm:text-2xl font-semibold leading-tight text-slate-900">Morning {user?.name?.split(' ')[0] || 'Agent'}</h1>
+              <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-orange-600" />
+                {todayDateStr}
+              </p>
+            </div>
+            <div className="h-10 w-10 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center shadow-sm">
+              <BellRing className="h-4.5 w-4.5 text-orange-600" />
+            </div>
           </div>
-          <div className="hidden lg:block">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Quick Search</p>
-            <p className="text-[10px] text-muted-foreground/60">Find leads instantly</p>
+
+          <div className="relative mt-4 rounded-2xl border border-slate-300/85 bg-linear-to-b from-slate-200/80 to-slate-100/75 px-4 py-3.5 text-slate-900 shadow-[0_12px_24px_-14px_rgba(30,41,59,0.25)]">
+            <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Total Pipeline Value</p>
+            <p className="mt-1 text-3xl font-semibold tabular-nums text-slate-900">{fmtNum(leadTotal)}</p>
+            <div className="mt-3 flex items-center gap-2 text-[11px]">
+              <span className="rounded-full bg-slate-100 text-slate-700 px-2 py-0.5">New {fmtNum(pipeline.NEW)}</span>
+              <span className="rounded-full bg-slate-200 text-slate-800 px-2 py-0.5">Hot {fmtNum(pipeline.INTERESTED)}</span>
+              <span className="rounded-full bg-slate-300 text-slate-800 px-2 py-0.5">Booked {fmtNum(pipeline.BOOKED)}</span>
+            </div>
+          </div>
+
+          <div className="relative mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-medium min-w-0">
+              <Plus className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Add Lead</span>
+            </Button>
+            <Button size="sm" onClick={() => navigate('/calls/log')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
+              <PhoneCall className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Log Call</span>
+            </Button>
+            <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
+              <Clock className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Tasks</span>
+            </Button>
+            <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
+              <Users className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Contacts</span>
+            </Button>
           </div>
         </div>
-        <div className="w-full min-w-0">
+
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3 sm:p-4 md:p-5 shadow-[0_10px_24px_-18px_rgba(2,6,23,0.26)] sm:shadow-[0_20px_40px_-24px_rgba(2,6,23,0.3)] space-y-3 sm:space-y-4 text-card-foreground">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Quick Find</p>
+            <p className="text-sm font-medium text-slate-800 mt-0.5">Search leads and jump to category</p>
+          </div>
+
           <LeadSearchWidget />
-        </div>
-        <Separator className="hidden lg:block h-8 w-px bg-border/40" />
-        <div className="flex items-center gap-2 w-full lg:w-[260px] lg:shrink-0">
-          <Select value={browseCat} onValueChange={setBrowseCat}>
-            <SelectTrigger className="h-10 text-sm rounded-xl bg-white/50 border-border/60">
-              <SelectValue placeholder="Browse Category..." />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="ALL">All Categories</SelectItem>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={browseCat}
+              onChange={(e) => setBrowseCat(e.target.value)}
+              className="h-10 sm:h-11 w-full text-sm rounded-xl bg-slate-50 border border-slate-200 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-slate-300"
+            >
+              <option value="ALL">All Categories</option>
               {LEAD_CATEGORY_VALUES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  <span className={`inline-block w-2.5 h-2.5 rounded-full mr-2 ${CATEGORY_COLORS[c]?.split(' ')[0]}`} />
-                  {c}
-                </SelectItem>
+                <option key={c} value={c}>{c}</option>
               ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="icon"
-            variant="secondary"
-            className="h-10 w-10 shrink-0 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
-            onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?category=${browseCat}`)}
-          >
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+            </select>
+            <Button
+              size="icon"
+              className="h-10 w-10 rounded-xl bg-linear-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white"
+              onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 mt-1 sm:mt-0">
+            <button onClick={() => navigate('/calls/analytics')} className="rounded-xl sm:rounded-2xl border border-border bg-slate-50/70 p-2.5 sm:p-3 text-left hover:bg-slate-50 shadow-sm transition-all">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Calls</p>
+              <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(totalCalls)}</p>
+            </button>
+            <button onClick={() => navigate('/calls/missed')} className="rounded-xl sm:rounded-2xl border border-border bg-slate-50/70 p-2.5 sm:p-3 text-left hover:bg-slate-50 shadow-sm transition-all">
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Missed</p>
+              <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(followupCounts?.missed ?? 0)}</p>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Primary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
+      {/* Mobile-first Snapshot */}
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-linear-to-b from-white to-slate-50 px-3 py-3 sm:px-4 sm:py-4 shadow-[0_10px_24px_-18px_rgba(2,6,23,0.26)] sm:shadow-[0_18px_38px_-26px_rgba(2,6,23,0.35)]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Daily Snapshot</p>
+            <p className="mt-0.5 text-sm font-medium text-slate-900">Key numbers in one place</p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 rounded-full px-3 text-[11px] text-slate-700 hover:bg-slate-100"
+            onClick={() => navigate('/calls/analytics')}
+          >
+            Full analytics <ArrowRight className="h-3 w-3 ml-1" />
+          </Button>
+        </div>
+
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => <KpiSkeleton key={i} />)
+          <div className="mt-3 space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-xl" />
+            ))}
+          </div>
         ) : (
           <>
-            <div
-              className="stat-card border-l-4 border-l-sky-500 bg-white/60 hover:shadow-lg hover:shadow-sky-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/leads')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Leads</p>
-                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-sky-600 transition-colors">
-                    {fmtNum(leadTotal)}
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-sky-100/50 flex items-center justify-center group-hover:bg-sky-500 group-hover:rotate-6 transition-all duration-300">
-                  <Target className="h-6 w-6 text-sky-600 group-hover:text-white" />
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pt-2 border-t border-sky-100/30">
-                <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-100 font-bold px-1.5 py-0">
-                  {fmtNum(pipeline.NEW)} New
-                </Badge>
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-100 font-bold px-1.5 py-0">
-                  {fmtNum(pipeline.INTERESTED)} Hot
-                </Badge>
-              </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
+                <button
+                  key={key}
+                  className="rounded-xl border border-slate-200/70 bg-slate-50/70 px-2 py-2 text-left hover:bg-white hover:border-slate-300 transition-all shadow-sm"
+                  onClick={() => navigate(nav)}
+                >
+                  <p className="text-[9px] uppercase tracking-[0.14em] font-medium text-slate-500 truncate">{label}</p>
+                  <p className="mt-1 text-lg leading-none font-semibold tabular-nums text-slate-900">{fmtNum(value)}</p>
+                </button>
+              ))}
             </div>
 
-            <div
-              className="stat-card border-l-4 border-l-indigo-500 bg-white/60 hover:shadow-lg hover:shadow-indigo-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/calls/analytics')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Call Performance</p>
-                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-indigo-600 transition-colors">
-                    {fmtNum(totalCalls)}
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-indigo-100/50 flex items-center justify-center group-hover:bg-indigo-500 group-hover:-rotate-6 transition-all duration-300">
-                  <PhoneCall className="h-6 w-6 text-indigo-600 group-hover:text-white" />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
-                <TrendingUp className="h-3.5 w-3.5 text-indigo-500" />
-                <span className="font-semibold text-indigo-700">{fmtNum(todayCalls)} today</span>
-                <span className="opacity-60 text-[10px]">· {fmtNum(weekCalls)} this week</span>
-              </p>
-            </div>
+            <div className="mt-3 space-y-1.5">
+              {snapshotRows.slice(3).map(({ key, label, hint, value, nav, icon: Icon, tone }) => {
+                const toneStyles = {
+                  rose: 'bg-rose-50 text-rose-600 border-rose-100',
+                  teal: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+                  orange: 'bg-violet-50 text-violet-600 border-violet-100',
+                  amber: 'bg-sky-50 text-sky-600 border-sky-100',
+                };
+                const iconClasses = toneStyles[tone] || 'bg-slate-50 text-slate-600 border-slate-100';
 
-            <div
-              className="stat-card border-l-4 border-l-emerald-500 bg-white/60 hover:shadow-lg hover:shadow-emerald-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/reminders')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Active Tasks</p>
-                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-emerald-600 transition-colors">
-                    {fmtNum(followupCounts?.scheduled ?? 0)}
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-emerald-100/50 flex items-center justify-center group-hover:bg-emerald-500 group-hover:scale-110 transition-all duration-300">
-                  <Clock className="h-6 w-6 text-emerald-600 group-hover:text-white" />
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 pt-1">
-                <div className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />
-                <span className="text-xs font-semibold text-emerald-700">
-                  {followupCounts?.today ?? 0} due today
-                </span>
-                {followupCounts?.missed > 0 && (
-                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-1 rounded animate-bounce">
-                    {followupCounts.missed} Missed!
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div
-              className="stat-card border-l-4 border-l-rose-500 bg-white/60 hover:shadow-lg hover:shadow-rose-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/calls/missed')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Missed Follow-ups</p>
-                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-rose-600 transition-colors">
-                    {fmtNum(followupCounts?.missed ?? 0)}
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-rose-100/50 flex items-center justify-center group-hover:bg-rose-500 group-hover:rotate-6 transition-all duration-300">
-                  <AlertCircle className="h-6 w-6 text-rose-600 group-hover:text-white" />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
-                <Flame className="h-3.5 w-3.5 text-rose-500" />
-                <span className="font-semibold text-rose-700">Needs attention now</span>
-              </p>
-            </div>
-
-            <div
-              className="stat-card border-l-4 border-l-cyan-500 bg-white/60 hover:shadow-lg hover:shadow-cyan-100/50 transition-all cursor-pointer group"
-              onClick={() => navigate('/all-contacts')}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">All Contacts</p>
-                  <p className="text-3xl font-bold tabular-nums text-foreground group-hover:text-cyan-600 transition-colors">
-                    {fmtNum(contactsTotal)}
-                  </p>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-cyan-100/50 flex items-center justify-center group-hover:bg-cyan-500 group-hover:-rotate-6 transition-all duration-300">
-                  <Users className="h-6 w-6 text-cyan-600 group-hover:text-white" />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 pt-1">
-                <Tag className="h-3.5 w-3.5 text-cyan-500" />
-                <span className="font-semibold text-cyan-700">Direct dialer-ready contacts</span>
-              </p>
+                return (
+                  <button
+                    key={key}
+                    className="w-full rounded-xl border border-slate-200/70 bg-white px-2.5 py-2 text-left hover:bg-slate-50/70 hover:border-slate-300 transition-all shadow-sm"
+                    onClick={() => navigate(nav)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className={`h-8 w-8 rounded-lg border flex items-center justify-center shrink-0 ${iconClasses}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-slate-800 truncate">{label}</p>
+                          <p className="text-lg font-semibold tabular-nums text-slate-900 leading-none">{fmtNum(value)}</p>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{hint}</p>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
       </div>
 
-      {/* Secondary Stats Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {[
-          { label: 'Today Follow-ups', value: followupCounts?.today ?? 0, icon: BellRing, color: 'orange', nav: '/reminders' },
-          { label: 'Booking Requests', value: pipeline.BOOKED ?? 0, icon: CheckCircle2, color: 'teal', nav: '/leads?status=BOOKED' },
-          { label: 'Visit Scheduled', value: pipeline.SITE_VISIT ?? 0, icon: Activity, color: 'purple', nav: '/leads?status=SITE_VISIT' },
-          { label: 'Negotiations', value: pipeline.NEGOTIATION ?? 0, icon: Target, color: 'amber', nav: '/leads?status=NEGOTIATION' },
-        ].map(({ label, value, icon: Icon, color, nav }) => {
-          const styles = SECONDARY_CARD_STYLES[color] || SECONDARY_CARD_STYLES.orange;
-          return (
-          <div
-            key={label}
-            className={`stat-card bg-white/50 border border-border/30 py-3.5 hover:bg-white ${styles.hoverBorder} hover:shadow-md transition-all cursor-pointer group`}
-            onClick={() => navigate(nav)}
-          >
-            <div className="flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-xl ${styles.iconBg} flex items-center justify-center shrink-0 transition-colors group-hover:rotate-12`}>
-                <Icon className={`h-5 w-5 ${styles.iconColor}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">{label}</p>
-                <div className="flex items-baseline gap-1.5">
-                  <p className="text-xl font-bold text-foreground">{fmtNum(value)}</p>
-                  <ArrowRight className="h-3 w-3 text-muted-foreground/30 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            </div>
-          </div>
-        )})}
-      </div>
-
       {/* Today's Follow-ups & Analytics Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Today's Follow-ups */}
-        <Card className="card-elevated border-0 flex flex-col">
-          <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
-            <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
-              <BellRing className="h-4 w-4 text-orange-500" />
+        <Card className="card-elevated relative overflow-hidden border border-slate-200/90 bg-linear-to-b from-white to-slate-50 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.32)] sm:shadow-[0_16px_34px_-24px_rgba(2,6,23,0.35)] flex flex-col">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
+          <CardHeader className="relative pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-transparent">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+              <BellRing className="h-4 w-4 text-violet-600" />
               Today's Schedule
               {todayFollowups.length > 0 && (
-                <Badge className="ml-1 h-5 px-1.5 text-[10px] bg-orange-100 text-orange-700 border-none">
+                <Badge className="ml-1 h-5 px-1.5 text-[10px] bg-violet-100 text-violet-700 border-none">
                   {todayFollowups.length}
                 </Badge>
               )}
@@ -487,13 +446,13 @@ const Dashboard = () => {
               variant="ghost"
               size="sm"
               onClick={() => navigate('/reminders')}
-              className="text-[11px] h-7 text-primary hover:bg-indigo-50"
+              className="text-[11px] h-7 text-slate-700 hover:bg-slate-100"
             >
               Manage all <ArrowRight className="h-3 w-3 ml-1" />
             </Button>
           </CardHeader>
-          <CardContent className="p-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-[400px]">
+          <CardContent className="relative p-0 flex-1 overflow-hidden">
+            <ScrollArea className="h-100">
               {loading ? (
                 <div className="px-5 py-4 space-y-4">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -512,7 +471,7 @@ const Dashboard = () => {
                     <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                   </div>
                   <p className="text-sm font-semibold text-foreground">All caught up!</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+                  <p className="text-xs text-muted-foreground mt-1 max-w-50">
                     No pending follow-ups for today.
                   </p>
                 </div>
@@ -525,40 +484,40 @@ const Dashboard = () => {
                     const isCompleting = fupActionLoading === f.id + '_complete';
                     
                     const typeColors = {
-                      CALL: 'bg-blue-50 text-blue-700 border-blue-100',
-                      FOLLOWUP: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-                      SITE_VISIT: 'bg-orange-50 text-orange-700 border-orange-100',
-                      MEETING: 'bg-purple-50 text-purple-700 border-purple-100',
+                      CALL: 'bg-sky-50 text-sky-700 border-sky-100',
+                      FOLLOWUP: 'bg-violet-50 text-violet-700 border-violet-100',
+                      SITE_VISIT: 'bg-amber-50 text-amber-700 border-amber-100',
+                      MEETING: 'bg-emerald-50 text-emerald-700 border-emerald-100',
                       OTHER: 'bg-slate-100 text-slate-600 border-slate-200',
                     };
 
                     return (
                       <div
                         key={f.id}
-                        className={`group flex items-start gap-3 px-5 py-4 transition-all hover:bg-indigo-50/20 ${
-                          isOverdue ? 'bg-rose-50/30' : ''
+                        className={`group flex items-start gap-3 px-5 py-4 transition-all hover:bg-slate-100/70 ${
+                          isOverdue ? 'bg-slate-100/70' : ''
                         }`}
                       >
                         <div className={`h-10 w-10 rounded-xl flex flex-col items-center justify-center shrink-0 border ${
-                          isOverdue ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
+                          isOverdue ? 'bg-slate-100 border-slate-300' : 'bg-slate-50 border-slate-200'
                         }`}>
-                          <span className={`text-[10px] font-bold uppercase ${isOverdue ? 'text-rose-600' : 'text-slate-500'}`}>
+                          <span className={`text-[10px] font-medium uppercase ${isOverdue ? 'text-slate-700' : 'text-slate-500'}`}>
                             {scheduledDate ? format(scheduledDate, 'MMM') : ''}
                           </span>
-                          <span className={`text-sm font-black leading-none ${isOverdue ? 'text-rose-700' : 'text-slate-700'}`}>
+                          <span className={`text-sm font-semibold leading-none ${isOverdue ? 'text-slate-800' : 'text-slate-700'}`}>
                             {scheduledDate ? format(scheduledDate, 'dd') : ''}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                            <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                               {f.lead_name || 'Unnamed Lead'}
                             </p>
-                            <Badge variant="outline" className={`text-[9px] px-1.5 py-0 rounded-md font-bold ${typeColors[f.followup_type] || typeColors.OTHER}`}>
+                            <Badge variant="outline" className={`text-[9px] px-1.5 py-0 rounded-md font-medium ${typeColors[f.followup_type] || typeColors.OTHER}`}>
                               {f.followup_type || 'REMINDER'}
                             </Badge>
                             {isOverdue && (
-                              <Badge variant="destructive" className="text-[8px] h-4 px-1 py-0 animate-pulse">LATE</Badge>
+                              <Badge variant="outline" className="text-[8px] h-4 px-1 py-0 bg-slate-200 text-slate-800 border-slate-300">LATE</Badge>
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-muted-foreground">
@@ -568,7 +527,7 @@ const Dashboard = () => {
                               </span>
                             )}
                             {f.lead_phone && (
-                              <a href={`tel:${f.lead_phone}`} className="text-[11px] font-medium flex items-center gap-1 hover:text-indigo-600">
+                              <a href={`tel:${f.lead_phone}`} className="text-[11px] font-medium flex items-center gap-1 hover:text-slate-800">
                                 <Phone className="h-3 w-3" /> {f.lead_phone}
                               </a>
                             )}
@@ -579,11 +538,11 @@ const Dashboard = () => {
                             </p>
                           )}
                         </div>
-                        <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex flex-col gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                           <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
+                            className="h-8 w-8 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-800 hover:text-white transition-all shadow-sm"
                             onClick={() => completeFollowup(f.id)}
                             disabled={isCompleting}
                           >
@@ -611,19 +570,19 @@ const Dashboard = () => {
         {/* Analytics & Pipeline */}
         <div className="flex flex-col gap-6">
           {/* Calls Trend Chart */}
-          <Card className="card-elevated border-0">
+          <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
             <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-indigo-500" />
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-violet-600" />
                 Call Analytics Trend
               </CardTitle>
-              <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">Last 30 Days</span>
+              <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-widest">Last 30 Days</span>
             </CardHeader>
             <CardContent className="pt-6">
               {loading ? (
-                <Skeleton className="h-[200px] w-full rounded-2xl" />
+                <Skeleton className="h-50 w-full rounded-2xl" />
               ) : callTrendData.length === 0 ? (
-                <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground bg-slate-50 rounded-2xl border border-dashed">
+                <div className="h-50 flex items-center justify-center text-sm text-muted-foreground bg-slate-50 rounded-2xl border border-dashed">
                   No trend data available
                 </div>
               ) : (
@@ -631,8 +590,8 @@ const Dashboard = () => {
                   <AreaChart data={callTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#475569" stopOpacity={0.28} />
+                        <stop offset="95%" stopColor="#475569" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -654,7 +613,7 @@ const Dashboard = () => {
                     <Area 
                       type="monotone" 
                       dataKey="calls" 
-                      stroke="#6366f1" 
+                      stroke="#475569" 
                       strokeWidth={3} 
                       fill="url(#callsGradient)" 
                       animationDuration={1500}
@@ -666,10 +625,10 @@ const Dashboard = () => {
           </Card>
 
           {/* Lead Funnel Summary */}
-          <Card className="card-elevated border-0">
+          <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
              <CardHeader className="pb-3 border-b border-border/40 bg-white/40">
-              <CardTitle className="text-sm font-bold flex items-center gap-2">
-                <Target className="h-4 w-4 text-emerald-500" />
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Target className="h-4 w-4 text-emerald-600" />
                 Pipeline Performance
               </CardTitle>
             </CardHeader>
@@ -679,16 +638,16 @@ const Dashboard = () => {
               ) : (
                 <>
                   {[
-                    { status: 'NEW', label: 'Fresh Enquiries', color: 'bg-sky-500', icon: Plus },
-                    { status: 'INTERESTED', label: 'Potential Leads', color: 'bg-amber-500', icon: Flame },
-                    { status: 'SITE_VISIT', label: 'Viewings Slated', color: 'bg-orange-500', icon: Activity },
-                    { status: 'BOOKED', label: 'Closed Deals', color: 'bg-emerald-500', icon: CheckCircle2 },
+                    { status: 'NEW', label: 'Fresh Enquiries', color: 'bg-slate-500', icon: Plus },
+                    { status: 'INTERESTED', label: 'Potential Leads', color: 'bg-slate-600', icon: Flame },
+                    { status: 'SITE_VISIT', label: 'Viewings Slated', color: 'bg-slate-700', icon: Activity },
+                    { status: 'BOOKED', label: 'Closed Deals', color: 'bg-slate-800', icon: CheckCircle2 },
                   ].map((item) => {
                     const count = pipeline[item.status] || 0;
                     const pct = maxPipelineCount > 0 ? (count / maxPipelineCount) * 100 : 0;
                     return (
                       <div key={item.status} className="space-y-1.5 group cursor-pointer" onClick={() => navigate(`/leads?status=${item.status}`)}>
-                        <div className="flex items-center justify-between text-[11px] font-bold">
+                        <div className="flex items-center justify-between text-[11px] font-medium">
                           <span className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground">
                             <item.icon className="h-3 w-3" /> {item.label}
                           </span>
@@ -712,10 +671,10 @@ const Dashboard = () => {
 
       {/* Reminders Status Chart */}
       {remindersStatusData.length > 0 && (
-        <Card className="card-elevated border-0">
+        <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
           <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
-            <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
-              <Clock className="h-4 w-4 text-emerald-500" />
+            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+              <Clock className="h-4 w-4 text-orange-600" />
               Follow-up Health
             </CardTitle>
             <Button
@@ -729,10 +688,10 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent className="pt-6">
             {loading ? (
-              <Skeleton className="h-[220px] w-full rounded-2xl" />
+              <Skeleton className="h-55 w-full rounded-2xl" />
             ) : (
               <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
-                <ResponsiveContainer width="100%" height={220} className="max-w-[240px]">
+                <ResponsiveContainer width="100%" height={220} className="max-w-60">
                   <PieChart>
                     <Pie
                       data={remindersStatusData}
@@ -757,8 +716,8 @@ const Dashboard = () => {
                     <div key={d.name} className="flex items-center gap-2">
                       <div className="h-3 w-3 rounded-full" style={{ backgroundColor: d.fill }} />
                       <div className="space-y-0.5">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{d.name}</p>
-                        <p className="text-sm font-bold text-foreground">{d.value}</p>
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{d.name}</p>
+                        <p className="text-sm font-semibold text-foreground">{d.value}</p>
                       </div>
                     </div>
                   ))}
@@ -770,17 +729,17 @@ const Dashboard = () => {
       )}
 
       {/* Recent Leads */}
-      <Card className="card-elevated border-0 shadow-indigo-100/30">
+      <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
         <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
-          <CardTitle className="text-sm font-bold flex items-center gap-2 text-foreground">
-            <Users className="h-4 w-4 text-indigo-500" />
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Users className="h-4 w-4 text-violet-600" />
             Recent Prospects
           </CardTitle>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate('/leads/add')}
-            className="text-[11px] h-7 text-indigo-600 hover:bg-indigo-50"
+            className="text-[11px] h-7 text-violet-700 hover:bg-violet-50"
           >
             <Plus className="h-3 w-3 mr-1" /> New Lead
           </Button>
@@ -816,14 +775,14 @@ const Dashboard = () => {
                 return (
                   <div 
                     key={lead.id} 
-                    className="group flex items-center gap-4 px-6 py-3.5 hover:bg-indigo-50/20 transition-all cursor-pointer"
+                    className="group flex items-center gap-4 px-6 py-3.5 hover:bg-slate-100/70 transition-all cursor-pointer"
                     onClick={() => navigate(`/leads/${lead.id}`)}
                   >
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-black shadow-sm ring-2 ring-white ring-offset-0 group-hover:scale-110 transition-transform">
+                    <div className="h-10 w-10 rounded-full bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold shadow-sm ring-2 ring-white ring-offset-0 group-hover:scale-110 transition-transform">
                       {initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-foreground truncate group-hover:text-indigo-600 transition-colors">
+                      <p className="text-sm font-semibold text-foreground truncate group-hover:text-slate-800 transition-colors">
                         {lead.name}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -831,14 +790,14 @@ const Dashboard = () => {
                           <Phone className="h-2.5 w-2.5" /> {lead.phone || 'No phone'}
                         </span>
                         {lead.category && (
-                          <span className={`text-[9px] font-bold px-1.5 rounded uppercase border ${CATEGORY_COLORS[lead.category] || 'bg-slate-50 border-slate-100'}`}>
+                          <span className={`text-[9px] font-medium px-1.5 rounded uppercase border ${CATEGORY_COLORS[lead.category] || 'bg-slate-50 border-slate-100'}`}>
                             {lead.category}
                           </span>
                         )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <Badge variant="outline" className={`text-[9px] px-2 py-0 border-none font-bold ${meta.light} ${meta.text}`}>
+                      <Badge variant="outline" className={`text-[9px] px-2 py-0 border-none font-medium ${meta.light} ${meta.text}`}>
                         {meta.label}
                       </Badge>
                       <span className="text-[9px] text-muted-foreground/60 font-medium">

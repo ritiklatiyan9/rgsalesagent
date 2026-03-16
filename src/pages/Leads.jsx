@@ -152,6 +152,8 @@ const STATUS_OPTIONS = [
   { value: 'LOST', label: 'Lost', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
 ];
 
+const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
+
 const EMPTY_FORM = {
   name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', notes: '',
 };
@@ -173,6 +175,7 @@ const Leads = () => {
 
   const initialSearch = searchParams.get('search') || '';
   const initialStatus = searchParams.get('status') || 'ALL';
+  const initialCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
 
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +184,7 @@ const Leads = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
+  const [categoryFilter, setCategoryFilter] = useState(initialCategory);
 
   // Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -200,12 +204,13 @@ const Leads = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleLead, setScheduleLead] = useState(null);
 
-  const fetchLeads = useCallback(async (page = currentPage, search = searchQuery, status = statusFilter, fresh = false) => {
+  const fetchLeads = useCallback(async (page = currentPage, search = searchQuery, status = statusFilter, fresh = false, category = categoryFilter) => {
     try {
       setLoading(true);
       let url = `/leads?page=${page}&limit=15`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
       if (status !== 'ALL') url += `&status=${status}`;
+      if (category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
       if (fresh) url += `&_t=${Date.now()}`;
 
       const { data } = await api.get(url);
@@ -219,23 +224,34 @@ const Leads = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, statusFilter]);
+  }, [currentPage, searchQuery, statusFilter, categoryFilter]);
+
+  useEffect(() => {
+    const nextSearch = searchParams.get('search') || '';
+    const nextStatus = searchParams.get('status') || 'ALL';
+    const nextCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
+
+    setSearchQuery((prev) => (prev === nextSearch ? prev : nextSearch));
+    setStatusFilter((prev) => (prev === nextStatus ? prev : nextStatus));
+    setCategoryFilter((prev) => (prev === nextCategory ? prev : nextCategory));
+  }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchLeads(1, searchQuery, statusFilter);
+      fetchLeads(1, searchQuery, statusFilter, false, categoryFilter);
       setCurrentPage(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, fetchLeads]);
+  }, [searchQuery, statusFilter, categoryFilter, fetchLeads]);
 
   // Keep URL in sync with active filters so dashboard quick-search works reliably.
   useEffect(() => {
     const next = {};
     if (searchQuery) next.search = searchQuery;
     if (statusFilter !== 'ALL') next.status = statusFilter;
+    if (categoryFilter !== 'ALL') next.lead_category = categoryFilter;
     setSearchParams(next, { replace: true });
-  }, [searchQuery, statusFilter, setSearchParams]);
+  }, [searchQuery, statusFilter, categoryFilter, setSearchParams]);
 
   // Pre-fetch next page
   useEffect(() => {
@@ -243,9 +259,10 @@ const Leads = () => {
       let url = `/leads?page=${currentPage + 1}&limit=15`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
       if (statusFilter !== 'ALL') url += `&status=${statusFilter}`;
+      if (categoryFilter !== 'ALL') url += `&lead_category=${encodeURIComponent(categoryFilter)}`;
       cachedGet(url);
     }
-  }, [currentPage, totalPages, searchQuery, statusFilter]);
+  }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter]);
 
   const openEdit = (lead) => {
     setEditId(lead.id);
@@ -371,8 +388,8 @@ const Leads = () => {
       {/* Filters */}
       <Card className="card-elevated border-0">
         <CardContent className="py-3 px-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-50 max-w-sm">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+            <div className="relative flex-1 min-w-40 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search leads by name, phone, email..."
@@ -382,15 +399,26 @@ const Leads = () => {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40 h-9 text-xs rounded-lg font-medium">
+                <SelectTrigger className="flex-1 min-w-[110px] sm:w-40 h-9 text-xs rounded-lg font-medium">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL" className="text-xs font-medium">All Statuses</SelectItem>
                   {STATUS_OPTIONS.map((s) => (
                     <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="flex-1 min-w-[110px] sm:w-40 h-9 text-xs rounded-lg font-medium">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL" className="text-xs font-medium">All Categories</SelectItem>
+                  {LEAD_CATEGORY_OPTIONS.map((c) => (
+                    <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

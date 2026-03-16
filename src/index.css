@@ -125,12 +125,12 @@ html, body, #root {
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 4px 16px -2px rgba(0, 0, 0, 0.03);
   }
   .card-elevated {
-    @apply bg-white border border-border/50 rounded-xl;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 2px 8px -1px rgba(0, 0, 0, 0.04);
+    @apply bg-white border border-border/60 rounded-xl sm:rounded-2xl;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 10px 30px -16px rgba(15, 23, 42, 0.14);
   }
   .stat-card {
-    @apply bg-white border border-border/50 rounded-xl p-5;
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    @apply bg-white border border-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04), 0 8px 24px -18px rgba(15, 23, 42, 0.18);
   }
   .page-header {
     @apply flex items-center justify-between flex-wrap gap-4 mb-6;
@@ -174,7 +174,8 @@ html, body, #root {
 /* Small device fixes */
 @media (max-width: 640px) {
   .page-content { @apply space-y-3 pb-4; }
-  .stat-card { @apply p-3; }
+  .stat-card { @apply p-3.5 rounded-xl; }
+  .card-elevated { @apply rounded-xl; }
   table { font-size: 0.8125rem; }
   .overflow-x-auto { -webkit-overflow-scrolling: touch; }
   dialog, [role="dialog"] {
