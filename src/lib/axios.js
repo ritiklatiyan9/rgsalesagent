@@ -5,25 +5,44 @@ export const API_URL = 'https://rivergreenbackend.onrender.com/api';
 
 // Persistence keys
 const ACCESS_TOKEN_KEY = 'rg_access_token';
+const REFRESH_TOKEN_KEY = 'rg_refresh_token';
 const USER_DATA_KEY = 'rg_user_data';
+const ACTIVE_SITE_KEY = 'rg_active_site_id';
 
 // Helpers for native storage persistence
-export const saveAuthData = async (token, user) => {
+export const saveAuthData = async (token, user, refreshToken = null) => {
   if (token) await Preferences.set({ key: ACCESS_TOKEN_KEY, value: token });
   if (user) await Preferences.set({ key: USER_DATA_KEY, value: JSON.stringify(user) });
+  if (refreshToken) await Preferences.set({ key: REFRESH_TOKEN_KEY, value: refreshToken });
+};
+
+export const saveActiveSiteId = async (siteId) => {
+  if (!siteId) {
+    await Preferences.remove({ key: ACTIVE_SITE_KEY });
+    return;
+  }
+  await Preferences.set({ key: ACTIVE_SITE_KEY, value: String(siteId) });
+};
+
+export const getStoredActiveSiteId = async () => {
+  const { value } = await Preferences.get({ key: ACTIVE_SITE_KEY });
+  return value || null;
 };
 
 export const clearAuthData = async () => {
   await Preferences.remove({ key: ACCESS_TOKEN_KEY });
+  await Preferences.remove({ key: REFRESH_TOKEN_KEY });
   await Preferences.remove({ key: USER_DATA_KEY });
+  await Preferences.remove({ key: ACTIVE_SITE_KEY });
 };
 
 export const getStoredAuthData = async () => {
   const { value: token } = await Preferences.get({ key: ACCESS_TOKEN_KEY });
+  const { value: refreshToken } = await Preferences.get({ key: REFRESH_TOKEN_KEY });
   const { value: userJson } = await Preferences.get({ key: USER_DATA_KEY });
   let user = null;
   try { user = userJson ? JSON.parse(userJson) : null; } catch { user = null; }
-  return { token, user };
+  return { token, refreshToken, user };
 };
 
 // Plain axios instance for auth calls
@@ -41,10 +60,17 @@ const api = axios.create({
 });
 
 let accessToken = null;
+let activeSiteId = null;
 
 export const setAccessToken = (token) => {
   accessToken = token;
 };
+
+export const setActiveSiteId = (siteId) => {
+  activeSiteId = siteId || null;
+};
+
+export const getActiveSiteId = () => activeSiteId;
 
 export const getAccessToken = () => accessToken;
 
@@ -60,6 +86,13 @@ api.interceptors.request.use(
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
+
+    if (!activeSiteId) {
+      activeSiteId = await getStoredActiveSiteId();
+    }
+    if (activeSiteId) {
+      config.headers['x-site-id'] = activeSiteId;
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -74,12 +107,37 @@ export const dispatchLogout = () => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // 401 Unauthorized or 403 Forbidden means the token is truly invalid/revoked
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    const originalRequest = error?.config || {};
+    const status = error?.response?.status;
+
+    if (status === 401 && !originalRequest._retry && !String(originalRequest.url || '').includes('/auth/refresh')) {
+      originalRequest._retry = true;
+      try {
+        const { refreshToken } = await getStoredAuthData();
+        const refreshHeaders = refreshToken ? { 'x-refresh-token': refreshToken } : {};
+        const { data } = await authAxios.post('/auth/refresh', {}, { headers: refreshHeaders });
+
+        if (data?.success && data?.accessToken) {
+          accessToken = data.accessToken;
+          const { user } = await getStoredAuthData();
+          await saveAuthData(data.accessToken, user, data.refreshToken || refreshToken || null);
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          return api(originalRequest);
+        }
+      } catch {
+        // Fall through to hard logout below.
+      }
+    }
+
+    // Logout only when authentication is truly invalid and refresh did not recover.
+    if (status === 401) {
       accessToken = null;
       await clearAuthData();
       dispatchLogout();
     }
+
+    // Do not auto-logout on 403. Permission errors can happen on specific resources.
     return Promise.reject(error);
   }
 );

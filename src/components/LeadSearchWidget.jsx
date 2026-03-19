@@ -136,7 +136,7 @@ const LeadSearchWidget = () => {
           onKeyDown={handleKeyDown}
           onFocus={() => query.length >= 1 && setOpen(true)}
           placeholder="Quick search leads by name or phone..."
-          className="w-full min-w-0 pl-10 pr-9 h-10 text-sm bg-white border-border/60 shadow-sm rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50 transition-all placeholder:text-muted-foreground/60"
+          className="w-full min-w-0 pl-10 pr-9 h-10 text-sm bg-white border-black/40 shadow-sm rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50 transition-all placeholder:text-muted-foreground/60"
           autoComplete="off"
         />
         {loading && (

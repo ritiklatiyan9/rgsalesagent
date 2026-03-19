@@ -8,8 +8,12 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.provider.CallLog;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -166,24 +170,40 @@ public class CallDetectorService extends Service {
             case TelephonyManager.CALL_STATE_IDLE:
                 if ("OFFHOOK".equals(lastState) || "RINGING".equals(lastState)) {
                     // Call just ended
-                    int durationSecs = (wasAnswered && callStartMs > 0L)
+                    final int fallbackDuration = (wasAnswered && callStartMs > 0L)
                             ? (int) ((System.currentTimeMillis() - callStartMs) / 1000L)
                             : 0;
 
-                    String resolvedType = (!wasAnswered && "INCOMING".equals(callType))
+                    final String resolvedType = (!wasAnswered && "INCOMING".equals(callType))
                             ? "MISSED"
                             : callType;
 
-                    String number = (capturedNumber != null) ? capturedNumber : "";
+                    final String number = (capturedNumber != null) ? capturedNumber : "";
+                    final boolean finalWasAnswered = wasAnswered;
 
                     Log.i(TAG, "CALL ENDED → type=" + resolvedType + " number=" + number
-                            + " duration=" + durationSecs + "s");
+                            + " fallbackDuration=" + fallbackDuration + "s");
 
-                    // Store in SharedPreferences for the Capacitor plugin to pick up
-                    storeCallEvent(number, resolvedType, durationSecs);
+                    // Delay to let Android write the CallLog entry,
+                    // then query for accurate talk duration
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        int accurateDuration = fallbackDuration;
+                        if (finalWasAnswered) {
+                            int callLogDuration = queryCallLogDuration(number);
+                            if (callLogDuration >= 0) {
+                                accurateDuration = callLogDuration;
+                                Log.d(TAG, "Using CallLog duration: " + callLogDuration + "s (fallback was " + fallbackDuration + "s)");
+                            }
+                        } else {
+                            accurateDuration = 0;
+                        }
 
-                    // Launch overlay
-                    launchOverlay(number, resolvedType, durationSecs);
+                        // Store in SharedPreferences for the Capacitor plugin to pick up
+                        storeCallEvent(number, resolvedType, accurateDuration);
+
+                        // Launch overlay
+                        launchOverlay(number, resolvedType, accurateDuration);
+                    }, 1500);
                 }
 
                 // Reset state machine
@@ -289,6 +309,63 @@ public class CallDetectorService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Notification failed: " + e.getMessage());
         }
+    }
+
+    // ── Query CallLog for accurate talk duration ─────────────────────────────
+
+    /**
+     * Query the system CallLog for the most recent call to/from the given number.
+     * Returns the duration in seconds, or -1 if not found.
+     */
+    private int queryCallLogDuration(String phoneNumber) {
+        try {
+            String[] projection = { CallLog.Calls.DURATION, CallLog.Calls.DATE, CallLog.Calls.NUMBER };
+            long cutoff = System.currentTimeMillis() - 120_000;
+
+            // Strategy 1: Try matching by phone number
+            if (phoneNumber != null && !phoneNumber.isEmpty()) {
+                String normalized = phoneNumber.replaceAll("[^0-9]", "");
+                String tail = normalized.length() > 7 ? normalized.substring(normalized.length() - 7) : normalized;
+                Cursor cursor = getContentResolver().query(
+                    CallLog.Calls.CONTENT_URI,
+                    projection,
+                    CallLog.Calls.NUMBER + " LIKE ? AND " + CallLog.Calls.DATE + " > ?",
+                    new String[]{ "%" + tail, String.valueOf(cutoff) },
+                    CallLog.Calls.DATE + " DESC"
+                );
+                if (cursor != null) {
+                    try {
+                        if (cursor.moveToFirst()) {
+                            int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                            Log.d(TAG, "queryCallLogDuration: by-number match → " + dur + "s");
+                            return dur;
+                        }
+                    } finally { cursor.close(); }
+                }
+            }
+
+            // Strategy 2: Fallback — most recent entry
+            Cursor cursor = getContentResolver().query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                CallLog.Calls.DATE + " > ?",
+                new String[]{ String.valueOf(cutoff) },
+                CallLog.Calls.DATE + " DESC"
+            );
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                        String num = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER));
+                        Log.d(TAG, "queryCallLogDuration: fallback most-recent → " + dur + "s, number=" + num);
+                        return dur;
+                    }
+                } finally { cursor.close(); }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "queryCallLogDuration failed: " + e.getMessage());
+        }
+        return -1;
     }
 }
 

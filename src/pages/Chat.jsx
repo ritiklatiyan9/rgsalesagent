@@ -19,7 +19,7 @@ import {
 import {
   Send, Paperclip, MoreVertical, Pencil, Trash2, FileText,
   Download, Search, MessageSquare, X, Loader2, Check, ArrowDown,
-  UserPlus, Users, UsersRound,
+  UserPlus, Users, UsersRound, ChevronLeft,
 } from 'lucide-react';
 
 const ROLE_COLORS = {
@@ -35,6 +35,31 @@ const ROLE_AVATAR_COLORS = {
 };
 
 const isImageFile = (fileName) => /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName || '');
+
+const getParticipantPhone = (participant) => {
+  const raw = participant?.phone
+    || participant?.phone_number
+    || participant?.mobile
+    || participant?.mobile_number
+    || participant?.whatsapp_number
+    || participant?.contact_number
+    || participant?.number;
+  return raw ? String(raw).trim() : '';
+};
+
+const getParticipantDisplayName = (participant) => {
+  const name = participant?.name || participant?.contact_name || participant?.lead_name;
+  if (name && String(name).trim()) return String(name).trim();
+  const phone = getParticipantPhone(participant);
+  return phone || 'Unknown';
+};
+
+const getMessageSenderLabel = (msg) => {
+  const name = msg?.sender_name || msg?.senderName;
+  if (name && String(name).trim()) return String(name).trim();
+  const phone = msg?.sender_phone || msg?.senderPhone || msg?.sender_mobile || msg?.senderMobile || msg?.sender_number;
+  return phone ? String(phone).trim() : 'Unknown';
+};
 
 // ─── File Preview ───
 const FilePreview = memo(function FilePreview({ fileUrl, fileName }) {
@@ -84,7 +109,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, permissions, onE
     <div className={cn('flex mb-3 group', isOwn ? 'justify-end' : 'justify-start')}>
       <div className={cn('max-w-[78%] relative')}>
         {!isOwn && (
-          <p className="text-[11px] text-slate-400 mb-0.5 ml-3 font-medium tracking-wide">{msg.sender_name}</p>
+          <p className="text-[11px] text-slate-400 mb-0.5 ml-3 font-medium tracking-wide">{getMessageSenderLabel(msg)}</p>
         )}
         <div className={cn(
           'px-4 py-3 rounded-2xl text-[14px] relative transition-all',
@@ -135,9 +160,10 @@ const ConversationItem = memo(function ConversationItem({ conv, isActive, onClic
   const isGroup = !!conv?.is_group;
   const other = conv.other_participants?.[0];
   const participants = conv.other_participants || [];
+  const otherName = getParticipantDisplayName(other);
   const title = isGroup
     ? (conv.group_name || participants.map((p) => p.name).slice(0, 2).join(', ') || 'Group Chat')
-    : (other?.name || 'Unknown');
+    : otherName;
   const lastMsg = conv.last_message;
   const time = lastMsg?.created_at
     ? new Date(lastMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -162,7 +188,7 @@ const ConversationItem = memo(function ConversationItem({ conv, isActive, onClic
             ? 'bg-linear-to-br from-green-500 via-emerald-500 to-teal-500'
             : (ROLE_AVATAR_COLORS[other?.role] || 'from-slate-400 to-slate-600')
         )}>
-          {isGroup ? <UsersRound className="h-4 w-4" /> : (other?.name?.charAt(0)?.toUpperCase() || '?')}
+          {isGroup ? <UsersRound className="h-4 w-4" /> : (otherName?.charAt(0)?.toUpperCase() || '?')}
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
@@ -420,12 +446,34 @@ export default function Chat() {
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isConversationSwitching, startConversationTransition] = useTransition();
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia?.('(max-width: 767px)')?.matches || false);
+  const [mobilePane, setMobilePane] = useState('list');
   const messagesEndRef = useRef(null);
   const deferredSidebarSearch = useDeferredValue(sidebarSearch);
 
   const scrollAreaRef = useRef(null);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const onChange = (e) => setIsMobile(e.matches);
+    setIsMobile(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobilePane('chat');
+      return;
+    }
+    if (activeConversation?.id) {
+      setMobilePane('chat');
+    } else {
+      setMobilePane('list');
+    }
+  }, [isMobile, activeConversation?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -492,12 +540,30 @@ export default function Chat() {
   };
 
   const handleStartChat = async (userId) => {
-    await startConversation(userId);
+    const conv = await startConversation(userId);
+    if (conv) {
+      setActiveConversation(conv);
+      markConversationAsRead(conv.id);
+    }
+    if (isMobile) setMobilePane('chat');
   };
 
   const handleCreateGroup = async (name, participantIds) => {
-    await startGroupConversation(name, participantIds);
+    const conv = await startGroupConversation(name, participantIds);
+    if (conv) {
+      setActiveConversation(conv);
+      markConversationAsRead(conv.id);
+    }
+    if (isMobile) setMobilePane('chat');
   };
+
+  const openConversation = useCallback((conv) => {
+    startConversationTransition(() => {
+      setActiveConversation(conv);
+      markConversationAsRead(conv.id);
+    });
+    if (isMobile) setMobilePane('chat');
+  }, [markConversationAsRead, isMobile]);
 
   const filteredConversations = useMemo(() => {
     if (!deferredSidebarSearch.trim()) return conversations;
@@ -509,7 +575,9 @@ export default function Chat() {
         return groupName.includes(q) || participantNames.includes(q);
       }
       const other = c.other_participants?.[0];
-      return other?.name?.toLowerCase().includes(q) || other?.email?.toLowerCase().includes(q);
+      const otherName = getParticipantDisplayName(other).toLowerCase();
+      const otherPhone = getParticipantPhone(other).toLowerCase();
+      return otherName.includes(q) || otherPhone.includes(q) || other?.email?.toLowerCase().includes(q);
     });
   }, [conversations, deferredSidebarSearch]);
 
@@ -524,14 +592,15 @@ export default function Chat() {
     : null;
   const otherUser = activeConversationData?.other_participants?.[0] || null;
   const isActiveGroup = !!activeConversationData?.is_group;
+  const otherUserPhone = getParticipantPhone(otherUser);
   const activeTitle = isActiveGroup
     ? (activeConversationData?.group_name || 'Group Chat')
-    : (otherUser?.name || 'Chat');
+    : getParticipantDisplayName(otherUser);
 
   if (loading) {
     return (
-      <div className="flex gap-4 h-[calc(100vh-7rem)]">
-        <div className="w-80 shrink-0 space-y-3 p-4">
+      <div className="flex gap-4 h-[calc(100dvh-6.5rem)] md:h-[calc(100vh-7rem)]">
+        <div className="w-full md:w-80 shrink-0 space-y-3 p-3 md:p-4">
           <Skeleton className="h-8 w-full rounded-lg" />
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3">
@@ -549,13 +618,13 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-[calc(100vh-7rem)] flex flex-col rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_10%_0%,rgba(16,185,129,0.08),transparent_35%),radial-gradient(circle_at_100%_0%,rgba(34,197,94,0.07),transparent_35%),#f8fafc] p-4 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
+    <div className="h-[calc(100dvh-6.5rem)] md:h-[calc(100vh-7rem)] overflow-hidden flex flex-col rounded-2xl md:rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_10%_0%,rgba(16,185,129,0.08),transparent_35%),radial-gradient(circle_at_100%_0%,rgba(34,197,94,0.07),transparent_35%),#f8fafc] p-2.5 sm:p-4 shadow-sm">
+      <div className="shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 mb-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-800">Messages</h1>
-          <p className="text-sm text-slate-600">Fast team communication with live updates</p>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-slate-800">Messages</h1>
+          <p className="text-xs md:text-sm text-slate-600">Fast team communication with live updates</p>
         </div>
-        <div className="hidden md:flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
           <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">
             {conversations.length} Conversations
           </Badge>
@@ -570,18 +639,21 @@ export default function Chat() {
         </div>
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="flex gap-3 md:gap-4 flex-1 min-h-0 overflow-hidden">
         {/* ─── Left Sidebar ─── */}
-        <Card className="w-84 shrink-0 flex flex-col overflow-hidden border-slate-200/80 bg-white/92 backdrop-blur-sm rounded-3xl shadow-sm">
-          <div className="p-4 border-b border-slate-100 space-y-2.5">
-            <div className="flex items-center justify-between">
+        <Card className={cn(
+          'w-full md:w-84 min-h-0 shrink-0 flex flex-col overflow-hidden border-slate-200/80 bg-white/92 backdrop-blur-sm rounded-2xl md:rounded-3xl shadow-sm',
+          isMobile && mobilePane === 'chat' && 'hidden'
+        )}>
+          <div className="p-3 md:p-4 border-b border-slate-100 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-sm font-semibold text-slate-700 tracking-wide">Conversations</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 w-full md:w-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setGroupDialogOpen(true)}
-                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                  className="h-8 gap-1.5 text-xs font-semibold rounded-xl border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800 flex-1 md:flex-none"
                 >
                   <UsersRound className="h-3.5 w-3.5" />
                   New Group
@@ -626,19 +698,14 @@ export default function Chat() {
                       conv={conv}
                       isActive={activeConversation?.id === conv.id}
                       unreadCount={unreadCounts[String(conv.id)] || 0}
-                      onClick={() => {
-                        startConversationTransition(() => {
-                          setActiveConversation(conv);
-                          markConversationAsRead(conv.id);
-                        });
-                      }}
+                      onClick={() => openConversation(conv)}
                     />
                     {canDeleteConversation && <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/95 border border-slate-200 shadow-sm flex items-center justify-center opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto"
+                          className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/95 border border-slate-200 shadow-sm flex items-center justify-center opacity-100 pointer-events-auto md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto"
                         >
                           <MoreVertical className="h-3.5 w-3.5 text-slate-500" />
                         </button>
@@ -664,19 +731,35 @@ export default function Chat() {
         </Card>
 
         {/* ─── Right Chat Panel ─── */}
-        <Card className="flex-1 flex flex-col overflow-hidden border-slate-200/80 bg-white/94 backdrop-blur-sm rounded-3xl shadow-sm">
+        <Card className={cn(
+          'flex-1 w-full min-h-0 flex flex-col overflow-hidden border-slate-200/80 bg-white/94 backdrop-blur-sm rounded-2xl md:rounded-3xl shadow-sm',
+          isMobile && mobilePane === 'list' && 'hidden'
+        )}>
           {activeConversation ? (
             <>
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3 shrink-0 bg-white/85 backdrop-blur-sm">
+              <div className="px-3 md:px-5 py-3 md:py-4 border-b border-slate-100 flex items-center gap-2.5 md:gap-3 shrink-0 bg-white/85 backdrop-blur-sm">
+                {isMobile && (
+                  <button
+                    type="button"
+                    onClick={() => setMobilePane('list')}
+                    className="h-8 w-8 rounded-lg border border-slate-200 text-slate-600 flex items-center justify-center shrink-0"
+                    aria-label="Back to conversations"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                )}
                 <Avatar className="h-9 w-9">
                   {otherUser?.profile_photo ? <AvatarImage src={otherUser.profile_photo} alt={otherUser.name} /> : null}
                   <AvatarFallback className={cn('bg-linear-to-br text-white font-bold text-sm', ROLE_AVATAR_COLORS[otherUser?.role] || 'from-slate-400 to-slate-600')}>
-                    {isActiveGroup ? <UsersRound className="h-4 w-4" /> : (otherUser?.name?.charAt(0)?.toUpperCase() || '?')}
+                    {isActiveGroup ? <UsersRound className="h-4 w-4" /> : (activeTitle?.charAt(0)?.toUpperCase() || '?')}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <p className="text-[15px] font-semibold text-slate-800 truncate">{activeTitle}</p>
                   <div className="flex items-center gap-1.5">
+                    {!isActiveGroup && !!otherUserPhone && (
+                      <span className="text-[11px] text-slate-500 truncate">{otherUserPhone}</span>
+                    )}
                     {!isActiveGroup && otherUser?.role && (
                       <Badge variant="secondary" className={cn('text-[9px] px-1 py-0 h-3.5 border', ROLE_COLORS[otherUser.role])}>
                         {otherUser.role}
@@ -695,7 +778,7 @@ export default function Chat() {
               </div>
 
               <div
-                className="flex-1 overflow-y-auto px-5 py-4 relative bg-[linear-gradient(180deg,rgba(248,250,252,0.8),rgba(255,255,255,1)),radial-gradient(circle_at_top_left,rgba(16,185,129,0.06),transparent_35%)]"
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 md:px-5 py-3 md:py-4 relative bg-[linear-gradient(180deg,rgba(248,250,252,0.8),rgba(255,255,255,1)),radial-gradient(circle_at_top_left,rgba(16,185,129,0.06),transparent_35%)]"
                 onScroll={handleScroll}
                 ref={scrollAreaRef}
               >
@@ -740,15 +823,15 @@ export default function Chat() {
                 )}
               </div>
 
-              <div className="px-5 py-3.5 border-t border-slate-100 shrink-0 bg-white">
-                <div className="flex items-center gap-2.5">
+              <div className="px-3 md:px-5 py-2.5 md:py-3.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-slate-100 shrink-0 bg-white">
+                <div className="flex items-center gap-2">
                   <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden"
                     accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.zip,.xlsx,.xls" />
                   <Button
                     variant="ghost" size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
-                    className="h-9 w-9 rounded-xl shrink-0 text-slate-400 hover:text-green-600 hover:bg-green-50"
+                    className="h-9 w-9 md:h-10 md:w-10 rounded-xl shrink-0 text-slate-400 hover:text-green-600 hover:bg-green-50"
                   >
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
                   </Button>
@@ -758,13 +841,13 @@ export default function Chat() {
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
-                    className="flex-1 h-10 text-sm rounded-xl bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                    className="flex-1 h-9 md:h-10 text-sm rounded-xl bg-slate-50 border-slate-200 focus:bg-white transition-colors"
                   />
                   <Button
                     onClick={handleSend}
                     disabled={!messageInput.trim()}
                     size="icon"
-                    className="h-10 w-10 rounded-xl bg-green-600 hover:bg-green-700 shadow-md shadow-green-200/60 shrink-0 transition-all"
+                    className="h-9 w-9 md:h-10 md:w-10 rounded-xl bg-green-600 hover:bg-green-700 shadow-md shadow-green-200/60 shrink-0 transition-all"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
@@ -772,12 +855,22 @@ export default function Chat() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center">
+            <div className="flex-1 flex flex-col items-center justify-center px-5 text-center">
               <div className="h-20 w-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-5">
                 <MessageSquare className="h-10 w-10 text-slate-300" />
               </div>
               <p className="text-lg font-semibold text-slate-600">Select a conversation</p>
               <p className="text-sm text-slate-400 mt-1">Choose from existing chats or start a new one</p>
+              {isMobile && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setMobilePane('list')}
+                >
+                  Open Conversations
+                </Button>
+              )}
             </div>
           )}
         </Card>

@@ -453,12 +453,12 @@ const TeamPerformance = () => {
             <CardContent className="pt-4">
               {loading ? (
                 <div className="space-y-3">{[1,2,3,4].map(i => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
-              ) : sortedByCalls.length === 0 ? (
+              ) : sortedByCallCount.length === 0 ? (
                 <div className="text-center py-8 text-sm text-muted-foreground">No data</div>
               ) : (
                 <div className="space-y-3">
-                  {sortedByCalls.map((m, idx) => {
-                    const maxCalls = sortedByCalls[0]?.total_calls || 1;
+                  {sortedByCallCount.map((m, idx) => {
+                    const maxCalls = sortedByCallCount[0]?.total_calls || 1;
                     const pct = maxCalls > 0 ? (Number(m.total_calls) / Number(maxCalls)) * 100 : 0;
                     return (
                       <div key={m.id} className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${idx === 0 ? 'bg-rose-50 border border-rose-100' : 'bg-muted/20'}`}>

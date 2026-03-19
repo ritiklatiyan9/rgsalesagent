@@ -111,8 +111,8 @@ const DialerPage = () => {
 
     const subEnded = onCallEnded(async (evt) => {
       if (timerRef.current) clearInterval(timerRef.current);
-      const nativeDuration = Number(evt?.duration || 0);
-      const durationSeconds = nativeDuration > 0 ? nativeDuration : timerSec;
+      const hasNativeDuration = evt && typeof evt.duration === 'number';
+      const durationSeconds = hasNativeDuration ? evt.duration : timerSec;
 
       if (activeCall?.callId) {
         try {
@@ -147,6 +147,17 @@ const DialerPage = () => {
     }
 
     try {
+      try {
+        localStorage.setItem('rg:lastDialedCall', JSON.stringify({
+          phone,
+          name: opts.name || 'Manual Call',
+          leadId: opts.leadId ? Number(opts.leadId) : null,
+          timestamp: Date.now(),
+        }));
+      } catch {
+        // ignore storage failures
+      }
+
       let callId = null;
       const isApp = window.Capacitor?.isNativePlatform?.() || false;
       

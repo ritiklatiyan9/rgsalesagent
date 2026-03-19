@@ -20,6 +20,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/axios';
 import { invalidateCache } from '@/lib/queryCache';
+import { useDialer } from '@/hooks/useDialer';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay } from 'date-fns';
 import {
@@ -51,6 +52,9 @@ const formatTime = (d) => d ? new Date(d).toLocaleTimeString('en-IN', { hour: '2
 const formatDuration = (s) => { if (!s && s !== 0) return '0:00'; const m = Math.floor(s / 60); return `${m}:${(s % 60).toString().padStart(2, '0')}`; };
 
 const ScheduledCalls = () => {
+  const { onCallConnected, onCallEnded } = useDialer();
+  const isNativeApp = window.Capacitor?.isNativePlatform?.() || false;
+
   // ─── List state ───
   const [followups, setFollowups] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1 });
@@ -66,8 +70,9 @@ const ScheduledCalls = () => {
   const [snoozeTime, setSnoozeTime] = useState('10:00');
 
   // ─── Active call state (like dialer) ───
-  const [activeCall, setActiveCall] = useState(null);   // { callId, followupId, leadId, leadName, leadPhone, startTime }
+  const [activeCall, setActiveCall] = useState(null);   // { callId, followupId, leadId, leadName, leadPhone, connectedAt, isConnected }
   const [callTimer, setCallTimer] = useState(0);
+  const [capturedDurationSec, setCapturedDurationSec] = useState(null);
 
   // ─── End-call modal ───
   const [endCallModal, setEndCallModal] = useState(false);
@@ -121,14 +126,45 @@ const ScheduledCalls = () => {
   useEffect(() => { fetchData(); }, [getDateRange]);
   useEffect(() => { fetchOutcomes(); }, [fetchOutcomes]);
 
+  // ─── Native call events (Capacitor only) ───
+  useEffect(() => {
+    if (!isNativeApp || !activeCall?.callId) return;
+
+    const subConnected = onCallConnected((evt) => {
+      const connectedAt = Number(evt?.connectedAt || Date.now());
+      setCapturedDurationSec(null);
+      setActiveCall((prev) => {
+        if (!prev || prev.callId !== activeCall.callId) return prev;
+        return { ...prev, connectedAt, isConnected: true };
+      });
+    });
+
+    const subEnded = onCallEnded((evt) => {
+      const nativeDuration = Number(evt?.duration);
+      if (Number.isFinite(nativeDuration) && nativeDuration >= 0) {
+        const seconds = Math.floor(nativeDuration);
+        setCapturedDurationSec(seconds);
+        setCallTimer(seconds);
+      }
+    });
+
+    return () => {
+      try { subConnected?.remove?.(); } catch { /* ignore */ }
+      try { subEnded?.remove?.(); } catch { /* ignore */ }
+    };
+  }, [activeCall?.callId, isNativeApp]);
+
   // ─── Live timer ───
   useEffect(() => {
     if (!activeCall) { setCallTimer(0); return; }
+    if (!isNativeApp || !activeCall.connectedAt) { setCallTimer(0); return; }
+
     const interval = setInterval(() => {
-      setCallTimer(Math.floor((Date.now() - activeCall.startTime) / 1000));
+      setCallTimer(Math.max(0, Math.floor((Date.now() - activeCall.connectedAt) / 1000)));
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [activeCall]);
+  }, [activeCall?.connectedAt, isNativeApp]);
 
   // ─── Fetch lead details + call history ───
   const fetchLeadDetails = useCallback(async (leadId) => {
@@ -163,6 +199,8 @@ const ScheduledCalls = () => {
       });
 
       if (data.success) {
+        setCapturedDurationSec(null);
+
         // Optimistically mark this row as "in-progress" visually
         setFollowups(prev => prev.map(f =>
           f.id === followup.id ? { ...f, _calling: true } : f
@@ -174,7 +212,8 @@ const ScheduledCalls = () => {
           leadId: followup.lead_id,
           leadName: followup.lead_name,
           leadPhone: followup.lead_phone,
-          startTime: Date.now(),
+          connectedAt: null,
+          isConnected: false,
         });
 
         // Open phone
@@ -205,11 +244,16 @@ const ScheduledCalls = () => {
     if (!activeCall) return;
     setEndingCall(true);
     try {
+      const finalDuration = Number.isFinite(capturedDurationSec) && capturedDurationSec >= 0
+        ? capturedDurationSec
+        : callTimer;
+
       // 1. End the call record
       const payload = {
         outcome_id: endCallForm.outcome_id || null,
         next_action: endCallForm.next_action,
         customer_notes: endCallForm.customer_notes || null,
+        duration_seconds: finalDuration,
       };
       await api.put(`/calls/${activeCall.callId}/end`, payload);
 
@@ -237,7 +281,7 @@ const ScheduledCalls = () => {
         // NO SCHEDULE → mark followup COMPLETED, remove from list
         await api.put(`/followups/${activeCall.followupId}`, { status: 'COMPLETED' });
         toast.success('Call completed & saved', {
-          description: `Duration: ${formatDuration(callTimer)} with ${activeCall.leadName}`,
+          description: `Duration: ${formatDuration(finalDuration)} with ${activeCall.leadName}`,
         });
         // Instantly remove from UI
         setFollowups(prev => prev.filter(f => f.id !== activeCall.followupId));
@@ -245,6 +289,7 @@ const ScheduledCalls = () => {
 
       invalidateCache('/followups');
       setActiveCall(null);
+      setCapturedDurationSec(null);
       setEndCallModal(false);
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to end call');
@@ -307,6 +352,9 @@ const ScheduledCalls = () => {
                   <p className="text-xs font-semibold text-green-700 uppercase tracking-wider">Active Call</p>
                   <p className="text-lg font-bold text-green-900">{activeCall.leadName}</p>
                   <p className="text-sm text-green-600 font-mono">{activeCall.leadPhone}</p>
+                    {isNativeApp && !activeCall.isConnected && (
+                      <p className="text-[11px] text-amber-700 font-medium mt-1">Ringing... timer starts on pickup</p>
+                    )}
                 </div>
               </div>
               <div className="flex items-center gap-4">

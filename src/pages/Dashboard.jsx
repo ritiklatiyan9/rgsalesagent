@@ -25,22 +25,22 @@ const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 
 const LEAD_CATEGORY_VALUES = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
 const CATEGORY_COLORS = {
-  PRIME:  'bg-slate-100 text-slate-700 border-slate-200',
-  HOT:    'bg-slate-200 text-slate-700 border-slate-300',
-  NORMAL: 'bg-slate-100 text-slate-700 border-slate-200',
-  COLD:   'bg-slate-100 text-slate-700 border-slate-200',
+  PRIME:  'bg-amber-50 text-amber-700 border-amber-200',
+  HOT:    'bg-rose-50 text-rose-700 border-rose-200',
+  NORMAL: 'bg-sky-50 text-sky-700 border-sky-200',
+  COLD:   'bg-cyan-50 text-cyan-700 border-cyan-200',
   DEAD:   'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'BOOKED', 'LOST'];
 const LEAD_STATUS_META = {
-  NEW:         { label: 'New',         color: 'bg-slate-500', light: 'bg-slate-50', text: 'text-slate-700' },
-  CONTACTED:   { label: 'Contacted',   color: 'bg-slate-500', light: 'bg-slate-50', text: 'text-slate-700' },
-  INTERESTED:  { label: 'Interested',  color: 'bg-slate-600', light: 'bg-slate-100', text: 'text-slate-700' },
-  SITE_VISIT:  { label: 'Site Visit',  color: 'bg-slate-600', light: 'bg-slate-100', text: 'text-slate-700' },
-  NEGOTIATION: { label: 'Negotiation', color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
-  BOOKED:      { label: 'Booked',      color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
-  LOST:        { label: 'Lost',        color: 'bg-slate-700', light: 'bg-slate-100', text: 'text-slate-800' },
+  NEW:         { label: 'New',         color: 'bg-sky-500',     light: 'bg-sky-50',     text: 'text-sky-700' },
+  CONTACTED:   { label: 'Contacted',   color: 'bg-blue-500',    light: 'bg-blue-50',    text: 'text-blue-700' },
+  INTERESTED:  { label: 'Interested',  color: 'bg-amber-500',   light: 'bg-amber-50',   text: 'text-amber-700' },
+  SITE_VISIT:  { label: 'Site Visit',  color: 'bg-violet-500',  light: 'bg-violet-50',  text: 'text-violet-700' },
+  NEGOTIATION: { label: 'Negotiation', color: 'bg-indigo-500',  light: 'bg-indigo-50',  text: 'text-indigo-700' },
+  BOOKED:      { label: 'Booked',      color: 'bg-emerald-500', light: 'bg-emerald-50', text: 'text-emerald-700' },
+  LOST:        { label: 'Lost',        color: 'bg-rose-500',    light: 'bg-rose-50',    text: 'text-rose-700' },
 };
 
 const Dashboard = () => {
@@ -201,7 +201,7 @@ const Dashboard = () => {
       label: 'Missed',
       hint: 'Needs action',
       value: followupCounts?.missed ?? 0,
-      nav: '/calls/missed',
+      nav: '/calls/missed-followups',
       icon: AlertCircle,
       tone: 'rose',
     },
@@ -242,9 +242,9 @@ const Dashboard = () => {
       if (counts[status] !== undefined) counts[status]++;
     });
     return [
-      { name: 'Pending', value: counts.pending, fill: '#f97316' },
-      { name: 'Completed', value: counts.completed, fill: '#22c55e' },
-      { name: 'Snoozed', value: counts.snoozed, fill: '#6b7280' },
+      { name: 'Pending', value: counts.pending, fill: '#0ea5e9' },
+      { name: 'Completed', value: counts.completed, fill: '#10b981' },
+      { name: 'Snoozed', value: counts.snoozed, fill: '#f59e0b' },
       { name: 'Escalated', value: counts.escalated, fill: '#ef4444' },
     ].filter(d => d.value > 0);
   }, [allFollowups]);
@@ -266,53 +266,82 @@ const Dashboard = () => {
   return (
     <div className="space-y-4 sm:space-y-6 pt-1">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-3 sm:gap-4">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-linear-to-b from-white to-slate-50 p-4 sm:p-5 text-card-foreground shadow-[0_10px_28px_-18px_rgba(2,6,23,0.32)] sm:shadow-[0_24px_44px_-28px_rgba(2,6,23,0.35)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-linear-to-b from-slate-200/65 to-transparent" />
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-400 bg-linear-to-br from-cyan-50 via-white to-sky-50/60 p-4 sm:p-5 text-card-foreground shadow-[0_20px_48px_-30px_rgba(8,145,178,0.45)]">
+          <div className="pointer-events-none absolute -top-12 -right-14 h-44 w-44 rounded-full bg-cyan-200/45 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-12 -left-10 h-40 w-40 rounded-full bg-indigo-200/35 blur-3xl" />
 
           <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Agent Dashboard</p>
-              <h1 className="mt-1.5 text-xl sm:text-2xl font-semibold leading-tight text-slate-900">Morning {user?.name?.split(' ')[0] || 'Agent'}</h1>
-              <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-orange-600" />
+              <div className="inline-flex items-center rounded-full border border-cyan-200/70 bg-white/85 px-2.5 py-1">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-700/85 font-medium">Agent Dashboard</p>
+              </div>
+              <h1 className="mt-2 text-[22px] sm:text-[26px] leading-tight font-normal text-slate-900">
+                Good Morning, <span className="font-medium text-cyan-800">{user?.name?.split(' ')[0] || 'Agent'}</span>
+              </h1>
+              <p className="mt-1.5 text-xs text-slate-600 flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-cyan-600" />
                 {todayDateStr}
               </p>
             </div>
-            <div className="h-10 w-10 rounded-full bg-orange-50 border border-orange-100 flex items-center justify-center shadow-sm">
-              <BellRing className="h-4.5 w-4.5 text-orange-600" />
+
+            <div className="hidden sm:flex items-center gap-2 rounded-2xl border border-cyan-200/70 bg-white/85 px-2.5 py-2 shadow-sm">
+              <div className="min-w-[68px] rounded-xl border border-cyan-100 bg-cyan-50/75 px-2 py-1.5 text-center">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-cyan-700/80">New</p>
+                <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.NEW)}</p>
+              </div>
+              <div className="min-w-[68px] rounded-xl border border-amber-100 bg-amber-50/80 px-2 py-1.5 text-center">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-amber-700/85">Hot</p>
+                <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.INTERESTED)}</p>
+              </div>
             </div>
           </div>
 
-          <div className="relative mt-4 rounded-2xl border border-slate-300/85 bg-linear-to-b from-slate-200/80 to-slate-100/75 px-4 py-3.5 text-slate-900 shadow-[0_12px_24px_-14px_rgba(30,41,59,0.25)]">
-            <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Total Pipeline Value</p>
-            <p className="mt-1 text-3xl font-semibold tabular-nums text-slate-900">{fmtNum(leadTotal)}</p>
-            <div className="mt-3 flex items-center gap-2 text-[11px]">
-              <span className="rounded-full bg-slate-100 text-slate-700 px-2 py-0.5">New {fmtNum(pipeline.NEW)}</span>
-              <span className="rounded-full bg-slate-200 text-slate-800 px-2 py-0.5">Hot {fmtNum(pipeline.INTERESTED)}</span>
-              <span className="rounded-full bg-slate-300 text-slate-800 px-2 py-0.5">Booked {fmtNum(pipeline.BOOKED)}</span>
+          <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-2.5">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3.5 shadow-[0_12px_24px_-18px_rgba(15,23,42,0.35)]">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Total Leads</p>
+              <div className="mt-1 flex items-end justify-between gap-2">
+                <p className="text-[34px] leading-none font-semibold tabular-nums text-slate-900">{fmtNum(leadTotal)}</p>
+                <p className="text-[11px] text-slate-500">Across assigned pipeline</p>
+              </div>
+              <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-linear-to-r from-cyan-400 via-sky-400 to-indigo-400" style={{ width: `${Math.min(100, Math.max(8, leadTotal ? ((pipeline.NEW + pipeline.INTERESTED) / leadTotal) * 100 : 8))}%` }} />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-200/70 bg-linear-to-br from-cyan-50/90 to-white/85 px-3.5 py-3">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-700/85">Focus Today</p>
+              <div className="mt-2 flex items-center justify-between text-[12px] text-slate-700">
+                <span>New Leads</span>
+                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(pipeline.NEW)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-[12px] text-slate-700">
+                <span>Hot Leads</span>
+                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(pipeline.INTERESTED)}</span>
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-[12px] text-slate-700 sm:hidden">
+                <span>Followups Missed</span>
+                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(followupCounts?.missed ?? 0)}</span>
+              </div>
             </div>
           </div>
 
-          <div className="relative mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-medium min-w-0">
+          <div className="relative mt-4 grid grid-cols-3 gap-2">
+            <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white border border-slate-900 hover:bg-slate-800 text-[11px] font-medium min-w-0 shadow-sm">
               <Plus className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Add Lead</span>
             </Button>
-            <Button size="sm" onClick={() => navigate('/calls/log')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
-              <PhoneCall className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Log Call</span>
-            </Button>
-            <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
+            <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white text-amber-700 border border-amber-200 hover:bg-amber-50 text-[11px] font-medium min-w-0 shadow-sm">
               <Clock className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Tasks</span>
             </Button>
-            <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[11px] font-medium min-w-0">
+            <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white text-cyan-700 border border-cyan-200 hover:bg-cyan-50 text-[11px] font-medium min-w-0 shadow-sm">
               <Users className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Contacts</span>
             </Button>
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white p-3 sm:p-4 md:p-5 shadow-[0_10px_24px_-18px_rgba(2,6,23,0.26)] sm:shadow-[0_20px_40px_-24px_rgba(2,6,23,0.3)] space-y-3 sm:space-y-4 text-card-foreground">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
+        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-violet-100/55 bg-linear-to-br from-violet-200/70 via-white to-fuchsia-50/55 p-3 sm:p-4 md:p-5 shadow-[0_10px_24px_-18px_rgba(76,29,149,0.26)] sm:shadow-[0_20px_40px_-24px_rgba(76,29,149,0.3)] space-y-3 sm:space-y-4 text-card-foreground">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-violet-200/45 to-transparent" />
           <div>
-            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Quick Find</p>
+            <p className="text-[10px] uppercase tracking-[0.14em] text-violet-700/80">Quick Find</p>
             <p className="text-sm font-medium text-slate-800 mt-0.5">Search leads and jump to category</p>
           </div>
 
@@ -322,7 +351,7 @@ const Dashboard = () => {
             <select
               value={browseCat}
               onChange={(e) => setBrowseCat(e.target.value)}
-              className="h-10 sm:h-11 w-full text-sm rounded-xl bg-slate-50 border border-slate-200 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-slate-300"
+              className="h-10 sm:h-11 w-full text-sm rounded-xl bg-white border border-violet-200/55 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-violet-300/60"
             >
               <option value="ALL">All Categories</option>
               {LEAD_CATEGORY_VALUES.map((c) => (
@@ -331,7 +360,7 @@ const Dashboard = () => {
             </select>
             <Button
               size="icon"
-              className="h-10 w-10 rounded-xl bg-linear-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white"
+              className="h-10 w-10 rounded-xl bg-linear-to-r from-violet-300 to-indigo-200 hover:from-violet-300 hover:to-indigo-300 text-violet-900 border border-violet-300/50"
               onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
             >
               <ArrowRight className="h-4 w-4" />
@@ -339,11 +368,11 @@ const Dashboard = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:gap-2.5 mt-1 sm:mt-0">
-            <button onClick={() => navigate('/calls/analytics')} className="rounded-xl sm:rounded-2xl border border-border bg-slate-50/70 p-2.5 sm:p-3 text-left hover:bg-slate-50 shadow-sm transition-all">
+            <button onClick={() => navigate('/calls/analytics')} className="rounded-xl sm:rounded-2xl border border-sky-400/55 bg-sky-50/70 p-2.5 sm:p-3 text-left hover:bg-sky-50 shadow-sm transition-all">
               <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Calls</p>
               <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(totalCalls)}</p>
             </button>
-            <button onClick={() => navigate('/calls/missed')} className="rounded-xl sm:rounded-2xl border border-border bg-slate-50/70 p-2.5 sm:p-3 text-left hover:bg-slate-50 shadow-sm transition-all">
+            <button onClick={() => navigate('/calls/missed-followups')} className="rounded-xl sm:rounded-2xl border border-rose-400/55 bg-rose-50/70 p-2.5 sm:p-3 text-left hover:bg-rose-50 shadow-sm transition-all">
               <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Missed</p>
               <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(followupCounts?.missed ?? 0)}</p>
             </button>
@@ -352,17 +381,19 @@ const Dashboard = () => {
       </div>
 
       {/* Mobile-first Snapshot */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-linear-to-b from-white to-slate-50 px-3 py-3 sm:px-4 sm:py-4 shadow-[0_10px_24px_-18px_rgba(2,6,23,0.26)] sm:shadow-[0_18px_38px_-26px_rgba(2,6,23,0.35)]">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
-        <div className="flex items-center justify-between gap-2">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-sky-200/60 bg-linear-to-br from-sky-50 via-white to-cyan-50 px-3 py-3.5 sm:px-4 sm:py-4.5 shadow-[0_18px_40px_-24px_rgba(14,116,144,0.28)]">
+        <div className="pointer-events-none absolute -top-14 -right-16 h-40 w-40 rounded-full bg-cyan-300/30 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 -left-14 h-44 w-44 rounded-full bg-indigo-200/35 blur-3xl" />
+
+        <div className="relative flex items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Daily Snapshot</p>
-            <p className="mt-0.5 text-sm font-medium text-slate-900">Key numbers in one place</p>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-sky-800/80 font-semibold">Daily Snapshot</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-900">Key numbers in one place</p>
           </div>
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 rounded-full px-3 text-[11px] text-slate-700 hover:bg-slate-100"
+            className="h-8 rounded-full px-3 text-[11px] text-sky-700 hover:bg-sky-100 hover:text-sky-900"
             onClick={() => navigate('/calls/analytics')}
           >
             Full analytics <ArrowRight className="h-3 w-3 ml-1" />
@@ -370,69 +401,116 @@ const Dashboard = () => {
         </div>
 
         {loading ? (
-          <div className="mt-3 space-y-2">
+          <div className="relative mt-3.5 space-y-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full rounded-xl" />
             ))}
           </div>
         ) : (
-          <>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
-                <button
-                  key={key}
-                  className="rounded-xl border border-slate-200/70 bg-slate-50/70 px-2 py-2 text-left hover:bg-white hover:border-slate-300 transition-all shadow-sm"
-                  onClick={() => navigate(nav)}
-                >
-                  <p className="text-[9px] uppercase tracking-[0.14em] font-medium text-slate-500 truncate">{label}</p>
-                  <p className="mt-1 text-lg leading-none font-semibold tabular-nums text-slate-900">{fmtNum(value)}</p>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-3 space-y-1.5">
-              {snapshotRows.slice(3).map(({ key, label, hint, value, nav, icon: Icon, tone }) => {
-                const toneStyles = {
-                  rose: 'bg-rose-50 text-rose-600 border-rose-100',
-                  teal: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-                  orange: 'bg-violet-50 text-violet-600 border-violet-100',
-                  amber: 'bg-sky-50 text-sky-600 border-sky-100',
-                };
-                const iconClasses = toneStyles[tone] || 'bg-slate-50 text-slate-600 border-slate-100';
-
-                return (
+          <div className="relative mt-3.5">
+            <div className="sm:hidden space-y-2.5">
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory">
+                {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
                   <button
                     key={key}
-                    className="w-full rounded-xl border border-slate-200/70 bg-white px-2.5 py-2 text-left hover:bg-slate-50/70 hover:border-slate-300 transition-all shadow-sm"
+                    className="min-w-[44%] snap-start rounded-xl border border-sky-200/70 bg-white/95 px-3 py-3 text-left hover:bg-white transition-all shadow-[0_10px_22px_-16px_rgba(15,23,42,0.4)]"
                     onClick={() => navigate(nav)}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className={`h-8 w-8 rounded-lg border flex items-center justify-center shrink-0 ${iconClasses}`}>
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-slate-800 truncate">{label}</p>
-                          <p className="text-lg font-semibold tabular-nums text-slate-900 leading-none">{fmtNum(value)}</p>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{hint}</p>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
-                    </div>
+                    <p className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 truncate">{label}</p>
+                    <p className="mt-2 text-2xl leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
                   </button>
-                );
-              })}
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {snapshotRows.slice(3).map(({ key, label, value, nav, icon: Icon, tone }) => {
+                  const toneStyles = {
+                    rose: 'bg-rose-100/90 text-rose-700 border-rose-200/90',
+                    teal: 'bg-emerald-100/90 text-emerald-700 border-emerald-200/90',
+                    orange: 'bg-orange-100/90 text-orange-700 border-orange-200/90',
+                    amber: 'bg-amber-100/90 text-amber-700 border-amber-200/90',
+                    sky: 'bg-sky-100/90 text-sky-700 border-sky-200/90',
+                    emerald: 'bg-emerald-100/90 text-emerald-700 border-emerald-200/90',
+                  };
+                  const iconClasses = toneStyles[tone] || 'bg-slate-100 text-slate-700 border-slate-200';
+
+                  return (
+                    <button
+                      key={key}
+                      className="rounded-xl border border-sky-200/65 bg-white/95 px-2.5 py-2.5 text-left hover:bg-white transition-all shadow-[0_10px_20px_-16px_rgba(15,23,42,0.4)]"
+                      onClick={() => navigate(nav)}
+                    >
+                      <div className={`h-7 w-7 rounded-lg border flex items-center justify-center ${iconClasses}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <p className="mt-2 text-[11px] font-semibold text-slate-800 truncate">{label}</p>
+                      <p className="mt-1 text-lg leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </>
+
+            <div className="hidden sm:grid grid-cols-1 lg:grid-cols-5 gap-2.5 sm:gap-3">
+              <div className="lg:col-span-2 space-y-2.5">
+                {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
+                  <button
+                    key={key}
+                    className="w-full rounded-xl border border-sky-200/70 bg-white/90 px-3 py-3 text-left hover:bg-white hover:border-sky-300/80 transition-all shadow-[0_10px_22px_-16px_rgba(15,23,42,0.4)]"
+                    onClick={() => navigate(nav)}
+                  >
+                    <p className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 truncate">{label}</p>
+                    <p className="mt-2 text-2xl leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {snapshotRows.slice(3).map(({ key, label, hint, value, nav, icon: Icon, tone }) => {
+                  const toneStyles = {
+                    rose: 'bg-rose-100/85 text-rose-700 border-rose-200/80',
+                    teal: 'bg-emerald-100/85 text-emerald-700 border-emerald-200/80',
+                    orange: 'bg-orange-100/85 text-orange-700 border-orange-200/80',
+                    amber: 'bg-amber-100/85 text-amber-700 border-amber-200/80',
+                    sky: 'bg-sky-100/85 text-sky-700 border-sky-200/80',
+                    emerald: 'bg-emerald-100/85 text-emerald-700 border-emerald-200/80',
+                  };
+                  const iconClasses = toneStyles[tone] || 'bg-slate-100 text-slate-700 border-slate-200';
+
+                  return (
+                    <button
+                      key={key}
+                      className="rounded-xl border border-sky-200/65 bg-white/92 px-3 py-2.5 text-left hover:bg-white hover:border-sky-300/80 transition-all shadow-[0_10px_20px_-16px_rgba(15,23,42,0.4)]"
+                      onClick={() => navigate(nav)}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`h-8 w-8 rounded-lg border flex items-center justify-center shrink-0 ${iconClasses}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-slate-900 truncate">{label}</p>
+                            <p className="text-lg font-bold tabular-nums text-slate-900 leading-none">{fmtNum(value)}</p>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1 truncate">{hint}</p>
+                        </div>
+                        <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Today's Follow-ups & Analytics Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Today's Follow-ups */}
-        <Card className="card-elevated relative overflow-hidden border border-slate-200/90 bg-linear-to-b from-white to-slate-50 shadow-[0_12px_28px_-18px_rgba(2,6,23,0.32)] sm:shadow-[0_16px_34px_-24px_rgba(2,6,23,0.35)] flex flex-col">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-slate-200/55 to-transparent" />
-          <CardHeader className="relative pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-transparent">
+        <Card className="card-elevated relative overflow-hidden border border-violet-100/55 bg-linear-to-b from-violet-50/45 to-white shadow-[0_12px_28px_-18px_rgba(109,40,217,0.24)] sm:shadow-[0_16px_34px_-24px_rgba(109,40,217,0.28)] flex flex-col">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-violet-200/35 to-transparent" />
+          <CardHeader className="relative pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-transparent">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
               <BellRing className="h-4 w-4 text-violet-600" />
               Today's Schedule
@@ -446,7 +524,7 @@ const Dashboard = () => {
               variant="ghost"
               size="sm"
               onClick={() => navigate('/reminders')}
-              className="text-[11px] h-7 text-slate-700 hover:bg-slate-100"
+              className="text-[11px] h-7 text-violet-700 hover:bg-violet-100"
             >
               Manage all <ArrowRight className="h-3 w-3 ml-1" />
             </Button>
@@ -476,13 +554,13 @@ const Dashboard = () => {
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-border/30">
-                  {todayFollowups.map((f) => {
-                    const scheduledDate = f.scheduled_at ? parseISO(f.scheduled_at) : null;
-                    const isOverdue = scheduledDate && scheduledDate < new Date() && !isToday(scheduledDate);
-                    const timeStr = scheduledDate ? format(scheduledDate, 'hh:mm a') : null;
-                    const isCompleting = fupActionLoading === f.id + '_complete';
-                    
+                <div className="divide-y divide-violet-100/60">
+                  {todayFollowups.slice(0, 10).map((f) => {
+                    const scheduledDate = f.scheduled_at ? new Date(f.scheduled_at) : null;
+                    const isOverdue = scheduledDate ? scheduledDate < new Date() : false;
+                    const timeStr = scheduledDate ? format(scheduledDate, 'hh:mm a') : '';
+                    const isCompleting = fupActionLoading === `${f.id}_complete` || fupActionLoading === `${f.id}_snooze`;
+
                     const typeColors = {
                       CALL: 'bg-sky-50 text-sky-700 border-sky-100',
                       FOLLOWUP: 'bg-violet-50 text-violet-700 border-violet-100',
@@ -499,12 +577,12 @@ const Dashboard = () => {
                         }`}
                       >
                         <div className={`h-10 w-10 rounded-xl flex flex-col items-center justify-center shrink-0 border ${
-                          isOverdue ? 'bg-slate-100 border-slate-300' : 'bg-slate-50 border-slate-200'
+                          isOverdue ? 'bg-rose-50 border-rose-200' : 'bg-sky-50 border-sky-200'
                         }`}>
-                          <span className={`text-[10px] font-medium uppercase ${isOverdue ? 'text-slate-700' : 'text-slate-500'}`}>
+                          <span className={`text-[10px] font-medium uppercase ${isOverdue ? 'text-rose-700' : 'text-sky-700'}`}>
                             {scheduledDate ? format(scheduledDate, 'MMM') : ''}
                           </span>
-                          <span className={`text-sm font-semibold leading-none ${isOverdue ? 'text-slate-800' : 'text-slate-700'}`}>
+                          <span className={`text-sm font-semibold leading-none ${isOverdue ? 'text-rose-700' : 'text-sky-700'}`}>
                             {scheduledDate ? format(scheduledDate, 'dd') : ''}
                           </span>
                         </div>
@@ -517,12 +595,12 @@ const Dashboard = () => {
                               {f.followup_type || 'REMINDER'}
                             </Badge>
                             {isOverdue && (
-                              <Badge variant="outline" className="text-[8px] h-4 px-1 py-0 bg-slate-200 text-slate-800 border-slate-300">LATE</Badge>
+                              <Badge variant="outline" className="text-[8px] h-4 px-1 py-0 bg-slate-200 text-slate-800 border-slate-300/50">LATE</Badge>
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-muted-foreground">
                             {timeStr && (
-                              <span className="text-[11px] font-medium flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
+                              <span className="text-[11px] font-medium flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded text-indigo-700">
                                 <Clock className="h-3 w-3" /> {timeStr}
                               </span>
                             )}
@@ -533,7 +611,7 @@ const Dashboard = () => {
                             )}
                           </div>
                           {f.notes && (
-                            <p className="text-[11px] text-muted-foreground/80 mt-1.5 bg-white/50 p-1.5 rounded-lg border border-slate-100">
+                            <p className="text-[11px] text-muted-foreground/80 mt-1.5 bg-white/70 p-1.5 rounded-lg border border-indigo-100/55">
                               {f.notes}
                             </p>
                           )}
@@ -542,7 +620,7 @@ const Dashboard = () => {
                           <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-800 hover:text-white transition-all shadow-sm"
+                            className="h-8 w-8 rounded-lg bg-emerald-200 text-emerald-800 hover:bg-emerald-300 transition-all shadow-sm"
                             onClick={() => completeFollowup(f.id)}
                             disabled={isCompleting}
                           >
@@ -551,7 +629,7 @@ const Dashboard = () => {
                           <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all shadow-sm"
+                            className="h-8 w-8 rounded-lg bg-amber-200 text-amber-800 hover:bg-amber-300 transition-all shadow-sm"
                             onClick={() => snoozeFollowup(f.id)}
                             disabled={isCompleting}
                           >
@@ -570,10 +648,10 @@ const Dashboard = () => {
         {/* Analytics & Pipeline */}
         <div className="flex flex-col gap-6">
           {/* Calls Trend Chart */}
-          <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
-            <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
+          <Card className="card-elevated border border-sky-100/55 bg-linear-to-b from-sky-50/35 to-white shadow-[0_16px_34px_-24px_rgba(14,116,144,0.35)]">
+            <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-violet-600" />
+                <TrendingUp className="h-4 w-4 text-sky-600" />
                 Call Analytics Trend
               </CardTitle>
               <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-widest">Last 30 Days</span>
@@ -590,30 +668,30 @@ const Dashboard = () => {
                   <AreaChart data={callTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#475569" stopOpacity={0.28} />
-                        <stop offset="95%" stopColor="#475569" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" vertical={false} />
                     <XAxis 
                       dataKey="date" 
-                      tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} 
+                      tick={{ fontSize: 9, fontWeight: 600, fill: '#64748b' }} 
                       axisLine={false} 
                       tickLine={false}
                       interval={Math.floor(callTrendData.length / 5)} 
                     />
                     <YAxis 
-                      tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} 
+                      tick={{ fontSize: 9, fontWeight: 600, fill: '#64748b' }} 
                       axisLine={false} 
                       tickLine={false} 
                     />
                     <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }} 
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #dbeafe', boxShadow: '0 12px 24px -10px rgba(14,116,144,0.25)', fontSize: '11px', fontWeight: 'bold', background: '#f8fafc' }} 
                     />
                     <Area 
                       type="monotone" 
                       dataKey="calls" 
-                      stroke="#475569" 
+                      stroke="#0284c7" 
                       strokeWidth={3} 
                       fill="url(#callsGradient)" 
                       animationDuration={1500}
@@ -625,8 +703,8 @@ const Dashboard = () => {
           </Card>
 
           {/* Lead Funnel Summary */}
-          <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
-             <CardHeader className="pb-3 border-b border-border/40 bg-white/40">
+           <Card className="card-elevated border border-emerald-100/55 bg-linear-to-b from-emerald-50/30 to-white shadow-[0_16px_34px_-24px_rgba(5,150,105,0.25)]">
+             <CardHeader className="pb-3 border-b border-border/20 bg-white/40">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Target className="h-4 w-4 text-emerald-600" />
                 Pipeline Performance
@@ -638,10 +716,9 @@ const Dashboard = () => {
               ) : (
                 <>
                   {[
-                    { status: 'NEW', label: 'Fresh Enquiries', color: 'bg-slate-500', icon: Plus },
-                    { status: 'INTERESTED', label: 'Potential Leads', color: 'bg-slate-600', icon: Flame },
-                    { status: 'SITE_VISIT', label: 'Viewings Slated', color: 'bg-slate-700', icon: Activity },
-                    { status: 'BOOKED', label: 'Closed Deals', color: 'bg-slate-800', icon: CheckCircle2 },
+                    { status: 'NEW', label: 'Fresh Enquiries', color: 'bg-sky-500', icon: Plus },
+                    { status: 'INTERESTED', label: 'Potential Leads', color: 'bg-amber-500', icon: Flame },
+                    { status: 'SITE_VISIT', label: 'Viewings Slated', color: 'bg-violet-500', icon: Activity },
                   ].map((item) => {
                     const count = pipeline[item.status] || 0;
                     const pct = maxPipelineCount > 0 ? (count / maxPipelineCount) * 100 : 0;
@@ -653,7 +730,7 @@ const Dashboard = () => {
                           </span>
                           <span className="text-foreground">{count}</span>
                         </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-2 w-full bg-emerald-200/70 rounded-full overflow-hidden">
                           <div 
                             className={`h-full ${item.color} rounded-full transition-all duration-700 shadow-sm`} 
                             style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }} 
@@ -671,8 +748,8 @@ const Dashboard = () => {
 
       {/* Reminders Status Chart */}
       {remindersStatusData.length > 0 && (
-        <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
-          <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
+        <Card className="card-elevated border border-orange-100/55 bg-linear-to-b from-orange-50/30 to-white shadow-[0_16px_34px_-24px_rgba(194,65,12,0.2)]">
+          <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
             <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
               <Clock className="h-4 w-4 text-orange-600" />
               Follow-up Health
@@ -729,8 +806,8 @@ const Dashboard = () => {
       )}
 
       {/* Recent Leads */}
-      <Card className="card-elevated border border-slate-200/80 shadow-[0_16px_34px_-24px_rgba(2,6,23,0.45)]">
-        <CardHeader className="pb-3 border-b border-border/40 flex flex-row items-center justify-between bg-white/40">
+      <Card className="card-elevated border border-violet-100/55 bg-linear-to-b from-violet-50/28 to-white shadow-[0_16px_34px_-24px_rgba(109,40,217,0.25)]">
+        <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
           <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
             <Users className="h-4 w-4 text-violet-600" />
             Recent Prospects
@@ -775,10 +852,10 @@ const Dashboard = () => {
                 return (
                   <div 
                     key={lead.id} 
-                    className="group flex items-center gap-4 px-6 py-3.5 hover:bg-slate-100/70 transition-all cursor-pointer"
+                    className="group flex items-center gap-4 px-6 py-3.5 hover:bg-indigo-50/70 transition-all cursor-pointer"
                     onClick={() => navigate(`/leads/${lead.id}`)}
                   >
-                    <div className="h-10 w-10 rounded-full bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold shadow-sm ring-2 ring-white ring-offset-0 group-hover:scale-110 transition-transform">
+                    <div className="h-10 w-10 rounded-full bg-linear-to-br from-violet-300 to-indigo-300 flex items-center justify-center text-indigo-900 text-xs font-semibold shadow-sm ring-2 ring-white ring-offset-0 group-hover:scale-110 transition-transform">
                       {initials}
                     </div>
                     <div className="flex-1 min-w-0">

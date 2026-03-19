@@ -36,6 +36,14 @@ const LEAD_SOURCE_OPTIONS = [
   { value: 'Other', label: 'Other' },
 ];
 
+const LEAD_CATEGORY_OPTIONS = [
+  { value: 'PRIME', label: 'Prime' },
+  { value: 'HOT', label: 'Hot' },
+  { value: 'NORMAL', label: 'Normal' },
+  { value: 'COLD', label: 'Cold' },
+  { value: 'DEAD', label: 'Dead' },
+];
+
 const FormField = ({ label, required, children }) => (
   <div className="space-y-1.5">
     <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -46,7 +54,7 @@ const FormField = ({ label, required, children }) => (
 );
 
 const EMPTY = {
-  name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_source: 'Other', notes: '',
+  name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_source: 'Other', lead_category: '', notes: '',
 };
 
 const AddLead = () => {
@@ -79,6 +87,7 @@ const AddLead = () => {
       if (form.profession.trim()) payload.append('profession', form.profession.trim());
       payload.append('status', form.status);
       payload.append('lead_source', form.lead_source);
+      if (form.lead_category) payload.append('lead_category', form.lead_category);
       if (form.notes.trim()) payload.append('notes', form.notes.trim());
       if (photoFile) payload.append('photo', photoFile);
 
@@ -255,6 +264,29 @@ const AddLead = () => {
                   <SelectContent>
                     {LEAD_SOURCE_OPTIONS.map((s) => (
                       <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Lead Status">
+                <Select value={form.status} onValueChange={(v) => set('status', v)}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField label="Lead Category">
+                <Select value={form.lead_category} onValueChange={(v) => set('lead_category', v)}>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectContent>
+                    {LEAD_CATEGORY_OPTIONS.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

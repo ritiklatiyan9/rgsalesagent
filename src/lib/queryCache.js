@@ -1,4 +1,4 @@
-import api from './axios';
+import api, { getActiveSiteId } from './axios';
 
 const cache    = new Map();
 const inflight = new Map();
@@ -8,17 +8,21 @@ const DEFAULT_CACHE_TIME  = 600_000;
 const ERROR_RETRY_DELAY   = 10_000;
 const MAX_CACHE_SIZE      = 300;
 
+const toCacheKey = (url) => `${getActiveSiteId() || 'no-site'}::${url}`;
+
 export async function cachedGet(
     url,
     { staleTime = DEFAULT_STALE_TIME, cacheTime = DEFAULT_CACHE_TIME, force = false } = {}
 ) {
     const now = Date.now();
 
-    if (!force && cache.has(url)) {
-        const entry = cache.get(url);
+    const key = toCacheKey(url);
+
+    if (!force && cache.has(key)) {
+        const entry = cache.get(key);
         if (entry._error) {
             if (now - entry.ts < ERROR_RETRY_DELAY) throw entry._error;
-            cache.delete(url);
+            cache.delete(key);
         } else {
             const age = now - entry.ts;
             if (age < staleTime) return entry.data;
@@ -28,16 +32,17 @@ export async function cachedGet(
         }
     }
 
-    if (inflight.has(url)) return inflight.get(url);
+    if (inflight.has(key)) return inflight.get(key);
     const promise = _fetchAndCache(url);
-    inflight.set(url, promise);
+    inflight.set(key, promise);
     return promise;
 }
 
 export function prefetch(url) {
-    if (cache.has(url) || inflight.has(url)) return;
+    const key = toCacheKey(url);
+    if (cache.has(key) || inflight.has(key)) return;
     const p = _fetchAndCache(url);
-    inflight.set(url, p);
+    inflight.set(key, p);
 }
 
 export function warmCache(urls = []) {
@@ -59,13 +64,15 @@ export function invalidateCache(prefix = '') {
 }
 
 export function getCachedSync(url) {
-    return cache.has(url) ? cache.get(url).data ?? null : null;
+    const key = toCacheKey(url);
+    return cache.has(key) ? cache.get(key).data ?? null : null;
 }
 
 async function _fetchAndCache(url) {
+    const key = toCacheKey(url);
     try {
         const { data } = await api.get(url);
-        _setCache(url, { data, ts: Date.now() });
+        _setCache(key, { data, ts: Date.now() });
         return data;
     } catch (err) {
         // Enhanced logging for debugging
@@ -81,22 +88,23 @@ async function _fetchAndCache(url) {
                 message: err.response?.data?.message,
             });
         }
-        _setCache(url, { _error: err, ts: Date.now() });
+        _setCache(key, { _error: err, ts: Date.now() });
         throw err;
     } finally {
-        inflight.delete(url);
+        inflight.delete(key);
     }
 }
 
 function _revalidate(url) {
-    if (inflight.has(url)) return;
+    const key = toCacheKey(url);
+    if (inflight.has(key)) return;
     const p = _fetchAndCache(url);
-    inflight.set(url, p);
+    inflight.set(key, p);
 }
 
-function _setCache(url, entry) {
+function _setCache(key, entry) {
     if (cache.size >= MAX_CACHE_SIZE) {
         cache.delete(cache.keys().next().value);
     }
-    cache.set(url, entry);
+    cache.set(key, entry);
 }

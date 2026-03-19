@@ -20,10 +20,6 @@ import {
   Zap,
   UserPlus,
   List,
-  Map,
-  MapPin,
-  BookOpen,
-  CreditCard,
   Users,
   ClipboardList,
   PhoneCall,
@@ -39,7 +35,9 @@ import {
   Fingerprint,
   CalendarDays,
   MessageSquare,
+  Check,
 } from 'lucide-react';
+import { PhoneOutgoing } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar as ShadSidebar,
@@ -58,6 +56,13 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://rivergreenbackend.onrender.com';
 
@@ -79,6 +84,7 @@ const getNavItems = (isTeamHead) => {
       subItems: [
         { to: '/all-contacts', icon: List, label: 'All Contacts' },
         { to: '/all-contacts/bulk', icon: FileSpreadsheet, label: 'Bulk Import' },
+        { to: '/contacts/shift-to-call', icon: PhoneOutgoing, label: 'Shift to Call' },
         { to: '/calls/dialer', icon: Phone, label: 'Dialer' },
       ]
     },
@@ -91,6 +97,7 @@ const getNavItems = (isTeamHead) => {
         { to: '/calls/history', icon: History, label: 'Call History' },
         { to: '/calls/daily', icon: ClipboardList, label: 'Daily Entry' },
         { to: '/calls/scheduled', icon: CalendarClock, label: 'Scheduled' },
+        { to: '/calls/missed-followups', icon: BellRing, label: 'Missed Follow Up' },
         { to: '/calls/missed', icon: PhoneMissed, label: 'Missed Calls' },
         { to: '/calls/analytics', icon: BarChart3, label: 'My Analytics' },
       ]
@@ -109,19 +116,6 @@ const getNavItems = (isTeamHead) => {
         { to: '/attendance/history', icon: CalendarDays, label: 'My History' },
       ]
     },
-    {
-      id: 'colony-menu', icon: Map, label: 'Colony Maps', iconColor: 'text-rose-500',
-      subItems: [
-        { to: '/colony-maps', icon: Map, label: 'View Maps' },
-        { to: '/colony-maps/plots', icon: MapPin, label: 'All Plots' },
-      ]
-    },
-    {
-      id: 'bookings-menu', icon: BookOpen, label: 'Bookings & Sales', iconColor: 'text-blue-500',
-      subItems: [
-        { to: '/bookings', icon: CreditCard, label: 'My Bookings' },
-      ]
-    },
     { to: '/chat', icon: MessageSquare, label: 'Chat', iconColor: 'text-green-500' },
   ];
 
@@ -131,6 +125,7 @@ const getNavItems = (isTeamHead) => {
       subItems: [
         { to: '/team', icon: UsersRound, label: 'Team Members' },
         { to: '/team/manage', icon: Settings, label: 'Team Management' },
+        { to: '/team/manage/register-agent', icon: UserPlus, label: 'Agent Register' },
         { to: '/team/performance', icon: TrendingUp, label: 'Performance' },
       ]
     });
@@ -153,17 +148,17 @@ const PREFETCH_MAP = {
   '/calls/history': ['/calls?limit=20'],
   '/calls/daily': ['/calls/outcomes'],
   '/calls/scheduled': ['/followups/scheduled'],
-  '/calls/missed': ['/followups/missed'],
+  '/calls/missed-followups': ['/followups/missed?limit=20'],
+  '/calls/missed': ['/calls?call_type=MISSED&limit=20'],
   '/calls/analytics': ['/calls/analytics'],
   '/all-contacts': ['/contacts?page=1&limit=25'],
   '/all-contacts/bulk': [],
+  '/contacts/shift-to-call': ['/calls/shift-to-call?page=1&limit=100'],
   '/reminders': ['/followups/counts'],
-  '/colony-maps': ['/colony-maps'],
-  '/colony-maps/plots': ['/colony-maps'],
-  '/bookings': ['/bookings?page=1&limit=12', '/bookings/stats'],
   '/content-share': ['/content-share'],
   '/team': [],
   '/team/manage': [],
+  '/team/manage/register-agent': [],
   '/team/performance': [],
   '/attendance': ['/attendance/locations/active', '/attendance/my-today'],
   '/attendance/history': ['/attendance/my-history?page=1&limit=31'],
@@ -252,7 +247,7 @@ function MenuNode({ item, unreadTotal, onChatClick }) {
 }
 
 function SidebarInner() {
-  const { user, isTeamHead, logout } = useAuth();
+  const { user, isTeamHead, logout, sites, activeSiteId, switchSite, siteLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { open, setOpen, openMobile, setOpenMobile } = useSidebar();
@@ -319,6 +314,13 @@ function SidebarInner() {
     navigate('/login');
   };
 
+  const handleSiteChange = async (siteId) => {
+    const switched = await switchSite(siteId);
+    if (switched) {
+      setOpenMobile(false);
+    }
+  };
+
   return (
     <ShadSidebar collapsible="icon" className="border-r border-slate-200/70 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
       <SidebarHeader className="relative border-b border-slate-100 px-3 py-4">
@@ -336,8 +338,33 @@ function SidebarInner() {
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
             <div className="truncate text-[16px] font-semibold tracking-tight text-slate-800">RiverGreen</div>
-            <div className="truncate text-[12px] text-slate-500">{isTeamHead ? 'Team Lead Portal' : 'Agent Portal'}</div>
+            <div className="truncate text-[12px] text-slate-500">{isTeamHead ? 'Team Head Portal' : 'Agent Portal'}</div>
           </div>
+        </div>
+
+        <div className="mt-3 pr-9 group-data-[collapsible=icon]:hidden">
+          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Active Site</div>
+          <Select
+            value={activeSiteId || undefined}
+            onValueChange={handleSiteChange}
+            disabled={siteLoading || !sites?.length}
+          >
+            <SelectTrigger className="h-8 bg-slate-50 text-[12px]">
+              <SelectValue placeholder={sites?.length ? 'Select site' : 'No site available'} />
+            </SelectTrigger>
+            <SelectContent>
+              {(sites || []).map((site) => (
+                <SelectItem key={site.id} value={String(site.id)}>
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span>{site.name}</span>
+                    {String(activeSiteId || '') === String(site.id) && (
+                      <Check className="h-4 w-4 text-emerald-600" />
+                    )}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <button

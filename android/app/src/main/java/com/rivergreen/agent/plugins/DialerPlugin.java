@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.CallLog;
 import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionInfo;
@@ -284,17 +286,37 @@ public class DialerPlugin extends Plugin {
             notifyListeners("callConnected", connected);
         } else if (state == TelephonyManager.CALL_STATE_IDLE) {
             long endedAt = System.currentTimeMillis();
-            long duration = connectedAtMs > 0 ? Math.max(0, (endedAt - connectedAtMs) / 1000L) : 0;
+            long fallbackDuration = connectedAtMs > 0 ? Math.max(0, (endedAt - connectedAtMs) / 1000L) : 0;
 
-            JSObject ended = baseEvent("ENDED");
-            ended.put("endedAt", endedAt);
-            ended.put("duration", duration);
-            ended.put("callType", activeDirection);
-            notifyListeners("callStateChanged", ended);
-            notifyListeners("callEnded", ended);
+            final String endedPhone = activePhone == null ? "" : activePhone;
+            final String endedDirection = activeDirection;
+            final long finalFallback = fallbackDuration;
+            final boolean wasConnected = connectedAtMs > 0;
 
             connectedAtMs = 0L;
             activeDirection = "OUTGOING";
+
+            // Delay to let Android write the CallLog entry
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                long accurateDuration = finalFallback;
+                if (wasConnected) {
+                    int callLogDuration = queryCallLogDuration(endedPhone);
+                    if (callLogDuration >= 0) {
+                        accurateDuration = callLogDuration;
+                        Log.d(TAG, "Using CallLog duration: " + callLogDuration + "s (fallback was " + finalFallback + "s)");
+                    }
+                } else {
+                    accurateDuration = 0;
+                }
+
+                JSObject ended = baseEvent("ENDED");
+                ended.put("phoneNumber", endedPhone);
+                ended.put("endedAt", System.currentTimeMillis());
+                ended.put("duration", accurateDuration);
+                ended.put("callType", endedDirection);
+                notifyListeners("callStateChanged", ended);
+                notifyListeners("callEnded", ended);
+            }, 1500);
         }
 
         lastState = state;
@@ -334,6 +356,59 @@ public class DialerPlugin extends Plugin {
         public void onCallStateChanged(int state) {
             handleStateChange(state);
         }
+    }
+
+    // ── Query CallLog for accurate talk duration ─────────────────────────────
+
+    private int queryCallLogDuration(String phoneNumber) {
+        try {
+            String[] projection = { CallLog.Calls.DURATION, CallLog.Calls.DATE, CallLog.Calls.NUMBER };
+            long cutoff = System.currentTimeMillis() - 120_000;
+
+            // Strategy 1: Try matching by phone number
+            if (phoneNumber != null && !phoneNumber.isEmpty()) {
+                String normalized = phoneNumber.replaceAll("[^0-9]", "");
+                String tail = normalized.length() > 7 ? normalized.substring(normalized.length() - 7) : normalized;
+                Cursor cursor = getContext().getContentResolver().query(
+                    CallLog.Calls.CONTENT_URI,
+                    projection,
+                    CallLog.Calls.NUMBER + " LIKE ? AND " + CallLog.Calls.DATE + " > ?",
+                    new String[]{ "%" + tail, String.valueOf(cutoff) },
+                    CallLog.Calls.DATE + " DESC"
+                );
+                if (cursor != null) {
+                    try {
+                        if (cursor.moveToFirst()) {
+                            int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                            Log.d(TAG, "queryCallLogDuration: by-number match → " + dur + "s");
+                            return dur;
+                        }
+                    } finally { cursor.close(); }
+                }
+            }
+
+            // Strategy 2: Fallback — most recent entry
+            Cursor cursor = getContext().getContentResolver().query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                CallLog.Calls.DATE + " > ?",
+                new String[]{ String.valueOf(cutoff) },
+                CallLog.Calls.DATE + " DESC"
+            );
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                        String num = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER));
+                        Log.d(TAG, "queryCallLogDuration: fallback most-recent → " + dur + "s, number=" + num);
+                        return dur;
+                    }
+                } finally { cursor.close(); }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "queryCallLogDuration failed: " + e.getMessage());
+        }
+        return -1;
     }
 }
 

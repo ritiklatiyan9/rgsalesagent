@@ -111,12 +111,12 @@ const CallDashboard = () => {
           </div>
           <ArrowRight className="h-4 w-4 text-emerald-400 ml-auto" />
         </button>
-        <button onClick={() => navigate('/calls/missed')} className="flex items-center gap-3 p-4 rounded-xl bg-red-50 hover:bg-red-100 transition-colors group border border-red-100">
+        <button onClick={() => navigate('/calls/missed-followups')} className="flex items-center gap-3 p-4 rounded-xl bg-red-50 hover:bg-red-100 transition-colors group border border-red-100">
           <div className="h-10 w-10 rounded-xl bg-red-100 flex items-center justify-center group-hover:scale-105 transition-transform">
             <PhoneMissed className="h-5 w-5 text-red-600" />
           </div>
           <div className="text-left">
-            <p className="text-sm font-semibold text-red-900">Missed Calls</p>
+            <p className="text-sm font-semibold text-red-900">Missed Follow-ups</p>
             <p className="text-xs text-red-600">Overdue follow-ups</p>
           </div>
           <ArrowRight className="h-4 w-4 text-red-400 ml-auto" />

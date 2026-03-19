@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import api from '@/lib/axios';
 import { cachedGet, invalidateCache } from '@/lib/queryCache';
@@ -24,8 +25,14 @@ import { format } from 'date-fns';
 import {
   Plus, Pencil, Search, Phone, Mail, Users, Filter, UserPlus,
   FileText, ChevronLeft, ChevronRight, AlertCircle, CalendarDays, Eye, List,
-  BellPlus, FileSpreadsheet, ArrowRightLeft, History, Camera, X, ImageIcon,
+  BellPlus, FileSpreadsheet, ArrowRightLeft, History, Camera, X, ImageIcon, PhoneOutgoing,
 } from 'lucide-react';
+
+const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+  </svg>
+);
 
 const FOLLOWUP_TYPES = [
   { value: 'CALL',       label: 'Call' },
@@ -153,9 +160,10 @@ const STATUS_OPTIONS = [
 ];
 
 const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
+const LEAD_SOURCE_OPTIONS = ['Direct', 'Referral', 'Website', 'Advertisement', 'Event', 'Other'];
 
 const EMPTY_FORM = {
-  name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', notes: '',
+  name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_category: '', lead_source: 'Other', notes: '',
 };
 
 const CALL_NEXT_ACTIONS = [
@@ -171,6 +179,7 @@ const fmt2 = (n) => String(n).padStart(2, '0');
 const DialerDialog = () => null; // Dialer removed
 
 const Leads = () => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const initialSearch = searchParams.get('search') || '';
@@ -199,10 +208,16 @@ const Leads = () => {
   // View dialog
   const [viewOpen, setViewOpen] = useState(false);
   const [viewTarget, setViewTarget] = useState(null);
+  const [viewCallHistory, setViewCallHistory] = useState([]);
+  const [viewCallLoading, setViewCallLoading] = useState(false);
 
   // Schedule Follow-up
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleLead, setScheduleLead] = useState(null);
+
+  // Shift to Call selection
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [shiftLoading, setShiftLoading] = useState(false);
 
   const fetchLeads = useCallback(async (page = currentPage, search = searchQuery, status = statusFilter, fresh = false, category = categoryFilter) => {
     try {
@@ -264,6 +279,11 @@ const Leads = () => {
     }
   }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter]);
 
+  useEffect(() => {
+    const currentIds = new Set(leads.map((l) => l.id));
+    setSelectedLeadIds((prev) => prev.filter((id) => currentIds.has(id)));
+  }, [leads]);
+
   const openEdit = (lead) => {
     setEditId(lead.id);
     setForm({
@@ -273,6 +293,8 @@ const Leads = () => {
       address: lead.address || '',
       profession: lead.profession || '',
       status: lead.status || 'NEW',
+      lead_category: lead.lead_category || '',
+      lead_source: lead.lead_source || 'Other',
       notes: lead.notes || '',
     });
     setEditPhotoFile(null);
@@ -282,14 +304,80 @@ const Leads = () => {
     setDialogOpen(true);
   };
 
-  const openView = (lead) => {
+  const openView = async (lead) => {
     setViewTarget(lead);
+    setViewCallHistory([]);
     setViewOpen(true);
+    
+    // Fetch call history
+    if (lead.id) {
+      setViewCallLoading(true);
+      try {
+        const { data } = await api.get(`/calls/lead/${lead.id}`);
+        if (data?.success && data?.calls) {
+          setViewCallHistory(Array.isArray(data.calls) ? data.calls : []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch call history:', err);
+        setViewCallHistory([]);
+      } finally {
+        setViewCallLoading(false);
+      }
+    }
   };
 
   const openSchedule = (lead) => {
     setScheduleLead(lead);
     setScheduleOpen(true);
+  };
+
+  const toggleLeadSelection = (leadId) => {
+    setSelectedLeadIds((prev) => (
+      prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
+    ));
+  };
+
+  const toggleSelectAllOnPage = () => {
+    const pageIds = leads.map((l) => l.id);
+    const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedLeadIds.includes(id));
+    if (allSelected) {
+      setSelectedLeadIds((prev) => prev.filter((id) => !pageIds.includes(id)));
+    } else {
+      setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const handleShiftToCall = async ({ selectAllFiltered = false } = {}) => {
+    if (!selectAllFiltered && selectedLeadIds.length === 0) {
+      toast.error('Please select at least one lead');
+      return;
+    }
+
+    setShiftLoading(true);
+    try {
+      const payload = selectAllFiltered
+        ? {
+          select_all: true,
+          search: searchQuery,
+          status: statusFilter,
+          lead_category: categoryFilter,
+        }
+        : { lead_ids: selectedLeadIds };
+
+      const { data } = await api.post('/leads/shift-to-call', payload);
+      if (!data?.success) {
+        toast.error(data?.message || 'Failed to shift leads');
+        return;
+      }
+
+      setSelectedLeadIds([]);
+      toast.success(data?.message || 'Leads shifted to call queue');
+      navigate('/contacts/shift-to-call');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to shift leads');
+    } finally {
+      setShiftLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -320,6 +408,31 @@ const Leads = () => {
     }
   };
 
+  const handleCallLead = (lead) => {
+    if (!lead?.phone) {
+      toast.error('No phone number available');
+      return;
+    }
+    const params = new URLSearchParams({
+      lead_id: String(lead.id),
+      lead_name: lead.name || 'Lead',
+      lead_phone: lead.phone || '',
+      autoCall: 'true',
+      source: 'leads',
+    });
+    navigate(`/calls/dialer?${params.toString()}`);
+  };
+
+  const handleOpenWhatsApp = (phone) => {
+    if (!phone) {
+      toast.error('No phone number available');
+      return;
+    }
+    const cleaned = String(phone).replace(/[^0-9]/g, '');
+    const waNumber = cleaned.startsWith('91') ? cleaned : `91${cleaned}`;
+    window.open(`https://wa.me/${waNumber}`, '_blank');
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -334,12 +447,52 @@ const Leads = () => {
           </div>
         </div>
 
-        <Link to="/leads/add">
-          <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-sm h-9 text-xs gap-1.5 rounded-xl">
-            <UserPlus className="h-3.5 w-3.5" />
-            Add Lead
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
+            disabled={shiftLoading || selectedLeadIds.length === 0}
+            onClick={() => handleShiftToCall()}
+          >
+            {shiftLoading ? (
+              <span className="inline-flex items-center">
+                <span className="h-3.5 w-3.5 mr-1.5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                Shifting...
+              </span>
+            ) : (
+              <>
+                <PhoneOutgoing className="h-3.5 w-3.5 mr-1.5" />
+                Shift Selected ({selectedLeadIds.length})
+              </>
+            )}
           </Button>
-        </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
+            disabled={shiftLoading || leads.length === 0}
+            onClick={() => handleShiftToCall({ selectAllFiltered: true })}
+          >
+            {shiftLoading ? (
+              <span className="inline-flex items-center">
+                <span className="h-3.5 w-3.5 mr-1.5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                Shifting...
+              </span>
+            ) : (
+              <>
+                <Users className="h-3.5 w-3.5 mr-1.5" />
+                Shift All Filtered
+              </>
+            )}
+          </Button>
+          <Link to="/leads/add">
+            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-sm h-9 text-xs gap-1.5 rounded-xl w-full sm:w-auto">
+              <UserPlus className="h-3.5 w-3.5" />
+              Add Lead
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Sub-page tabs */}
@@ -433,9 +586,19 @@ const Leads = () => {
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                <TableHead className="pl-5 font-semibold text-xs uppercase tracking-wider text-slate-500">Lead Details</TableHead>
+                <TableHead className="w-12 pl-4">
+                  <Checkbox
+                    checked={leads.length > 0 && leads.every((l) => selectedLeadIds.includes(l.id))}
+                    indeterminate={leads.some((l) => selectedLeadIds.includes(l.id)) && !leads.every((l) => selectedLeadIds.includes(l.id))}
+                    onCheckedChange={toggleSelectAllOnPage}
+                    className="rounded"
+                  />
+                </TableHead>
+                <TableHead className="pl-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Lead Details</TableHead>
                 <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Contact</TableHead>
                 <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Status</TableHead>
+                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Category</TableHead>
+                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500 text-center">Calls Dialed</TableHead>
                 <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Added On</TableHead>
                 <TableHead className="text-right pr-5 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</TableHead>
               </TableRow>
@@ -444,16 +607,19 @@ const Leads = () => {
               {loading ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell className="pl-5 py-4"><Skeleton className="h-5 w-32 mb-1.5" /><Skeleton className="h-3 w-24" /></TableCell>
+                    <TableCell className="w-12 pl-4 py-4"><Skeleton className="h-4 w-4 rounded" /></TableCell>
+                    <TableCell className="pl-3 py-4"><Skeleton className="h-5 w-32 mb-1.5" /><Skeleton className="h-3 w-24" /></TableCell>
                     <TableCell className="py-4"><Skeleton className="h-4 w-28 mb-1.5" /><Skeleton className="h-4 w-36" /></TableCell>
                     <TableCell className="py-4"><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                    <TableCell className="py-4"><Skeleton className="h-4 w-16" /></TableCell>
+                    <TableCell className="py-4"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
                     <TableCell className="py-4"><Skeleton className="h-4 w-20" /></TableCell>
                     <TableCell className="pr-5 py-4 text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : leads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-16 text-center">
+                  <TableCell colSpan={8} className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
                         <Users className="h-6 w-6 text-slate-300" />
@@ -472,7 +638,14 @@ const Leads = () => {
                   const statusObj = STATUS_OPTIONS.find((s) => s.value === lead.status) || STATUS_OPTIONS[0];
                   return (
                     <TableRow key={lead.id} className="hover:bg-slate-50/50 transition-colors group">
-                      <TableCell className="pl-5 py-3.5">
+                      <TableCell className="w-12 pl-4 py-3.5">
+                        <Checkbox
+                          checked={selectedLeadIds.includes(lead.id)}
+                          onCheckedChange={() => toggleLeadSelection(lead.id)}
+                          className="rounded"
+                        />
+                      </TableCell>
+                      <TableCell className="pl-3 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                             {lead.photo_url ? (
@@ -508,6 +681,20 @@ const Leads = () => {
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3.5">
+                        {lead.lead_category ? (
+                          <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-medium">
+                            {lead.lead_category}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-3.5 text-center">
+                        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-semibold text-slate-700">
+                          {lead.calls_dialed ?? 0}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3.5">
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
                           <CalendarDays className="h-3 w-3 shrink-0" />
                           {format(new Date(lead.created_at), 'MMM dd, yyyy')}
@@ -515,6 +702,18 @@ const Leads = () => {
                       </TableCell>
                       <TableCell className="text-right pr-5 py-3.5">
                         <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" title="Call"
+                            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
+                            onClick={() => handleCallLead(lead)}
+                          >
+                            <PhoneOutgoing className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="WhatsApp"
+                            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
+                            onClick={() => handleOpenWhatsApp(lead.phone)}
+                          >
+                            <WhatsAppIcon className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" title="View Details"
                             className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
                             onClick={() => openView(lead)}
@@ -630,17 +829,26 @@ const Leads = () => {
                       <CalendarDays className="h-2.5 w-2.5" />
                       {format(new Date(lead.created_at), 'MMM dd, yyyy')}
                     </div>
+                    <div className="text-[10px] text-slate-500 mt-1">
+                      Calls Dialed: <span className="font-semibold text-slate-700">{lead.calls_dialed ?? 0}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-end gap-1 mt-2 pt-2 border-t border-border/40">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 gap-1" onClick={() => openView(lead)}>
-                    <Eye className="h-3.5 w-3.5" /> View
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/40">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-green-600 hover:bg-green-50" onClick={() => handleCallLead(lead)}>
+                    <PhoneOutgoing className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 gap-1" onClick={() => openEdit(lead)}>
-                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-green-600 hover:bg-green-50" onClick={() => handleOpenWhatsApp(lead.phone)}>
+                    <WhatsAppIcon className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-slate-500 hover:text-amber-600 hover:bg-amber-50 gap-1" onClick={() => openSchedule(lead)}>
-                    <BellPlus className="h-3.5 w-3.5" /> Follow-up
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => openView(lead)}>
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50" onClick={() => openEdit(lead)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-amber-600 hover:bg-amber-50" onClick={() => openSchedule(lead)}>
+                    <BellPlus className="h-4 w-4" />
                   </Button>
                 </div>
               </Card>
@@ -779,6 +987,32 @@ const Leads = () => {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Category</Label>
+                <Select value={form.lead_category || 'NONE'} onValueChange={(v) => setForm((p) => ({ ...p, lead_category: v === 'NONE' ? '' : v }))}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE" className="text-sm">No Category</SelectItem>
+                    {LEAD_CATEGORY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-sm">{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Source</Label>
+                <Select value={form.lead_source || 'Other'} onValueChange={(v) => setForm((p) => ({ ...p, lead_source: v }))}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LEAD_SOURCE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-sm">{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Address</Label>
               <Input value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} className="h-9" />
@@ -836,14 +1070,8 @@ const Leads = () => {
                   <p className="font-medium">{viewTarget.name}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground text-xs uppercase font-semibold">Status</p>
-                  <Badge variant="secondary" className={`mt-1 text-[10px] px-2 py-0.5 border-0 font-medium ${STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.color || 'bg-slate-100 text-slate-700'}`}>
-                    {STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.label || viewTarget.status}
-                  </Badge>
-                </div>
-                <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Phone</p>
-                  <p className="font-medium">{viewTarget.phone || '—'}</p>
+                  <p className="font-medium font-mono">{viewTarget.phone || '—'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Email</p>
@@ -858,15 +1086,82 @@ const Leads = () => {
                   <p className="font-medium">{viewTarget.profession || '—'}</p>
                 </div>
                 <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Status</p>
+                  <Badge variant="secondary" className={`mt-1 text-[10px] px-2 py-0.5 border-0 font-medium ${STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.color || 'bg-slate-100 text-slate-700'}`}>
+                    {STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.label || viewTarget.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Category</p>
+                  {viewTarget.lead_category ? (
+                    <Badge variant="outline" className="mt-1 text-[10px] px-2 py-0.5 font-medium">
+                      {viewTarget.lead_category}
+                    </Badge>
+                  ) : (
+                    <p className="font-medium text-slate-400">—</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Source</p>
+                  <p className="font-medium">{viewTarget.lead_source || '—'}</p>
+                </div>
+                <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Added On</p>
                   <p className="font-medium">{viewTarget.created_at ? format(new Date(viewTarget.created_at), 'MMM dd, yyyy') : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Calls Dialed</p>
+                  <p className="font-medium">{viewTarget.calls_dialed ?? 0}</p>
                 </div>
               </div>
               <div>
                 <p className="text-muted-foreground text-xs uppercase font-semibold mb-1">Notes</p>
                 <div className="bg-slate-50 p-3 rounded-md text-sm text-slate-700 whitespace-pre-wrap border border-slate-100">
-                  {viewTarget.notes || 'No notes available.'}
+                  {viewTarget.notes && String(viewTarget.notes).replace(/\s*\[Referee:\s*.+?\]\s*/gi, ' ').trim() || 'No notes available.'}
                 </div>
+              </div>
+
+              {/* Call Timeline */}
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-muted-foreground text-xs uppercase font-semibold mb-3">Call Timeline</p>
+                {viewCallLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="h-5 w-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
+                  </div>
+                ) : viewCallHistory.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-4">No call history found.</p>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {viewCallHistory.map((call, idx) => {
+                      const callType = call.call_type || call.callType || 'UNKNOWN';
+                      const callTypeColor = callType === 'INCOMING' ? 'text-emerald-600 bg-emerald-50' : callType === 'OUTGOING' ? 'text-blue-600 bg-blue-50' : 'text-rose-600 bg-rose-50';
+                      
+                      return (
+                        <div key={call.id || idx} className={`p-2.5 rounded-lg border border-slate-200 ${callTypeColor.split(' ')[1]}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-semibold text-slate-700">
+                                {call.call_start ? format(new Date(call.call_start), 'MMM dd, yyyy HH:mm') : 'Unknown Date'}
+                              </p>
+                              <p className="text-[10px] text-slate-600 mt-0.5">
+                                <span className={`font-semibold ${callTypeColor.split(' ')[0]}`}>{callType}</span>
+                                {call.duration_seconds && ` • ${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`}
+                              </p>
+                            </div>
+                            {call.outcome_label && (
+                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
+                                {call.outcome_label}
+                              </Badge>
+                            )}
+                          </div>
+                          {call.customer_notes && (
+                            <p className="text-[10px] text-slate-600 mt-1.5 line-clamp-2">{call.customer_notes}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import {
   Users, UserCheck, Shield, Crown, TrendingUp, Phone,
   Target, DollarSign, Activity, Calendar, ArrowUpRight,
-  BarChart3, Award, Zap, Clock, CheckCircle2, AlertCircle,
+  BarChart3, Award, Zap, Clock, CheckCircle2, AlertCircle, UserPlus,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -126,14 +126,24 @@ const TeamManagement = () => {
             Oversee your team, track targets & manage members
           </p>
         </div>
-        <Button
-          onClick={() => navigate('/team/performance')}
-          className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white gap-1.5 text-sm shadow-sm hover:shadow-md transition-shadow"
-          size="sm"
-        >
-          <TrendingUp className="h-4 w-4" /> View Performance
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => navigate('/team/manage/register-agent')}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-sm"
+          >
+            <UserPlus className="h-4 w-4" /> Agent Register
+          </Button>
+          <Button
+            onClick={() => navigate('/team/performance')}
+            className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white gap-1.5 text-sm shadow-sm hover:shadow-md transition-shadow"
+            size="sm"
+          >
+            <TrendingUp className="h-4 w-4" /> View Performance
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* KPI Cards */}

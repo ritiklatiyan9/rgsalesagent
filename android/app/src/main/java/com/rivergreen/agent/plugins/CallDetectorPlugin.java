@@ -5,8 +5,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.CallLog;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -316,61 +320,83 @@ public class CallDetectorPlugin extends Plugin implements CallStateReceiver.Call
                 wasAnswered = true;
                 callStartMs = System.currentTimeMillis();
                 if ("UNKNOWN".equals(callType)) callType = "OUTGOING";
+                // Capture the number if not already set
+                // (ACTION_NEW_OUTGOING_CALL may not fire on Android 10+)
+                if (capturedNumber == null && phoneNumber != null && !phoneNumber.isEmpty()) {
+                    capturedNumber = phoneNumber;
+                }
                 break;
 
             case IDLE: {
-                int durationSecs = (wasAnswered && callStartMs > 0L)
+                final int fallbackDuration = (wasAnswered && callStartMs > 0L)
                     ? (int) ((System.currentTimeMillis() - callStartMs) / 1000L)
                     : 0;
 
-                String resolvedType = (!wasAnswered && "INCOMING".equals(callType))
+                final String resolvedType = (!wasAnswered && "INCOMING".equals(callType))
                     ? "MISSED"
                     : callType;
 
-                JSObject data = new JSObject();
-                data.put("phoneNumber", capturedNumber != null ? capturedNumber : "");
-                data.put("callType",    resolvedType);
-                data.put("duration",    durationSecs);
-                data.put("timestamp",   System.currentTimeMillis());
+                final String finalNumber = capturedNumber != null ? capturedNumber : "";
+                final boolean finalWasAnswered = wasAnswered;
 
-                Log.i(TAG, "callEnded → " + data.toString());
-
-                // Channel 1: Capacitor plugin event (works if registerPlugin succeeded in JS)
-                notifyListeners("callEnded", data);
-
-                // Channel 2: Direct evaluateJavascript — bypasses registerPlugin AND
-                // the broken triggerJSEvent (which ignores the data parameter).
-                // This dispatches a CustomEvent with the full call payload in `detail`.
-                try {
-                    final String json = data.toString();
-                    final String js = "try{window.dispatchEvent(new CustomEvent('callEnded',{detail:"
-                        + json + "}))}catch(e){console.error('[RG]',e)}";
-                    getActivity().runOnUiThread(() -> {
-                        try {
-                            getBridge().getWebView().evaluateJavascript(js, null);
-                        } catch (Exception ignored) {}
-                    });
-                    Log.d(TAG, "evaluateJavascript: delivered");
-                } catch (Exception e) {
-                    Log.w(TAG, "evaluateJavascript failed: " + e.getMessage());
-                }
-
-                // Store in SharedPreferences for delivery on next app resume
-                try {
-                    getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                        .edit()
-                        .putString("pending_call", data.toString())
-                        .putLong("pending_ts", System.currentTimeMillis())
-                        .apply();
-                } catch (Exception e) {
-                    Log.w(TAG, "SharedPreferences save failed: " + e.getMessage());
-                }
-
-                // Reset state machine
+                // Reset state machine immediately
                 capturedNumber = null;
                 callType       = "UNKNOWN";
                 wasAnswered    = false;
                 callStartMs    = 0L;
+
+                // Delay slightly to let Android write the CallLog entry,
+                // then query it for the accurate talk duration
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    int accurateDuration = fallbackDuration;
+                    if (finalWasAnswered) {
+                        int callLogDuration = queryCallLogDuration(finalNumber);
+                        if (callLogDuration >= 0) {
+                            accurateDuration = callLogDuration;
+                            Log.d(TAG, "Using CallLog duration: " + callLogDuration + "s (fallback was " + fallbackDuration + "s)");
+                        }
+                    } else {
+                        accurateDuration = 0;
+                    }
+
+                    JSObject data = new JSObject();
+                    data.put("phoneNumber", finalNumber);
+                    data.put("callType",    resolvedType);
+                    data.put("duration",    accurateDuration);
+                    data.put("timestamp",   System.currentTimeMillis());
+
+                    Log.i(TAG, "callEnded → " + data.toString());
+
+                    // Channel 1: Capacitor plugin event
+                    notifyListeners("callEnded", data);
+
+                    // Channel 2: Direct evaluateJavascript
+                    try {
+                        final String json = data.toString();
+                        final String js = "try{window.dispatchEvent(new CustomEvent('callEnded',{detail:"
+                            + json + "}))}catch(e){console.error('[RG]',e)}";
+                        getActivity().runOnUiThread(() -> {
+                            try {
+                                getBridge().getWebView().evaluateJavascript(js, null);
+                            } catch (Exception ignored) {}
+                        });
+                        Log.d(TAG, "evaluateJavascript: delivered");
+                    } catch (Exception e) {
+                        Log.w(TAG, "evaluateJavascript failed: " + e.getMessage());
+                    }
+
+                    // Store in SharedPreferences for delivery on next app resume
+                    try {
+                        getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                            .edit()
+                            .putString("pending_call", data.toString())
+                            .putLong("pending_ts", System.currentTimeMillis())
+                            .apply();
+                    } catch (Exception e) {
+                        Log.w(TAG, "SharedPreferences save failed: " + e.getMessage());
+                    }
+                }, 1500); // 1500ms delay for CallLog to be written
+
                 break;
             }
         }
@@ -439,6 +465,70 @@ public class CallDetectorPlugin extends Plugin implements CallStateReceiver.Call
             ret.put("hasCall", false);
             call.resolve(ret);
         }
+    }
+
+    // ── Query CallLog for accurate talk duration ─────────────────────────────
+
+    /**
+     * Query the system CallLog for the most recent call to/from the given number.
+     * Returns the duration in seconds, or -1 if not found.
+     * The system CallLog records actual talk time (answer → hangup), which is
+     * what we need instead of the OFFHOOK→IDLE time that includes ringing.
+     */
+    private int queryCallLogDuration(String phoneNumber) {
+        try {
+            if (getPermissionState("callLog") != PermissionState.GRANTED) {
+                Log.w(TAG, "queryCallLogDuration: READ_CALL_LOG not granted");
+                return -1;
+            }
+
+            String[] projection = { CallLog.Calls.DURATION, CallLog.Calls.DATE, CallLog.Calls.NUMBER };
+            long cutoff = System.currentTimeMillis() - 120_000; // within last 2 minutes
+
+            // Strategy 1: Try matching by phone number (last 7 digits for broad match)
+            if (phoneNumber != null && !phoneNumber.isEmpty()) {
+                String normalized = phoneNumber.replaceAll("[^0-9]", "");
+                String tail = normalized.length() > 7 ? normalized.substring(normalized.length() - 7) : normalized;
+                Cursor cursor = getContext().getContentResolver().query(
+                    CallLog.Calls.CONTENT_URI,
+                    projection,
+                    CallLog.Calls.NUMBER + " LIKE ? AND " + CallLog.Calls.DATE + " > ?",
+                    new String[]{ "%" + tail, String.valueOf(cutoff) },
+                    CallLog.Calls.DATE + " DESC"
+                );
+                if (cursor != null) {
+                    try {
+                        if (cursor.moveToFirst()) {
+                            int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                            Log.d(TAG, "queryCallLogDuration: by-number match → " + dur + "s");
+                            return dur;
+                        }
+                    } finally { cursor.close(); }
+                }
+            }
+
+            // Strategy 2: Fallback — get the most recent CallLog entry (no number filter)
+            Cursor cursor = getContext().getContentResolver().query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                CallLog.Calls.DATE + " > ?",
+                new String[]{ String.valueOf(cutoff) },
+                CallLog.Calls.DATE + " DESC"
+            );
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        int dur = cursor.getInt(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION));
+                        String num = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER));
+                        Log.d(TAG, "queryCallLogDuration: fallback most-recent → " + dur + "s, number=" + num);
+                        return dur;
+                    }
+                } finally { cursor.close(); }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "queryCallLogDuration failed: " + e.getMessage());
+        }
+        return -1;
     }
 }
 

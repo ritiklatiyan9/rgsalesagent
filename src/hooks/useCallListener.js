@@ -53,6 +53,7 @@ export function useCallListener({ onCallEnded } = {}) {
     // ── Channel 2: Capacitor plugin proxy ─────────────────────────────────
     let pluginSub = null;
     (async () => {
+      try { await CallDetector.requestPermissions(); } catch {}
       try {
         const res = await CallDetector.startListening();
         if (mounted) setIsListening(!!res?.listening);
@@ -73,6 +74,12 @@ export function useCallListener({ onCallEnded } = {}) {
       } catch {}
     };
     document.addEventListener('visibilitychange', onVisibility);
+
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        onVisibility();
+      }
+    }, 30000);
     
     // Poll twice on mount with increasing delays to catch boot-time calls
     setTimeout(onVisibility, 2500);
@@ -83,6 +90,7 @@ export function useCallListener({ onCallEnded } = {}) {
       mounted = false;
       window.removeEventListener('callEnded', onWindowEvent);
       document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(pollInterval);
       try { pluginSub?.remove?.(); } catch {}
     };
   }, []);
