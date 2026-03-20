@@ -46,6 +46,8 @@ const LEAD_STATUS_META = {
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isTeamHead = String(user?.role || '').toUpperCase() === 'TEAM_HEAD';
+  const roleLabel = isTeamHead ? 'Team Head' : 'Agent';
 
   const [leads, setLeads] = useState([]);
   const [leadTotal, setLeadTotal] = useState(null);
@@ -273,10 +275,10 @@ const Dashboard = () => {
           <div className="relative flex items-start justify-between gap-3">
             <div>
               <div className="inline-flex items-center rounded-full border border-cyan-200/70 bg-white/85 px-2.5 py-1">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-700/85 font-medium">Agent Dashboard</p>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-700/85 font-medium">{roleLabel} Dashboard</p>
               </div>
               <h1 className="mt-2 text-[22px] sm:text-[26px] leading-tight font-normal text-slate-900">
-                Good Morning, <span className="font-medium text-cyan-800">{user?.name?.split(' ')[0] || 'Agent'}</span>
+                Good Morning, <span className="font-medium text-cyan-800">{user?.name?.split(' ')[0] || roleLabel}</span>
               </h1>
               <p className="mt-1.5 text-xs text-slate-600 flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-cyan-600" />
@@ -285,11 +287,11 @@ const Dashboard = () => {
             </div>
 
             <div className="hidden sm:flex items-center gap-2 rounded-2xl border border-cyan-200/70 bg-white/85 px-2.5 py-2 shadow-sm">
-              <div className="min-w-[68px] rounded-xl border border-cyan-100 bg-cyan-50/75 px-2 py-1.5 text-center">
+              <div className="min-w-17 rounded-xl border border-cyan-100 bg-cyan-50/75 px-2 py-1.5 text-center">
                 <p className="text-[10px] uppercase tracking-[0.12em] text-cyan-700/80">New</p>
                 <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.NEW)}</p>
               </div>
-              <div className="min-w-[68px] rounded-xl border border-amber-100 bg-amber-50/80 px-2 py-1.5 text-center">
+              <div className="min-w-17 rounded-xl border border-amber-100 bg-amber-50/80 px-2 py-1.5 text-center">
                 <p className="text-[10px] uppercase tracking-[0.12em] text-amber-700/85">Hot</p>
                 <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.INTERESTED)}</p>
               </div>

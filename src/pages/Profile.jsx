@@ -16,6 +16,7 @@ export default function Profile() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, logout, refreshUser } = useAuth();
+  const roleLabel = String(user?.role || '').toUpperCase() === 'TEAM_HEAD' ? 'Team Head' : 'Agent';
 
   const fileInputRef = useRef(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -240,7 +241,7 @@ export default function Profile() {
 
                 <div className="flex flex-col justify-center">
                   <h3 className="text-lg font-semibold text-slate-900">{formData.name}</h3>
-                  <p className="text-slate-500 mt-1">{formData.designation || 'Agent'}</p>
+                  <p className="text-slate-500 mt-1">{formData.designation || roleLabel}</p>
                   <p className="text-sm text-slate-400 mt-2">{formData.email}</p>
                   {isEditing && (
                     <p className="text-xs text-slate-400 mt-3">Click camera icon to change photo</p>

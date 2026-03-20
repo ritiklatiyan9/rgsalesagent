@@ -252,6 +252,7 @@ function SidebarInner() {
   const location = useLocation();
   const { open, setOpen, openMobile, setOpenMobile } = useSidebar();
   const navItems = useMemo(() => getNavItems(isTeamHead), [isTeamHead]);
+  const roleLabel = isTeamHead ? 'Team Head' : 'Agent';
   const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
   const currentPathRef = useRef(location.pathname);
 
@@ -413,7 +414,7 @@ function SidebarInner() {
             )}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-semibold text-slate-800">{user?.name || 'Agent'}</div>
+            <div className="truncate text-[13.5px] font-semibold text-slate-800">{user?.name || roleLabel}</div>
             <div className="truncate text-[11.5px] text-slate-500">{user?.email || 'agent@rivergreen.com'}</div>
           </div>
         </div>

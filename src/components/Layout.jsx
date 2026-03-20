@@ -141,6 +141,7 @@ const LayoutBody = () => {
   const { openMobile, setOpenMobile } = useSidebar();
   const { pathname } = useLocation();
   const { user, logout, activeSiteId } = useAuth();
+  const roleLabel = String(user?.role || '').toUpperCase() === 'TEAM_HEAD' ? 'Team Head' : 'Agent';
   const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
   const [notifOpen, setNotifOpen] = useState(false);
@@ -564,7 +565,7 @@ const LayoutBody = () => {
                 {profileOpen && (
                   <div className="absolute right-0 top-[calc(100%+8px)] w-56 bg-white rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.18)] border border-slate-100 z-50 overflow-hidden">
                     <div className="px-4 py-3 border-b border-slate-100">
-                      <p className="text-sm font-semibold text-slate-800">{user?.name || 'Agent'}</p>
+                      <p className="text-sm font-semibold text-slate-800">{user?.name || roleLabel}</p>
                       <p className="text-xs text-slate-400 mt-0.5">{user?.email || 'agent@rivergeen.com'}</p>
                     </div>
 
