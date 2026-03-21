@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
+import { startBackgroundTracking, stopBackgroundTracking } from '@/services/BackgroundLocationService';
 
 const routeNames = {
   '/dashboard': 'Dashboard',
@@ -325,10 +326,14 @@ const LayoutBody = () => {
     };
     window.addEventListener('rg:missed-call', onMissedCall);
 
+    // Start background location tracking
+    startBackgroundTracking();
+
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
       window.removeEventListener('rg:missed-call', onMissedCall);
       socket?.disconnect();
+      stopBackgroundTracking();
     };
   }, [user?.id, pathname]);
 
@@ -635,8 +640,8 @@ const LayoutBody = () => {
                   key={to}
                   onClick={() => navigate(to)}
                   className={`rounded-xl px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-all ${isActive
-                      ? `bg-linear-to-b ${activeBg} border border-slate-200/60 shadow-[0_4px_8px_-4px_rgba(0,0,0,0.1)]`
-                      : 'border border-transparent active:bg-slate-100'
+                    ? `bg-linear-to-b ${activeBg} border border-slate-200/60 shadow-[0_4px_8px_-4px_rgba(0,0,0,0.1)]`
+                    : 'border border-transparent active:bg-slate-100'
                     }`}
                 >
                   <span className={`h-6 w-6 rounded-full grid place-items-center ${isActive ? 'bg-white shadow-sm' : 'bg-transparent'}`}>

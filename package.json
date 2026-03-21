@@ -13,6 +13,7 @@
     "cap:icons": "node generate-icons.mjs && node copy-icons-android.mjs"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.2.26",
     "@capacitor/android": "^8.1.0",
     "@capacitor/app": "^8.0.1",
     "@capacitor/cli": "^8.1.0",
