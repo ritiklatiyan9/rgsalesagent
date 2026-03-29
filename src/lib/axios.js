@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
 
-export const API_URL = 'https://rivergreenbackend.onrender.com/api';
+export const API_URL = 'https://rivergreenbackend.onrender.com';
 
 // Persistence keys
 const ACCESS_TOKEN_KEY = 'rg_access_token';
@@ -47,14 +47,14 @@ export const getStoredAuthData = async () => {
 
 // Plain axios instance for auth calls
 export const authAxios = axios.create({
-  baseURL: API_URL,
+  baseURL: `${API_URL}/api`,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Main API instance
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: `${API_URL}/api`,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });

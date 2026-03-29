@@ -62,11 +62,12 @@ const TeamMembers = () => {
     fetchTeam();
   }, [user]);
 
-  // Team head detection: use team.head_id, not role (assignTeamHead doesn't change role)
-  const isHeadId = (memberId) => team?.head_id && String(team.head_id) === String(memberId);
-  const teamHeadMember = members.find(m => isHeadId(m.id));
+  // Team head detection: use team.heads array (supports multiple heads)
+  const headIds = (team?.heads || []).map(h => String(h.id));
+  const isHeadId = (memberId) => headIds.includes(String(memberId));
+  const teamHeadMembers = members.filter(m => isHeadId(m.id));
   const agentCount = members.filter(m => m.role === 'AGENT').length;
-  const headCount = teamHeadMember ? 1 : 0;
+  const headCount = teamHeadMembers.length;
 
   if (!loading && !user?.team_id) return (
     <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
@@ -92,7 +93,7 @@ const TeamMembers = () => {
         <StatCard title="Total Members" value={loading ? '…' : members.length} icon={Users} />
         <StatCard title="Team Heads" value={loading ? '…' : headCount} icon={Shield} highlight />
         <StatCard title="Agents" value={loading ? '…' : agentCount} icon={UserCheck} />
-        <StatCard title="Team Head" value={loading ? '…' : (teamHeadMember?.name || 'Unassigned')} icon={UserCheck} />
+        <StatCard title="Head(s)" value={loading ? '…' : (teamHeadMembers.length > 0 ? teamHeadMembers.map(h => h.name).join(', ') : 'Unassigned')} icon={UserCheck} />
       </div>
 
       <Card className="card-elevated border-0 overflow-hidden">

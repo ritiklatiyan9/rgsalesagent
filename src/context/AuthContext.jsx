@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Resolve whether the user is the team head by checking team.head_id
+  // Resolve whether the user is the team head by checking team.heads array
   const resolveTeamHead = async (userData) => {
     const roleBasedTeamHead = hasTeamHeadRole(userData);
 
@@ -120,8 +120,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const teamRes = await api.get(`/teams/${userData.team_id}`);
       if (teamRes.data.success) {
-        const headId = teamRes.data.team?.head_id;
-        const teamBasedTeamHead = Boolean(headId && String(headId) === String(userData.id));
+        const heads = teamRes.data.team?.heads || [];
+        const teamBasedTeamHead = heads.some(h => String(h.id) === String(userData.id));
         setIsTeamHead(teamBasedTeamHead || roleBasedTeamHead);
         return;
       }

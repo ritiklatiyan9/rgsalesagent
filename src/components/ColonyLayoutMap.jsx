@@ -70,6 +70,21 @@ const PlotBox = memo(({ plot, gridKey, onClick }) => {
 });
 PlotBox.displayName = 'PlotBox';
 
+const EmptyPlotSlot = memo(() => (
+  <div
+    className="flex-1 h-9 min-w-9 rounded-[3px] border border-white/10 bg-slate-900/20"
+    aria-hidden
+  />
+));
+EmptyPlotSlot.displayName = 'EmptyPlotSlot';
+
+const ParkSlot = memo(() => (
+  <div className="flex-1 h-9 min-w-9 rounded-[3px] border border-emerald-300/50 bg-emerald-600/70 flex items-center justify-center">
+    <span className="text-[8px] font-bold tracking-wide text-emerald-50">PARK</span>
+  </div>
+));
+ParkSlot.displayName = 'ParkSlot';
+
 // ─── Road Strip ──────────────────────────────────────────
 const RoadStrip = memo(({ isMain }) => (
   <div className={`flex items-center justify-center relative overflow-hidden
@@ -83,11 +98,9 @@ const RoadStrip = memo(({ isMain }) => (
         <div className="absolute bottom-1 left-0 right-0 flex items-center"><div className="w-full border-t border-white/5" /></div>
       </>
     )}
-    {!isMain && (
-      <span className="relative z-10 font-bold tracking-[0.2em] uppercase rounded-full text-[7px] text-white/30 bg-slate-800/60 px-3 py-0.5">
-        ROAD
-      </span>
-    )}
+    <span className={`relative z-10 font-bold uppercase rounded-full px-3 py-0.5 ${isMain ? 'text-[8px] tracking-[0.18em] text-white/45 bg-slate-900/45' : 'text-[7px] tracking-[0.2em] text-white/35 bg-slate-800/60'}`}>
+      {isMain ? 'ROAD 30\'-0" WD.' : 'ROAD 25\'-0" WD.'}
+    </span>
   </div>
 ));
 RoadStrip.displayName = 'RoadStrip';
@@ -102,6 +115,24 @@ const TreeBorder = memo(() => (
   </div>
 ));
 TreeBorder.displayName = 'TreeBorder';
+
+const DiagonalRightTrees = memo(({ count = 10 }) => (
+  <div className="pointer-events-none select-none absolute -right-5 top-2 bottom-2 flex flex-col justify-between" aria-hidden>
+    {Array.from({ length: count }).map((_, i) => {
+      const tree = TREES[i % TREES.length];
+      return (
+        <span
+          key={i}
+          className="text-xs sm:text-sm opacity-90"
+          style={{ transform: `translateX(${Math.min(i * 2.5, 22)}px)` }}
+        >
+          {tree}
+        </span>
+      );
+    })}
+  </div>
+));
+DiagonalRightTrees.displayName = 'DiagonalRightTrees';
 
 // ═════════════════════════════════════════════════════════
 // ─── Main Component (Agent - Read-Only with Share) ──────
@@ -178,20 +209,57 @@ const ColonyLayoutMap = ({ mapId, plots, layoutConfig, userSponsorCode }) => {
   const { topLeft, topRight, bottomLeft, bottomRight, roadEvery = 2, roadRowOffset = 0, excludedRoads = [] } = config;
   const topRows = Math.max(topLeft?.rows || 0, topRight?.rows || 0);
   const bottomRows = Math.max(bottomLeft?.rows || 0, bottomRight?.rows || 0);
+  const parkKeys = useMemo(() => new Set(config?.parkKeys || []), [config]);
 
-  const renderRow = (leftQ, rightQ, r, leftCols, rightCols, leftMaxRows, rightMaxRows) => {
+  const getColsForRow = useCallback((cfg, rowIndex) => {
+    if (Array.isArray(cfg?.rowCols)) {
+      const n = Number(cfg.rowCols[rowIndex]);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return Number(cfg?.cols) || 0;
+  }, []);
+
+  const getDiagonalTrim = useCallback((quadrant, rowIndex, totalRows) => {
+    if (quadrant !== 'BR') return 0;
+    const diagonal = config?.diagonalRight || {};
+    const enabled = diagonal.enabled ?? true;
+    if (!enabled) return 0;
+
+    const diagonalRows = Math.max(1, Number(diagonal.rows) || 3);
+    const step = Math.max(0, Number(diagonal.step) || 1);
+    const start = Math.max(0, totalRows - diagonalRows);
+    if (rowIndex < start) return 0;
+
+    return Math.floor((rowIndex - start + 1) * step);
+  }, [config]);
+
+  const renderRow = (leftQ, rightQ, r, leftCfg, rightCfg, leftMaxRows, rightMaxRows) => {
     const leftPlots = [];
     const rightPlots = [];
     if (r < leftMaxRows) {
+      const leftCols = getColsForRow(leftCfg, r);
       for (let c = 0; c < leftCols; c++) {
         const key = `${leftQ}-${r}-${c}`;
-        if (existingKeys.has(key)) leftPlots.push(<PlotBox key={key} plot={plotLookup[key]} gridKey={key} onClick={handlePlotClick} />);
+        if (existingKeys.has(key)) {
+          leftPlots.push(<PlotBox key={key} plot={plotLookup[key]} gridKey={key} onClick={handlePlotClick} />);
+        } else if (parkKeys.has(key)) {
+          leftPlots.push(<ParkSlot key={`park-${key}`} />);
+        } else {
+          leftPlots.push(<EmptyPlotSlot key={`slot-${key}`} />);
+        }
       }
     }
     if (r < rightMaxRows) {
+      const rightCols = Math.max(0, getColsForRow(rightCfg, r) - getDiagonalTrim(rightQ, r, rightMaxRows));
       for (let c = 0; c < rightCols; c++) {
         const key = `${rightQ}-${r}-${c}`;
-        if (existingKeys.has(key)) rightPlots.push(<PlotBox key={key} plot={plotLookup[key]} gridKey={key} onClick={handlePlotClick} />);
+        if (existingKeys.has(key)) {
+          rightPlots.push(<PlotBox key={key} plot={plotLookup[key]} gridKey={key} onClick={handlePlotClick} />);
+        } else if (parkKeys.has(key)) {
+          rightPlots.push(<ParkSlot key={`park-${key}`} />);
+        } else {
+          rightPlots.push(<EmptyPlotSlot key={`slot-${key}`} />);
+        }
       }
     }
     if (leftPlots.length === 0 && rightPlots.length === 0) return null;
@@ -221,7 +289,7 @@ const ColonyLayoutMap = ({ mapId, plots, layoutConfig, userSponsorCode }) => {
           els.push(<RoadStrip key={`road-${roadKey}`} />);
         }
       }
-      const row = renderRow(leftQ, rightQ, r, leftCfg?.cols || 0, rightCfg?.cols || 0, leftCfg?.rows || 0, rightCfg?.rows || 0);
+      const row = renderRow(leftQ, rightQ, r, leftCfg, rightCfg, leftCfg?.rows || 0, rightCfg?.rows || 0);
       if (row) els.push(row);
     }
     return els;
@@ -237,7 +305,13 @@ const ColonyLayoutMap = ({ mapId, plots, layoutConfig, userSponsorCode }) => {
       <TreeBorder />
 
       {/* Map Container */}
-      <div className="bg-[#1a2e1a] rounded-2xl p-3 sm:p-4 overflow-x-auto border border-slate-700 shadow-xl">
+      <div className="bg-[#1a2e1a] rounded-2xl p-3 sm:p-4 pr-8 overflow-x-auto overflow-y-visible border border-slate-700 shadow-xl relative">
+        <div
+          className="pointer-events-none absolute right-3 top-2 bottom-2 w-0.5 bg-slate-200/70 origin-top"
+          style={{ transform: 'rotate(12deg)' }}
+          aria-hidden
+        />
+        <DiagonalRightTrees />
         <div className="min-w-175">
           <div className="text-center py-2 mb-2">
             <h3 className="text-white/70 text-[11px] font-bold tracking-[0.2em] uppercase">

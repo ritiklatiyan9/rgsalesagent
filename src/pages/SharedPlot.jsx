@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://rivergreenbackend.onrender.com/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://rivergreenbackend.onrender.com';
 
 // Public instance — no auth
 const publicApi = axios.create({ baseURL: BASE_URL });

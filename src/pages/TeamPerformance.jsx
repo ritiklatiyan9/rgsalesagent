@@ -96,13 +96,14 @@ const TeamPerformance = () => {
   const pipeline = data?.pipeline || [];
   const team = data?.team || {};
 
-  // Enrich members with team head indicator
+  // Enrich members with team head indicator (supports multiple heads)
+  const headIdSet = useMemo(() => new Set((team?.heads || []).map(h => String(h.id))), [team?.heads]);
   const enrichedMembers = useMemo(() =>
     members.map(m => ({
       ...m,
-      isTeamHead: String(m.id) === String(team?.head_id)
+      isTeamHead: headIdSet.has(String(m.id))
     }))
-  , [members, team?.head_id]);
+  , [members, headIdSet]);
 
   // Sort members by revenue for leaderboard
   const sortedByRevenue = useMemo(() =>

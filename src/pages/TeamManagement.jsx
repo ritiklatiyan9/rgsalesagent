@@ -68,11 +68,12 @@ const TeamManagement = () => {
     fetchData();
   }, [user]);
 
-  // Use team.head_id to determine team head — role column is NOT updated by assignTeamHead
-  const isHeadId = (memberId) => team?.head_id && String(team.head_id) === String(memberId);
-  const teamHeadMember = members.find(m => isHeadId(m.id));
+  // Use team.heads array to determine team heads (supports multiple heads)
+  const headIds = (team?.heads || []).map(h => String(h.id));
+  const isHeadId = (memberId) => headIds.includes(String(memberId));
+  const teamHeadMembers = members.filter(m => isHeadId(m.id));
   const agentCount = members.filter(m => m.role === 'AGENT').length;
-  const headCount = teamHeadMember ? 1 : 0;
+  const headCount = teamHeadMembers.length;
   const activeCount = members.filter(m => m.is_active).length;
 
   // Current month target
