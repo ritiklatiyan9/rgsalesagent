@@ -32,6 +32,7 @@ const TeamMembers = lazy(() => import('@/pages/TeamMembers'));
 const TeamManagement = lazy(() => import('@/pages/TeamManagement'));
 const TeamPerformance = lazy(() => import('@/pages/TeamPerformance'));
 const MemberPerformance = lazy(() => import('@/pages/MemberPerformance'));
+const MemberCallAnalytics = lazy(() => import('@/pages/MemberCallAnalytics'));
 const TeamAgentRegister = lazy(() => import('@/pages/TeamAgentRegister'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const LeadsDialer = lazy(() => import('@/pages/LeadsDialer'));
@@ -135,6 +136,7 @@ export default function App() {
               <Route path="team/manage/register-agent" element={<TeamAgentRegister />} />
               <Route path="team/performance" element={<TeamPerformance />} />
               <Route path="team/member/:memberId" element={<MemberPerformance />} />
+              <Route path="team/member/:memberId/calls" element={<MemberCallAnalytics />} />
 
               {/* Content Share */}
               <Route path="content-share" element={<ContentShare />} />

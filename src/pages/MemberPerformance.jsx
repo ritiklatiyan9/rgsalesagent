@@ -217,6 +217,15 @@ const MemberPerformance = () => {
         <div className="flex items-center gap-2">
           {!loading && member && (
             <>
+              <Button
+                onClick={() => navigate(`/team/member/${memberId}/calls`)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-sm text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+              >
+                <Phone className="h-3.5 w-3.5" />
+                Call Logs
+              </Button>
               <Badge
                 variant="outline"
                 className={`text-xs ${member.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}

@@ -681,14 +681,25 @@ const TeamPerformance = () => {
                           <div className="text-[10px] text-muted-foreground/70">{followupRate}% done</div>
                         </TableCell>
                         <TableCell className="py-3 text-right pr-4">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs rounded-lg gap-1 text-indigo-600 hover:bg-indigo-50"
-                            onClick={() => navigate(`/team/member/${m.id}`)}
-                          >
-                            View
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs rounded-lg gap-1 text-violet-600 hover:bg-violet-50"
+                              onClick={() => navigate(`/team/member/${m.id}/calls`)}
+                            >
+                              <Phone className="h-3 w-3" />
+                              Calls
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs rounded-lg gap-1 text-indigo-600 hover:bg-indigo-50"
+                              onClick={() => navigate(`/team/member/${m.id}`)}
+                            >
+                              View
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
