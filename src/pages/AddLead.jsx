@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import { invalidateCache } from '@/lib/queryCache';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
-  ArrowLeft, UserPlus, Phone, Mail, MapPin, Briefcase, AlertCircle, Users, List,
-  FileSpreadsheet, ArrowRightLeft, History, Camera, X, CalendarDays, Loader2,
+  UserPlus, Phone, Mail, MapPin, Briefcase, AlertCircle, Users,
+  Camera, X, CalendarDays, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -124,44 +124,7 @@ const AddLead = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/leads')} className="rounded-xl">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">Add New Lead</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Fill in the details to create a new lead</p>
-        </div>
-      </div>
-
-      {/* Sub-page tabs */}
-      <div className="-mx-1 px-1 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
-        <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl min-w-max">
-          <Link to="/leads" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-            <List className="h-3.5 w-3.5" />
-            My Leads
-          </Link>
-          <Link to="/leads/add" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60 whitespace-nowrap">
-            <UserPlus className="h-3.5 w-3.5" />
-            Add Lead
-          </Link>
-          <Link to="/leads/bulk" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Bulk</span> Import
-          </Link>
-          <Link to="/leads/assign" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            Assign
-          </Link>
-          <Link to="/leads/assignment-history" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-            <History className="h-3.5 w-3.5" />
-            History
-          </Link>
-        </div>
-      </div>
-
+    <div className="space-y-4 max-w-3xl mx-auto">
       <form onSubmit={handleSubmit} className="space-y-4">
         <Card className="border-0 card-elevated">
           <CardContent className="p-5 space-y-5">

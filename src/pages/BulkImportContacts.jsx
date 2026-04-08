@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import api from '@/lib/axios';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,8 +10,8 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-    ArrowLeft, FileSpreadsheet, Upload, DownloadCloud, CheckCircle2, XCircle,
-    AlertCircle, Loader2, Users, Contact,
+    FileSpreadsheet, Upload, DownloadCloud, CheckCircle2, XCircle,
+    AlertCircle, Loader2, Contact,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -124,32 +124,7 @@ const BulkImportContacts = () => {
     const isDone = !!result;
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate('/all-contacts')} className="rounded-xl">
-                    <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div>
-                    <h1 className="text-lg font-semibold text-slate-800">Bulk Import Contacts</h1>
-                    <p className="text-xs text-muted-foreground">Upload an Excel file with name & phone columns</p>
-                </div>
-            </div>
-
-            {/* Sub-page tabs */}
-            <div className="flex items-center gap-1 border-b border-border/50 pb-0">
-                <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl">
-                    <Link to="/all-contacts" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors">
-                        <Users className="h-3.5 w-3.5" />
-                        All Contacts
-                    </Link>
-                    <Link to="/all-contacts/bulk" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60">
-                        <FileSpreadsheet className="h-3.5 w-3.5" />
-                        Bulk Import
-                    </Link>
-                </div>
-            </div>
-
+        <div className="space-y-4 max-w-4xl mx-auto">
             {/* Step 1: Template */}
             <Card className="card-elevated border-0">
                 <CardContent className="py-5 px-5">

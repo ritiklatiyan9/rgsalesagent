@@ -1,11 +1,11 @@
-// Generate PNG icons from SVG for Capacitor Android
+// Generate PNG icons from source image for Capacitor Android
 import sharp from 'sharp';
-import { readFileSync, mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const svgInput = readFileSync(join(__dirname, 'public', 'icon.svg'));
+const sourceImage = join(__dirname, 'src', 'assets', 'home.png');
 
 const icons = [
   { name: 'public/icon-192.png', size: 192 },
@@ -21,7 +21,7 @@ for (const { name, size } of icons) {
   const outPath = join(__dirname, name);
   const dir = dirname(outPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  await sharp(svgInput).resize(size, size).png().toFile(outPath);
+  await sharp(sourceImage).resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } }).png().toFile(outPath);
   console.log(`✓ ${name} (${size}x${size})`);
 }
 

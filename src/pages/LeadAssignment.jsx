@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,8 +17,8 @@ import api from '@/lib/axios';
 import { invalidateCache } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import {
-    Search, Users, UserPlus, List, ArrowRightLeft,
-    ChevronLeft, ChevronRight, Loader2, History, CheckCircle2, FileSpreadsheet,
+    Search, Users, ArrowRightLeft,
+    ChevronLeft, ChevronRight, Loader2, CheckCircle2,
 } from 'lucide-react';
 
 const STATUS_OPTIONS = [
@@ -159,43 +158,7 @@ const LeadAssignment = () => {
     };
 
     return (
-        <div className="space-y-5">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-md">
-                        <ArrowRightLeft className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-semibold text-slate-800">Assign My Leads</h1>
-                        <p className="text-xs text-muted-foreground">Transfer your leads to other agents, team heads, or admins</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Sub-page tabs */}
-            <div className="-mx-1 px-1 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
-                <div className="flex items-center gap-1 border-b border-border/50 pb-0 min-w-max">
-                    <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl">
-                        <Link to="/leads" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <List className="h-3.5 w-3.5" /> My Leads
-                        </Link>
-                        <Link to="/leads/add" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <UserPlus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add</span> Lead
-                        </Link>
-                        <Link to="/leads/bulk" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <FileSpreadsheet className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bulk</span> Import
-                        </Link>
-                        <Link to="/leads/assign" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60 whitespace-nowrap">
-                            <ArrowRightLeft className="h-3.5 w-3.5" /> Assign
-                        </Link>
-                        <Link to="/leads/assignment-history" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <History className="h-3.5 w-3.5" /> History
-                        </Link>
-                    </div>
-                </div>
-            </div>
-
+        <div className="space-y-4">
             {/* Assignment Panel */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 {/* Left - Lead Selection */}

@@ -33,6 +33,23 @@ const CATEGORY_COLORS = {
 };
 
 const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'BOOKED', 'LOST'];
+
+const TONE_HEX = {
+  sky: '#0ea5e9', orange: '#f97316', emerald: '#10b981',
+  rose: '#f43f5e', amber: '#f59e0b', violet: '#8b5cf6',
+};
+const TONE_ICON_CLS = {
+  sky: 'bg-sky-100 text-sky-600', orange: 'bg-orange-100 text-orange-600',
+  emerald: 'bg-emerald-100 text-emerald-600', rose: 'bg-rose-100 text-rose-600',
+  amber: 'bg-amber-100 text-amber-600', violet: 'bg-violet-100 text-violet-600',
+};
+
+const FlowCurve = ({ color = '#0ea5e9', opacity = 0.13 }) => (
+  <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="48" viewBox="0 0 400 48" preserveAspectRatio="none">
+    <path d="M0,28 C50,12 110,42 180,24 C250,6 320,38 400,18 L400,48 L0,48 Z" fill={color} opacity={opacity} />
+    <path d="M0,34 C70,18 140,44 220,28 C300,12 360,36 400,26 L400,48 L0,48 Z" fill={color} opacity={opacity * 0.6} />
+  </svg>
+);
 const LEAD_STATUS_META = {
   NEW:         { label: 'New',         color: 'bg-sky-500',     light: 'bg-sky-50',     text: 'text-sky-700' },
   CONTACTED:   { label: 'Contacted',   color: 'bg-blue-500',    light: 'bg-blue-50',    text: 'text-blue-700' },
@@ -162,6 +179,8 @@ const Dashboard = () => {
   const todayDateStr = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
 
   const callMetrics = callAnalytics?.metrics ?? {};
   const totalCalls = callMetrics?.total_calls ?? 0;
@@ -266,273 +285,123 @@ const Dashboard = () => {
   }, [callAnalytics]);
 
   return (
-    <div className="space-y-4 sm:space-y-6 pt-1">
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] gap-3 sm:gap-4">
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-cyan-400 bg-linear-to-br from-cyan-50 via-white to-sky-50/60 p-4 sm:p-5 text-card-foreground shadow-[0_20px_48px_-30px_rgba(8,145,178,0.45)]">
-          <div className="pointer-events-none absolute -top-12 -right-14 h-44 w-44 rounded-full bg-cyan-200/45 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-12 -left-10 h-40 w-40 rounded-full bg-indigo-200/35 blur-3xl" />
-
-          <div className="relative flex items-start justify-between gap-3">
-            <div>
-              <div className="inline-flex items-center rounded-full border border-cyan-200/70 bg-white/85 px-2.5 py-1">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-700/85 font-medium">{roleLabel} Dashboard</p>
-              </div>
-              <h1 className="mt-2 text-[22px] sm:text-[26px] leading-tight font-normal text-slate-900">
-                Good Morning, <span className="font-medium text-cyan-800">{user?.name?.split(' ')[0] || roleLabel}</span>
-              </h1>
-              <p className="mt-1.5 text-xs text-slate-600 flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-cyan-600" />
-                {todayDateStr}
-              </p>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 rounded-2xl border border-cyan-200/70 bg-white/85 px-2.5 py-2 shadow-sm">
-              <div className="min-w-17 rounded-xl border border-cyan-100 bg-cyan-50/75 px-2 py-1.5 text-center">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-cyan-700/80">New</p>
-                <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.NEW)}</p>
-              </div>
-              <div className="min-w-17 rounded-xl border border-amber-100 bg-amber-50/80 px-2 py-1.5 text-center">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-amber-700/85">Hot</p>
-                <p className="mt-0.5 text-base font-semibold text-slate-800 tabular-nums">{fmtNum(pipeline.INTERESTED)}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] gap-2.5">
-            <div className="rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3.5 shadow-[0_12px_24px_-18px_rgba(15,23,42,0.35)]">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Total Leads</p>
-              <div className="mt-1 flex items-end justify-between gap-2">
-                <p className="text-[34px] leading-none font-semibold tabular-nums text-slate-900">{fmtNum(leadTotal)}</p>
-                <p className="text-[11px] text-slate-500">Across assigned pipeline</p>
-              </div>
-              <div className="mt-2.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full rounded-full bg-linear-to-r from-cyan-400 via-sky-400 to-indigo-400" style={{ width: `${Math.min(100, Math.max(8, leadTotal ? ((pipeline.NEW + pipeline.INTERESTED) / leadTotal) * 100 : 8))}%` }} />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-cyan-200/70 bg-linear-to-br from-cyan-50/90 to-white/85 px-3.5 py-3">
-              <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-700/85">Focus Today</p>
-              <div className="mt-2 flex items-center justify-between text-[12px] text-slate-700">
-                <span>New Leads</span>
-                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(pipeline.NEW)}</span>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-[12px] text-slate-700">
-                <span>Hot Leads</span>
-                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(pipeline.INTERESTED)}</span>
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-[12px] text-slate-700 sm:hidden">
-                <span>Followups Missed</span>
-                <span className="font-semibold tabular-nums text-slate-900">{fmtNum(followupCounts?.missed ?? 0)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative mt-4 grid grid-cols-3 gap-2">
-            <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white border border-slate-900 hover:bg-slate-800 text-[11px] font-medium min-w-0 shadow-sm">
-              <Plus className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Add Lead</span>
-            </Button>
-            <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white text-amber-700 border border-amber-200 hover:bg-amber-50 text-[11px] font-medium min-w-0 shadow-sm">
-              <Clock className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Tasks</span>
-            </Button>
-            <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white text-cyan-700 border border-cyan-200 hover:bg-cyan-50 text-[11px] font-medium min-w-0 shadow-sm">
-              <Users className="h-3.5 w-3.5 mr-1 shrink-0" /> <span className="truncate">Contacts</span>
-            </Button>
-          </div>
-        </div>
-
-        <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-violet-100/55 bg-linear-to-br from-violet-200/70 via-white to-fuchsia-50/55 p-3 sm:p-4 md:p-5 shadow-[0_10px_24px_-18px_rgba(76,29,149,0.26)] sm:shadow-[0_20px_40px_-24px_rgba(76,29,149,0.3)] space-y-3 sm:space-y-4 text-card-foreground">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-violet-200/45 to-transparent" />
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.14em] text-violet-700/80">Quick Find</p>
-            <p className="text-sm font-medium text-slate-800 mt-0.5">Search leads and jump to category</p>
-          </div>
-
-          <LeadSearchWidget />
-
-          <div className="flex items-center gap-2">
-            <select
-              value={browseCat}
-              onChange={(e) => setBrowseCat(e.target.value)}
-              className="h-10 sm:h-11 w-full text-sm rounded-xl bg-white border border-violet-200/55 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-violet-300/60"
-            >
-              <option value="ALL">All Categories</option>
-              {LEAD_CATEGORY_VALUES.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-            <Button
-              size="icon"
-              className="h-10 w-10 rounded-xl bg-linear-to-r from-violet-300 to-indigo-200 hover:from-violet-300 hover:to-indigo-300 text-violet-900 border border-violet-300/50"
-              onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:gap-2.5 mt-1 sm:mt-0">
-            <button onClick={() => navigate('/calls/analytics')} className="rounded-xl sm:rounded-2xl border border-sky-400/55 bg-sky-50/70 p-2.5 sm:p-3 text-left hover:bg-sky-50 shadow-sm transition-all">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Calls</p>
-              <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(totalCalls)}</p>
-            </button>
-            <button onClick={() => navigate('/calls/missed-followups')} className="rounded-xl sm:rounded-2xl border border-rose-400/55 bg-rose-50/70 p-2.5 sm:p-3 text-left hover:bg-rose-50 shadow-sm transition-all">
-              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Missed</p>
-              <p className="mt-0.5 text-lg sm:text-xl font-semibold text-slate-800">{fmtNum(followupCounts?.missed ?? 0)}</p>
-            </button>
-          </div>
-        </div>
+    <div className="space-y-5 pb-6">
+      {/* ── Greeting ── */}
+      <div>
+        <p className="text-[11px] text-slate-400 font-medium tracking-wide">{todayDateStr}</p>
+        <h1 className="text-[22px] sm:text-2xl font-semibold text-slate-900 mt-0.5 leading-snug">
+          {greeting},{' '}
+          <span className="text-cyan-700">{user?.name?.split(' ')[0] || roleLabel}</span>
+        </h1>
+        <span className="mt-1.5 inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500 font-medium">
+          {roleLabel} Dashboard
+        </span>
       </div>
 
-      {/* Mobile-first Snapshot */}
-      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-sky-200/60 bg-linear-to-br from-sky-50 via-white to-cyan-50 px-3 py-3.5 sm:px-4 sm:py-4.5 shadow-[0_18px_40px_-24px_rgba(14,116,144,0.28)]">
-        <div className="pointer-events-none absolute -top-14 -right-16 h-40 w-40 rounded-full bg-cyan-300/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-16 -left-14 h-44 w-44 rounded-full bg-indigo-200/35 blur-3xl" />
-
-        <div className="relative flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.16em] text-sky-800/80 font-semibold">Daily Snapshot</p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-900">Key numbers in one place</p>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 rounded-full px-3 text-[11px] text-sky-700 hover:bg-sky-100 hover:text-sky-900"
-            onClick={() => navigate('/calls/analytics')}
+      {/* ── Quick Actions ── */}
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-medium shadow-sm">
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Lead
+        </Button>
+        <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white text-amber-700 border border-amber-200 hover:bg-amber-50 text-[11px] font-medium shadow-sm">
+          <Clock className="h-3.5 w-3.5 mr-1" /> Tasks
+        </Button>
+        <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white text-cyan-700 border border-cyan-200 hover:bg-cyan-50 text-[11px] font-medium shadow-sm">
+          <Users className="h-3.5 w-3.5 mr-1" /> Contacts
+        </Button>
+      </div>
+      
+      {/* ── Quick Find ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 p-4 shadow-sm">
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-slate-800">Quick Find</p>
+          <p className="text-[11px] text-slate-400">Search leads or browse by category</p>
+        </div>
+        <LeadSearchWidget />
+        <div className="flex items-center gap-2 mt-3">
+          <select
+            value={browseCat}
+            onChange={(e) => setBrowseCat(e.target.value)}
+            className="h-10 w-full text-sm rounded-xl bg-slate-50 border border-slate-200 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-cyan-200"
           >
-            Full analytics <ArrowRight className="h-3 w-3 ml-1" />
+            <option value="ALL">All Categories</option>
+            {LEAD_CATEGORY_VALUES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <Button
+            size="icon"
+            className="h-10 w-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shrink-0"
+            onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
+          >
+            <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
-
-        {loading ? (
-          <div className="relative mt-3.5 space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full rounded-xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="relative mt-3.5">
-            <div className="sm:hidden space-y-2.5">
-              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden snap-x snap-mandatory">
-                {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
-                  <button
-                    key={key}
-                    className="min-w-[44%] snap-start rounded-xl border border-sky-200/70 bg-white/95 px-3 py-3 text-left hover:bg-white transition-all shadow-[0_10px_22px_-16px_rgba(15,23,42,0.4)]"
-                    onClick={() => navigate(nav)}
-                  >
-                    <p className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 truncate">{label}</p>
-                    <p className="mt-2 text-2xl leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {snapshotRows.slice(3).map(({ key, label, value, nav, icon: Icon, tone }) => {
-                  const toneStyles = {
-                    rose: 'bg-rose-100/90 text-rose-700 border-rose-200/90',
-                    teal: 'bg-emerald-100/90 text-emerald-700 border-emerald-200/90',
-                    orange: 'bg-orange-100/90 text-orange-700 border-orange-200/90',
-                    amber: 'bg-amber-100/90 text-amber-700 border-amber-200/90',
-                    sky: 'bg-sky-100/90 text-sky-700 border-sky-200/90',
-                    emerald: 'bg-emerald-100/90 text-emerald-700 border-emerald-200/90',
-                  };
-                  const iconClasses = toneStyles[tone] || 'bg-slate-100 text-slate-700 border-slate-200';
-
-                  return (
-                    <button
-                      key={key}
-                      className="rounded-xl border border-sky-200/65 bg-white/95 px-2.5 py-2.5 text-left hover:bg-white transition-all shadow-[0_10px_20px_-16px_rgba(15,23,42,0.4)]"
-                      onClick={() => navigate(nav)}
-                    >
-                      <div className={`h-7 w-7 rounded-lg border flex items-center justify-center ${iconClasses}`}>
-                        <Icon className="h-3.5 w-3.5" />
-                      </div>
-                      <p className="mt-2 text-[11px] font-semibold text-slate-800 truncate">{label}</p>
-                      <p className="mt-1 text-lg leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="hidden sm:grid grid-cols-1 lg:grid-cols-5 gap-2.5 sm:gap-3">
-              <div className="lg:col-span-2 space-y-2.5">
-                {snapshotRows.slice(0, 3).map(({ key, label, value, nav }) => (
-                  <button
-                    key={key}
-                    className="w-full rounded-xl border border-sky-200/70 bg-white/90 px-3 py-3 text-left hover:bg-white hover:border-sky-300/80 transition-all shadow-[0_10px_22px_-16px_rgba(15,23,42,0.4)]"
-                    onClick={() => navigate(nav)}
-                  >
-                    <p className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 truncate">{label}</p>
-                    <p className="mt-2 text-2xl leading-none font-bold tabular-nums text-slate-900">{fmtNum(value)}</p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {snapshotRows.slice(3).map(({ key, label, hint, value, nav, icon: Icon, tone }) => {
-                  const toneStyles = {
-                    rose: 'bg-rose-100/85 text-rose-700 border-rose-200/80',
-                    teal: 'bg-emerald-100/85 text-emerald-700 border-emerald-200/80',
-                    orange: 'bg-orange-100/85 text-orange-700 border-orange-200/80',
-                    amber: 'bg-amber-100/85 text-amber-700 border-amber-200/80',
-                    sky: 'bg-sky-100/85 text-sky-700 border-sky-200/80',
-                    emerald: 'bg-emerald-100/85 text-emerald-700 border-emerald-200/80',
-                  };
-                  const iconClasses = toneStyles[tone] || 'bg-slate-100 text-slate-700 border-slate-200';
-
-                  return (
-                    <button
-                      key={key}
-                      className="rounded-xl border border-sky-200/65 bg-white/92 px-3 py-2.5 text-left hover:bg-white hover:border-sky-300/80 transition-all shadow-[0_10px_20px_-16px_rgba(15,23,42,0.4)]"
-                      onClick={() => navigate(nav)}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className={`h-8 w-8 rounded-lg border flex items-center justify-center shrink-0 ${iconClasses}`}>
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-slate-900 truncate">{label}</p>
-                            <p className="text-lg font-bold tabular-nums text-slate-900 leading-none">{fmtNum(value)}</p>
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-1 truncate">{hint}</p>
-                        </div>
-                        <ArrowRight className="h-3.5 w-3.5 text-slate-300 shrink-0" />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
+        <FlowCurve color="#8b5cf6" opacity={0.07} />
       </div>
 
-      {/* Today's Follow-ups & Analytics Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's Follow-ups */}
-        <Card className="card-elevated relative overflow-hidden border border-violet-100/55 bg-linear-to-b from-violet-50/45 to-white shadow-[0_12px_28px_-18px_rgba(109,40,217,0.24)] sm:shadow-[0_16px_34px_-24px_rgba(109,40,217,0.28)] flex flex-col">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-linear-to-b from-violet-200/35 to-transparent" />
-          <CardHeader className="relative pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-transparent">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+      {/* ── Stat Cards with Flow Curves ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {snapshotRows.slice(0, 4).map((row) => {
+          const Icon = row.icon;
+          return (
+            <div
+              key={row.key}
+              onClick={() => navigate(row.nav)}
+              className="relative overflow-hidden rounded-xl bg-white border border-slate-100 p-3 pb-12 cursor-pointer active:scale-95 transition-all duration-200 shadow-sm hover:shadow-md hover:border-slate-200 group"
+            >
+              {/* Top accent bar */}
+              <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${
+                row.tone === 'sky' ? 'from-sky-400 to-sky-500' :
+                row.tone === 'orange' ? 'from-orange-400 to-orange-500' :
+                row.tone === 'emerald' ? 'from-emerald-400 to-emerald-500' :
+                row.tone === 'rose' ? 'from-rose-400 to-rose-500' :
+                'from-amber-400 to-amber-500'
+              }`} />
+              
+              {/* Icon */}
+              <div className={`h-8 w-8 rounded-lg flex items-center justify-center transition-transform duration-200 group-hover:scale-110 ${TONE_ICON_CLS[row.tone]}`}>
+                <Icon className="h-4 w-4" />
+              </div>
+              
+              {/* Number */}
+              <p className="text-[22px] font-bold text-slate-900 mt-2.5 leading-none">
+                {loading ? <Skeleton className="h-6 w-12 rounded" /> : fmtNum(row.value)}
+              </p>
+              
+              {/* Label */}
+              <p className="text-xs font-semibold text-slate-700 mt-1">{row.label}</p>
+              
+              {/* Hint */}
+              <p className="text-[9px] text-slate-400 mt-0.5">{row.hint}</p>
+              
+              {/* Flow Curve */}
+              <FlowCurve color={TONE_HEX[row.tone]} opacity={0.1} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Schedule + Charts ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Today's Schedule */}
+        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
               <BellRing className="h-4 w-4 text-violet-600" />
-              Today's Schedule
+              <p className="text-sm font-semibold text-slate-800">Today's Schedule</p>
               {todayFollowups.length > 0 && (
-                <Badge className="ml-1 h-5 px-1.5 text-[10px] bg-violet-100 text-violet-700 border-none">
+                <Badge className="h-5 px-1.5 text-[10px] bg-violet-100 text-violet-700 border-none">
                   {todayFollowups.length}
                 </Badge>
               )}
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/reminders')}
-              className="text-[11px] h-7 text-violet-700 hover:bg-violet-100"
-            >
-              Manage all <ArrowRight className="h-3 w-3 ml-1" />
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/reminders')} className="text-[11px] h-7 text-violet-700 hover:bg-violet-50">
+              View all <ArrowRight className="h-3 w-3 ml-1" />
             </Button>
-          </CardHeader>
-          <CardContent className="relative p-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-100">
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-96">
               {loading ? (
                 <div className="px-5 py-4 space-y-4">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -547,16 +416,14 @@ const Dashboard = () => {
                 </div>
               ) : todayFollowups.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center py-12 px-6 text-center">
-                  <div className="h-16 w-16 rounded-full bg-emerald-50 flex items-center justify-center mb-4">
-                    <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                  <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
+                    <CheckCircle2 className="h-7 w-7 text-emerald-500" />
                   </div>
-                  <p className="text-sm font-semibold text-foreground">All caught up!</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-50">
-                    No pending follow-ups for today.
-                  </p>
+                  <p className="text-sm font-semibold text-slate-800">All caught up!</p>
+                  <p className="text-xs text-slate-400 mt-1">No pending follow-ups today.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-violet-100/60">
+                <div className="divide-y divide-slate-100">
                   {todayFollowups.slice(0, 10).map((f) => {
                     const scheduledDate = f.scheduled_at ? new Date(f.scheduled_at) : null;
                     const isOverdue = scheduledDate ? scheduledDate < new Date() : false;
@@ -574,8 +441,8 @@ const Dashboard = () => {
                     return (
                       <div
                         key={f.id}
-                        className={`group flex items-start gap-3 px-5 py-4 transition-all hover:bg-slate-100/70 ${
-                          isOverdue ? 'bg-slate-100/70' : ''
+                        className={`group flex items-start gap-3 px-4 py-3.5 transition-colors hover:bg-slate-50 ${
+                          isOverdue ? 'bg-rose-50/40' : ''
                         }`}
                       >
                         <div className={`h-10 w-10 rounded-xl flex flex-col items-center justify-center shrink-0 border ${
@@ -590,7 +457,7 @@ const Dashboard = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                            <p className="text-sm font-semibold text-slate-800 truncate">
                               {f.lead_name || 'Unnamed Lead'}
                             </p>
                             <Badge variant="outline" className={`text-[9px] px-1.5 py-0 rounded-md font-medium ${typeColors[f.followup_type] || typeColors.OTHER}`}>
@@ -600,20 +467,20 @@ const Dashboard = () => {
                               <Badge variant="outline" className="text-[8px] h-4 px-1 py-0 bg-slate-200 text-slate-800 border-slate-300/50">LATE</Badge>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-muted-foreground">
+                          <div className="flex items-center gap-3">
                             {timeStr && (
-                              <span className="text-[11px] font-medium flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded text-indigo-700">
+                              <span className="text-[11px] font-medium flex items-center gap-1 text-slate-500">
                                 <Clock className="h-3 w-3" /> {timeStr}
                               </span>
                             )}
                             {f.lead_phone && (
-                              <a href={`tel:${f.lead_phone}`} className="text-[11px] font-medium flex items-center gap-1 hover:text-slate-800">
+                              <a href={`tel:${f.lead_phone}`} className="text-[11px] font-medium flex items-center gap-1 text-slate-400 hover:text-slate-600">
                                 <Phone className="h-3 w-3" /> {f.lead_phone}
                               </a>
                             )}
                           </div>
                           {f.notes && (
-                            <p className="text-[11px] text-muted-foreground/80 mt-1.5 bg-white/70 p-1.5 rounded-lg border border-indigo-100/55">
+                            <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2">
                               {f.notes}
                             </p>
                           )}
@@ -622,7 +489,7 @@ const Dashboard = () => {
                           <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 rounded-lg bg-emerald-200 text-emerald-800 hover:bg-emerald-300 transition-all shadow-sm"
+                            className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all"
                             onClick={() => completeFollowup(f.id)}
                             disabled={isCompleting}
                           >
@@ -631,7 +498,7 @@ const Dashboard = () => {
                           <Button
                             size="icon"
                             variant="secondary"
-                            className="h-8 w-8 rounded-lg bg-amber-200 text-amber-800 hover:bg-amber-300 transition-all shadow-sm"
+                            className="h-8 w-8 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all"
                             onClick={() => snoozeFollowup(f.id)}
                             disabled={isCompleting}
                           >
@@ -644,29 +511,30 @@ const Dashboard = () => {
                 </div>
               )}
             </ScrollArea>
-          </CardContent>
-        </Card>
+          </div>
+          <FlowCurve color="#8b5cf6" opacity={0.08} />
+        </div>
 
-        {/* Analytics & Pipeline */}
-        <div className="flex flex-col gap-6">
-          {/* Calls Trend Chart */}
-          <Card className="card-elevated border border-sky-100/55 bg-linear-to-b from-sky-50/35 to-white shadow-[0_16px_34px_-24px_rgba(14,116,144,0.35)]">
-            <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+        {/* Charts & Pipeline */}
+        <div className="flex flex-col gap-4">
+          {/* Call Analytics */}
+          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-sky-600" />
-                Call Analytics Trend
-              </CardTitle>
-              <span className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-widest">Last 30 Days</span>
-            </CardHeader>
-            <CardContent className="pt-6">
+                <p className="text-sm font-semibold text-slate-800">Call Analytics</p>
+              </div>
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">30 Days</span>
+            </div>
+            <div className="px-4 pt-4 pb-2">
               {loading ? (
-                <Skeleton className="h-50 w-full rounded-2xl" />
+                <Skeleton className="h-48 w-full rounded-xl" />
               ) : callTrendData.length === 0 ? (
-                <div className="h-50 flex items-center justify-center text-sm text-muted-foreground bg-slate-50 rounded-2xl border border-dashed">
+                <div className="h-48 flex items-center justify-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                   No trend data available
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={200}>
                   <AreaChart data={callTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="callsGradient" x1="0" y1="0" x2="0" y2="1">
@@ -674,7 +542,7 @@ const Dashboard = () => {
                         <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#dbeafe" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis 
                       dataKey="date" 
                       tick={{ fontSize: 9, fontWeight: 600, fill: '#64748b' }} 
@@ -688,31 +556,30 @@ const Dashboard = () => {
                       tickLine={false} 
                     />
                     <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #dbeafe', boxShadow: '0 12px 24px -10px rgba(14,116,144,0.25)', fontSize: '11px', fontWeight: 'bold', background: '#f8fafc' }} 
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 8px 20px -8px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 600, background: '#fff' }} 
                     />
                     <Area 
                       type="monotone" 
                       dataKey="calls" 
                       stroke="#0284c7" 
-                      strokeWidth={3} 
+                      strokeWidth={2.5} 
                       fill="url(#callsGradient)" 
-                      animationDuration={1500}
+                      animationDuration={1200}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
-            </CardContent>
-          </Card>
+            </div>
+            <FlowCurve color="#0ea5e9" opacity={0.08} />
+          </div>
 
-          {/* Lead Funnel Summary */}
-           <Card className="card-elevated border border-emerald-100/55 bg-linear-to-b from-emerald-50/30 to-white shadow-[0_16px_34px_-24px_rgba(5,150,105,0.25)]">
-             <CardHeader className="pb-3 border-b border-border/20 bg-white/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Target className="h-4 w-4 text-emerald-600" />
-                Pipeline Performance
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-5 space-y-4">
+          {/* Pipeline */}
+          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Target className="h-4 w-4 text-emerald-600" />
+              <p className="text-sm font-semibold text-slate-800">Pipeline</p>
+            </div>
+            <div className="space-y-4">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-lg" />)
               ) : (
@@ -727,12 +594,12 @@ const Dashboard = () => {
                     return (
                       <div key={item.status} className="space-y-1.5 group cursor-pointer" onClick={() => navigate(`/leads?status=${item.status}`)}>
                         <div className="flex items-center justify-between text-[11px] font-medium">
-                          <span className="flex items-center gap-1.5 text-muted-foreground group-hover:text-foreground">
+                          <span className="flex items-center gap-1.5 text-slate-500 group-hover:text-slate-700 transition-colors">
                             <item.icon className="h-3 w-3" /> {item.label}
                           </span>
-                          <span className="text-foreground">{count}</span>
+                          <span className="text-slate-800 font-bold">{count}</span>
                         </div>
-                        <div className="h-2 w-full bg-emerald-200/70 rounded-full overflow-hidden">
+                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div 
                             className={`h-full ${item.color} rounded-full transition-all duration-700 shadow-sm`} 
                             style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }} 
@@ -743,153 +610,11 @@ const Dashboard = () => {
                   })}
                 </>
               )}
-            </CardContent>
-          </Card>
+            </div>
+            <FlowCurve color="#10b981" opacity={0.08} />
+          </div>
         </div>
       </div>
-
-      {/* Reminders Status Chart */}
-      {remindersStatusData.length > 0 && (
-        <Card className="card-elevated border border-orange-100/55 bg-linear-to-b from-orange-50/30 to-white shadow-[0_16px_34px_-24px_rgba(194,65,12,0.2)]">
-          <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
-              <Clock className="h-4 w-4 text-orange-600" />
-              Follow-up Health
-            </CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/reminders')}
-              className="text-[11px] h-7 text-emerald-600 hover:bg-emerald-50"
-            >
-              Analytics <ArrowRight className="h-3 w-3 ml-1" />
-            </Button>
-          </CardHeader>
-          <CardContent className="pt-6">
-            {loading ? (
-              <Skeleton className="h-55 w-full rounded-2xl" />
-            ) : (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
-                <ResponsiveContainer width="100%" height={220} className="max-w-60">
-                  <PieChart>
-                    <Pie
-                      data={remindersStatusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {remindersStatusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} className="outline-none" />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: 'bold' }} 
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="grid grid-cols-2 sm:flex sm:flex-col gap-4">
-                  {remindersStatusData.map((d) => (
-                    <div key={d.name} className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: d.fill }} />
-                      <div className="space-y-0.5">
-                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{d.name}</p>
-                        <p className="text-sm font-semibold text-foreground">{d.value}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recent Leads */}
-      <Card className="card-elevated border border-violet-100/55 bg-linear-to-b from-violet-50/28 to-white shadow-[0_16px_34px_-24px_rgba(109,40,217,0.25)]">
-        <CardHeader className="pb-3 border-b border-border/20 flex flex-row items-center justify-between bg-white/40">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
-            <Users className="h-4 w-4 text-violet-600" />
-            Recent Prospects
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/leads/add')}
-            className="text-[11px] h-7 text-violet-700 hover:bg-violet-50"
-          >
-            <Plus className="h-3 w-3 mr-1" /> New Lead
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="px-6 py-4 space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-32 rounded" />
-                    <Skeleton className="h-3 w-20 rounded" />
-                  </div>
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                </div>
-              ))}
-            </div>
-          ) : recentLeads.length === 0 ? (
-            <div className="py-12 text-center">
-              <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-3">
-                <Users className="h-6 w-6 text-slate-300" />
-              </div>
-              <p className="text-sm font-medium text-foreground">No leads yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Start by adding your first prospect.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30">
-              {recentLeads.map((lead) => {
-                const meta = LEAD_STATUS_META[lead.status] ?? { label: lead.status, light: 'bg-slate-100', text: 'text-slate-600' };
-                const initials = (lead.name || 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                
-                return (
-                  <div 
-                    key={lead.id} 
-                    className="group flex items-center gap-4 px-6 py-3.5 hover:bg-indigo-50/70 transition-all cursor-pointer"
-                    onClick={() => navigate(`/leads/${lead.id}`)}
-                  >
-                    <div className="h-10 w-10 rounded-full bg-linear-to-br from-violet-300 to-indigo-300 flex items-center justify-center text-indigo-900 text-xs font-semibold shadow-sm ring-2 ring-white ring-offset-0 group-hover:scale-110 transition-transform">
-                      {initials}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate group-hover:text-slate-800 transition-colors">
-                        {lead.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                         <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
-                          <Phone className="h-2.5 w-2.5" /> {lead.phone || 'No phone'}
-                        </span>
-                        {lead.category && (
-                          <span className={`text-[9px] font-medium px-1.5 rounded uppercase border ${CATEGORY_COLORS[lead.category] || 'bg-slate-50 border-slate-100'}`}>
-                            {lead.category}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <Badge variant="outline" className={`text-[9px] px-2 py-0 border-none font-medium ${meta.light} ${meta.text}`}>
-                        {meta.label}
-                      </Badge>
-                      <span className="text-[9px] text-muted-foreground/60 font-medium">
-                        {lead.created_at ? format(new Date(lead.created_at), 'dd MMM') : ''}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 };

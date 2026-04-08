@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import { Input } from '@/components/ui/input';
@@ -53,6 +54,13 @@ const LeadSearchWidget = () => {
   const inputRef     = useRef(null);
   const containerRef = useRef(null);
   const debounceRef  = useRef(null);
+  const [dropPos,    setDropPos]   = useState({ top: 0, left: 0, width: 0 });
+
+  const measureDrop = useCallback(() => {
+    if (!containerRef.current) return;
+    const r = containerRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 6, left: r.left, width: r.width });
+  }, []);
 
   const doSearch = useCallback(async (q) => {
     try {
@@ -71,7 +79,7 @@ const LeadSearchWidget = () => {
     setOpen(true);
     if (query.length < 2) { setLeads([]); setLoading(false); return; }
     setLoading(true);
-    debounceRef.current = setTimeout(() => doSearch(query), 300);
+    debounceRef.current = setTimeout(() => doSearch(query), 150);
     return () => clearTimeout(debounceRef.current);
   }, [query, doSearch]);
 
@@ -84,6 +92,19 @@ const LeadSearchWidget = () => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    measureDrop();
+    const onScroll = () => measureDrop();
+    const onResize = () => measureDrop();
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [open, measureDrop]);
 
   const handleSelect = (lead) => {
     // Navigate to lead details or filtered leads list
@@ -154,8 +175,11 @@ const LeadSearchWidget = () => {
         )}
       </div>
 
-      {open && (
-        <div className="absolute z-50 top-full mt-2 w-full bg-white rounded-xl border border-border/50 shadow-2xl overflow-hidden max-h-96 overflow-y-auto">
+      {open && createPortal(
+        <div
+          style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
+          className="bg-white rounded-xl border border-slate-200 shadow-[0_8px_32px_rgba(0,0,0,0.16)] overflow-hidden max-h-80 overflow-y-auto"
+        >
           {query.length < 2 ? (
             <div className="flex items-center gap-2.5 px-4 py-3.5 text-xs text-muted-foreground">
               <Search className="h-3.5 w-3.5 shrink-0" />
@@ -215,7 +239,8 @@ const LeadSearchWidget = () => {
               })}
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

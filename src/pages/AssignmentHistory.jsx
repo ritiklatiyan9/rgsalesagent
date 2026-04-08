@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,8 +11,8 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import {
-    Search, UserPlus, List, ArrowRightLeft,
-    ChevronLeft, ChevronRight, History, ArrowRight, FileSpreadsheet,
+    Search,
+    ChevronLeft, ChevronRight, History, ArrowRight,
 } from 'lucide-react';
 
 const LEAD_STATUS_COLORS = {
@@ -61,43 +60,7 @@ const AssignmentHistory = () => {
     }, [searchQuery, fetchHistory]);
 
     return (
-        <div className="space-y-5">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-md">
-                        <History className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-semibold text-slate-800">Assignment History</h1>
-                        <p className="text-xs text-muted-foreground">Track your lead assignment changes</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Sub-page tabs */}
-            <div className="-mx-1 px-1 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
-                <div className="flex items-center gap-1 border-b border-border/50 pb-0 min-w-max">
-                    <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl">
-                        <Link to="/leads" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <List className="h-3.5 w-3.5" /> My Leads
-                        </Link>
-                        <Link to="/leads/add" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <UserPlus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add</span> Lead
-                        </Link>
-                        <Link to="/leads/bulk" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <FileSpreadsheet className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bulk</span> Import
-                        </Link>
-                        <Link to="/leads/assign" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                            <ArrowRightLeft className="h-3.5 w-3.5" /> Assign
-                        </Link>
-                        <Link to="/leads/assignment-history" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60 whitespace-nowrap">
-                            <History className="h-3.5 w-3.5" /> History
-                        </Link>
-                    </div>
-                </div>
-            </div>
-
+        <div className="space-y-4">
             {/* Search */}
             <Card className="card-elevated border-0">
                 <CardContent className="py-3 px-4">

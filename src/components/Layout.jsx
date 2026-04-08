@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 import Sidebar from './Sidebar';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, List, MoreHorizontal, MessageSquare } from 'lucide-react';
+import { Bell, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, MoreHorizontal, MessageSquare, House, PhoneCall, Grid2x2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
@@ -363,7 +363,7 @@ const LayoutBody = () => {
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="bg-white/80 backdrop-blur-lg shrink-0 z-20 border-b border-slate-100 shadow-sm sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <header className="bg-white/80 backdrop-blur-xl shrink-0 z-20 border-b border-slate-200/60 sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 md:px-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <h2 className="text-[15px] sm:text-[17px] font-bold text-slate-800 tracking-tight truncate">{pageTitle}</h2>
@@ -375,20 +375,134 @@ const LayoutBody = () => {
                   onClick={() => setNotifOpen((o) => !o)}
                   className={`h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-xl border transition-colors shrink-0
                   ${notifOpen
-                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
-                      : 'border-transparent text-slate-500 hover:text-indigo-600 hover:bg-slate-50 hover:border-slate-100'
+                      ? 'bg-slate-100 border-slate-200 text-slate-800'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 hover:border-slate-200'
                     }`}
                 >
                   <Bell className="h-4 w-4" strokeWidth={2.5} />
                   {totalNotificationCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none shadow-sm shadow-rose-200/80">
+                    <span className="absolute -top-1 -right-1 min-w-4.5 h-4.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none ring-2 ring-white">
                       {totalNotificationCount > 99 ? '99+' : totalNotificationCount}
                     </span>
                   )}
                 </button>
 
                 {notifOpen && (
-                  <div className="absolute right-0 top-[calc(100%+8px)] w-[calc(100vw-2rem)] sm:w-80 max-w-80 bg-white rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.18)] border border-slate-100 z-50 overflow-hidden">
+                  <>
+                    {/* Mobile: full-screen overlay */}
+                    <div className="sm:hidden fixed inset-0 bg-black/30 z-40" onClick={() => setNotifOpen(false)} />
+                    <div className="sm:hidden fixed inset-x-0 bottom-0 top-14 bg-white z-50 flex flex-col" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+                      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+                        <p className="text-base font-semibold text-slate-800">Notifications</p>
+                        <button onClick={() => setNotifOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                          <Bell className="h-5 w-5" />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto">
+                        <div className="px-4 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                              <MessageSquare className="h-4 w-4 text-rose-500" /> Unread Chats
+                            </p>
+                            <span className="text-xs text-rose-600 font-semibold">{chatUnreadTotal}</span>
+                          </div>
+                          {chatNotifications.length === 0 ? (
+                            <div className="text-sm text-slate-400 py-2">No unread messages</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {chatNotifications.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                                  onClick={() => { setNotifOpen(false); navigate('/chat'); }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                                      {item.unread > 99 ? '99+' : item.unread}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="px-4 py-3 border-t border-slate-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                              <PhoneMissed className="h-4 w-4 text-rose-500" /> Missed Calls
+                            </p>
+                            <span className="text-xs text-rose-600 font-semibold">{missedUnreadTotal}</span>
+                          </div>
+                          {missedCallNotifications.length === 0 ? (
+                            <div className="text-sm text-slate-400 py-2">No missed calls</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {missedCallNotifications.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                                  onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); navigate('/calls/missed'); }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                                    <span className="text-xs text-slate-400 shrink-0">{timeAgo(item.createdAt)}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {callsLoading ? (
+                          <div className="p-4 space-y-3">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                              <div key={i} className="flex items-center gap-3">
+                                <Skeleton className="h-8 w-8 rounded-lg" />
+                                <div className="flex-1 space-y-1">
+                                  <Skeleton className="h-4 w-28 rounded" />
+                                  <Skeleton className="h-3 w-20 rounded" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : calls.length > 0 && (
+                          <div className="border-t border-slate-100">
+                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600">Recent Calls</div>
+                            {calls.map((c) => {
+                              const meta = CALL_TYPE_ICON[c.call_type] ?? CALL_TYPE_ICON.OUTBOUND;
+                              const IconComp = meta.icon;
+                              return (
+                                <div
+                                  key={c.id}
+                                  className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50"
+                                  onClick={() => { setNotifOpen(false); startTransition(() => navigate(`/calls/lead/${c.lead_id}`)); }}
+                                >
+                                  <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                    <IconComp className={`h-4 w-4 ${meta.color}`} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-800 truncate">{c.lead_name || c.lead_phone || 'Unknown'}</p>
+                                    <p className="text-xs text-slate-400 truncate">{c.outcome_label || c.call_type?.toLowerCase()}</p>
+                                  </div>
+                                  <span className="text-[11px] text-slate-400 shrink-0">{timeAgo(c.call_start || c.created_at)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button className="w-full text-sm text-center py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50" onClick={() => { setNotifOpen(false); startTransition(() => navigate('/chat')); }}>Open Chat</button>
+                          <button className="w-full text-sm text-center py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50" onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); startTransition(() => navigate('/calls/missed')); }}>Missed Calls</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Desktop: dropdown */}
+                    <div className="hidden sm:block absolute right-0 top-[calc(100%+8px)] w-80 max-w-80 bg-white rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.18)] border border-slate-100 z-50 overflow-hidden">
                     <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                       <p className="text-sm font-semibold text-slate-800">Notifications</p>
                       <button
@@ -539,17 +653,18 @@ const LayoutBody = () => {
                         </button>
                       </div>
                     </div>
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
 
               <div className="relative" ref={profileRef}>
                 <button
                   onClick={() => setProfileOpen(o => !o)}
-                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center shadow-sm border ml-0.5 sm:ml-1 transition-colors shrink-0 overflow-hidden
+                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center border ml-0.5 sm:ml-1 transition-all shrink-0 overflow-hidden
                   ${profileOpen
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-indigo-50 border-indigo-100/50 text-indigo-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-200'
+                      : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-500 hover:shadow-md hover:shadow-indigo-200'
                     }`}
                   title={user?.name || 'Profile'}
                 >
@@ -610,7 +725,7 @@ const LayoutBody = () => {
         <BackgroundPermissionBanner />
 
         <main className="flex-1 min-h-0 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-white sm:bg-[#f8fafc]">
-          <div className="p-2 sm:p-5 md:p-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-10 max-w-7xl mx-auto">
+          <div className="p-2 sm:p-5 md:p-8 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-10 max-w-7xl mx-auto">
             <Suspense fallback={<PageSkeleton />}>
               <Outlet key={activeSiteId || 'no-site'} />
             </Suspense>
@@ -618,49 +733,107 @@ const LayoutBody = () => {
         </main>
       </div>
 
-      {/* Mobile floating dock navigation */}
+      {/* Mobile bottom tab bar with raised center Calls button */}
       <nav
         className={cn(
-          'md:hidden fixed bottom-2 left-0 right-0 z-30 px-3 transition-opacity duration-200',
+          'md:hidden fixed bottom-0 left-0 right-0 z-30 transition-opacity duration-150',
           openMobile ? 'opacity-0 pointer-events-none' : 'opacity-100'
         )}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <div className="mx-auto max-w-md rounded-[1.35rem] border border-slate-200/80 bg-white/90 backdrop-blur-md p-1.5 shadow-[0_12px_24px_-10px_rgba(0,0,0,0.15)]">
-          <div className="grid grid-cols-5 gap-1">
-            {[
-              { to: '/dashboard', icon: LayoutDashboard, label: 'Home', iconColor: 'text-indigo-600', activeBg: 'from-indigo-50/80 to-slate-50/50' },
-              { to: '/leads', icon: Users, label: 'Leads', iconColor: 'text-emerald-600', activeBg: 'from-emerald-50/80 to-slate-50/50' },
-              { to: '/all-contacts', icon: List, label: 'Contacts', iconColor: 'text-cyan-600', activeBg: 'from-cyan-50/80 to-slate-50/50' },
-              { to: '/calls/dialer', icon: Phone, label: 'Calls', iconColor: 'text-rose-600', activeBg: 'from-rose-50/80 to-slate-50/50' },
-            ].map(({ to, icon: Icon, label, iconColor, activeBg }) => {
-              const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to + '/')) || (to === '/leads' && pathname.startsWith('/leads'));
-              return (
-                <button
-                  key={to}
-                  onClick={() => navigate(to)}
-                  className={`rounded-xl px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 transition-all ${isActive
-                    ? `bg-linear-to-b ${activeBg} border border-slate-200/60 shadow-[0_4px_8px_-4px_rgba(0,0,0,0.1)]`
-                    : 'border border-transparent active:bg-slate-100'
-                    }`}
-                >
-                  <span className={`h-6 w-6 rounded-full grid place-items-center ${isActive ? 'bg-white shadow-sm' : 'bg-transparent'}`}>
-                    <Icon className={`h-4 w-4 ${iconColor} ${isActive ? 'opacity-100' : 'opacity-70'}`} strokeWidth={isActive ? 2.5 : 2.1} />
-                  </span>
-                  <span className={`text-[9px] leading-none font-medium ${isActive ? 'text-slate-800' : 'text-slate-500'}`}>{label}</span>
-                </button>
-              );
-            })}
-            <button
-              onClick={() => setOpenMobile(true)}
-              className="rounded-xl px-1 py-1.5 flex flex-col items-center justify-center gap-0.5 border border-transparent active:bg-slate-100 transition-all"
-            >
-              <span className="h-6 w-6 rounded-full grid place-items-center bg-transparent">
-                <MoreHorizontal className="h-4 w-4 text-violet-600 opacity-75" strokeWidth={2.1} />
-              </span>
-              <span className="text-[9px] leading-none font-medium text-slate-500">More</span>
-            </button>
+        {/* SVG notch cutout background */}
+        <div className="relative">
+          <svg className="absolute -top-5 left-0 w-full h-5 pointer-events-none" viewBox="0 0 390 20" preserveAspectRatio="none">
+            <path d="M0,20 L155,20 C160,20 165,15 170,8 C175,1 180,0 195,0 C210,0 215,1 220,8 C225,15 230,20 235,20 L390,20 L390,20 L0,20 Z" fill="white" />
+          </svg>
+
+          <div className="bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+            <div className="relative flex h-14 items-stretch">
+              {/* Left tabs: Home, Leads */}
+              {[
+                { to: '/dashboard', icon: House, label: 'Home' },
+                { to: '/leads', icon: Users, label: 'Leads' },
+              ].map(({ to, icon: Icon, label }) => {
+                const isActive = pathname === to || (to === '/leads' && pathname.startsWith('/leads'));
+                return (
+                  <button
+                    key={to}
+                    onClick={() => navigate(to)}
+                    className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 active:scale-90"
+                  >
+                    <div className="relative flex items-center justify-center">
+                      {isActive && <div className="absolute inset-0 h-8 w-8 -top-1.5 -left-1.5 rounded-full bg-indigo-500/15 blur-md" />}
+                      <Icon
+                        className={`relative h-5 w-5 transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}
+                        strokeWidth={isActive ? 2.4 : 1.8}
+                      />
+                    </div>
+                    <span className={`text-[9px] font-bold transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/* Center spacer for raised button */}
+              <div className="flex-1" />
+
+              {/* Right tabs: Contacts, More */}
+              {[
+                { to: '/all-contacts', icon: ContactRound, label: 'Contacts' },
+              ].map(({ to, icon: Icon, label }) => {
+                const isActive = pathname === to || pathname.startsWith(to + '/');
+                return (
+                  <button
+                    key={to}
+                    onClick={() => navigate(to)}
+                    className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 active:scale-90"
+                  >
+                    <div className="relative flex items-center justify-center">
+                      {isActive && <div className="absolute inset-0 h-8 w-8 -top-1.5 -left-1.5 rounded-full bg-indigo-500/15 blur-md" />}
+                      <Icon
+                        className={`relative h-5 w-5 transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}
+                        strokeWidth={isActive ? 2.4 : 1.8}
+                      />
+                    </div>
+                    <span className={`text-[9px] font-bold transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => setOpenMobile(true)}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 active:scale-90"
+              >
+                <Grid2x2 className="h-5 w-5 text-slate-500 transition-colors duration-150" strokeWidth={1.8} />
+                <span className="text-[9px] font-bold text-slate-500">More</span>
+              </button>
+            </div>
           </div>
+
+          {/* Raised center Calls button */}
+          {(() => {
+            const callsActive = pathname === '/calls/dialer' || pathname.startsWith('/calls/');
+            return (
+              <button
+                onClick={() => navigate('/calls/dialer')}
+                className="absolute left-1/2 -translate-x-1/2 -top-6 flex flex-col items-center active:scale-90 transition-transform duration-150"
+              >
+                <div className={`h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 ${
+                  callsActive
+                    ? 'bg-indigo-600 shadow-[0_4px_20px_rgba(99,102,241,0.5)]'
+                    : 'bg-slate-900 shadow-slate-400/30 hover:bg-slate-800'
+                }`}>
+                  <PhoneCall className="h-6 w-6 text-white" strokeWidth={2.2} />
+                </div>
+                <span className={`text-[9px] font-bold mt-0.5 transition-colors duration-150 ${callsActive ? 'text-indigo-600' : 'text-slate-500'}`}>
+                  Calls
+                </span>
+              </button>
+            );
+          })()}
         </div>
       </nav>
     </>

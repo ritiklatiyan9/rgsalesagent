@@ -42,6 +42,12 @@ export const useDialer = () => {
     return res?.sims || [];
   };
 
+  const getDeviceContacts = async () => {
+    if (!isNative()) return [];
+    const res = await Dialer.getDeviceContacts();
+    return res?.contacts || [];
+  };
+
   const onCallStateChanged = (callback) => {
     if (!isNative()) return noopHandle;
     return Dialer.addListener('callStateChanged', callback);
@@ -63,6 +69,7 @@ export const useDialer = () => {
     openDialer,
     getRecentCalls,
     getSIMInfo,
+    getDeviceContacts,
     onCallStateChanged,
     onCallConnected,
     onCallEnded,

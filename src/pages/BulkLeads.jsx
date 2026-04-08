@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import api from '@/lib/axios';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,9 +11,8 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-    ArrowLeft, FileSpreadsheet, Upload, DownloadCloud, CheckCircle2, XCircle,
-    AlertCircle, UserPlus, Loader2, ClipboardList, FileX2, RefreshCw, List,
-    ArrowRightLeft, History,
+    FileSpreadsheet, Upload, DownloadCloud, CheckCircle2, XCircle,
+    AlertCircle, Loader2, ClipboardList, FileX2, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -178,58 +177,19 @@ const BulkLeads = () => {
     const isDone = jobResult?.status === 'COMPLETED';
 
     return (
-        <div className="space-y-4 sm:space-y-5">
-            {/* Header */}
-            <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => navigate('/leads')} className="rounded-xl shrink-0 h-9 w-9">
-                    <ArrowLeft className="h-4 w-4" />
-                </Button>
-                <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-sm shrink-0">
-                        <FileSpreadsheet className="h-4.5 w-4.5 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                        <h1 className="text-base sm:text-lg font-semibold tracking-tight text-slate-800 leading-tight">Bulk Import Leads</h1>
-                        <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Upload Excel/CSV — processed in background</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Sub-page tabs */}
-            <div className="-mx-1 px-1 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
-                <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl min-w-max">
-                    <Link to="/leads" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                        <List className="h-3.5 w-3.5" /> My Leads
-                    </Link>
-                    <Link to="/leads/add" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                        <UserPlus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add</span> Lead
-                    </Link>
-                    <Link to="/leads/bulk" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60 whitespace-nowrap">
-                        <FileSpreadsheet className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Bulk</span> Import
-                    </Link>
-                    <Link to="/leads/assign" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                        <ArrowRightLeft className="h-3.5 w-3.5" /> Assign
-                    </Link>
-                    <Link to="/leads/assignment-history" className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap">
-                        <History className="h-3.5 w-3.5" /> History
-                    </Link>
-                </div>
-            </div>
-
+        <div className="space-y-4">
             {/* Step 1 — Download template */}
             <Card className="border-0 card-elevated">
                 <CardContent className="p-4 sm:p-5">
                     <div className="flex items-start gap-3">
-                        <div className="h-9 w-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
+                        <div className="h-6w-9 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
                             <DownloadCloud className="h-4.5 w-4.5 text-indigo-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-slate-800">Step 1 — Download the Template</p>
-                                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                                        Use our Excel template. <strong className="text-slate-700">name</strong> and <strong className="text-slate-700">phone</strong> are required. Other columns are optional.
-                                    </p>
+                                    <p className="text-sm font-semibold text-slate-800"> Download the Template</p>
+                                  
                                 </div>
                                 <Button
                                     variant="outline"
@@ -241,22 +201,7 @@ const BulkLeads = () => {
                                     <span className="hidden sm:inline">Download</span> Template
                                 </Button>
                             </div>
-                            <div className="flex flex-wrap gap-1.5 mt-3">
-                                {TEMPLATE_HEADERS.map(h => (
-                                    <Badge
-                                        key={h}
-                                        variant="outline"
-                                        className={cn(
-                                            'rounded-md text-[10px] font-mono px-1.5 py-0',
-                                            h.endsWith('*')
-                                                ? 'border-red-300 text-red-600 bg-red-50'
-                                                : 'border-slate-200 text-slate-500 bg-slate-50'
-                                        )}
-                                    >
-                                        {h}
-                                    </Badge>
-                                ))}
-                            </div>
+                         
                         </div>
                     </div>
                 </CardContent>

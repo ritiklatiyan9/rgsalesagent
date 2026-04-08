@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,11 +18,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import {
-    Search, Phone, Users, UserPlus, ChevronLeft, ChevronRight, Trash2,
-    Plus, Loader2, X, CalendarDays, FileSpreadsheet, PhoneOutgoing, Contact, History,
+    Search, Users, UserPlus, ChevronLeft, ChevronRight, Trash2,
+    Plus, Loader2, X, PhoneOutgoing, Pencil, RefreshCw, Smartphone,
 } from 'lucide-react';
+import { useDeviceContacts } from '@/hooks/useDeviceContacts';
 
 const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -32,6 +32,7 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
 
 const AllContacts = () => {
     const navigate = useNavigate();
+    const { synced, syncing, syncContacts, searchDeviceContacts, count: deviceCount } = useDeviceContacts();
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -50,6 +51,39 @@ const AllContacts = () => {
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Edit
+    const [editOpen, setEditOpen] = useState(false);
+    const [editTarget, setEditTarget] = useState(null);
+    const [editForm, setEditForm] = useState({ name: '', phone: '' });
+    const [editLoading, setEditLoading] = useState(false);
+    const [editError, setEditError] = useState('');
+
+    const openEdit = (contact) => {
+        setEditTarget(contact);
+        setEditForm({ name: contact.name || '', phone: contact.phone || '' });
+        setEditError('');
+        setEditOpen(true);
+    };
+
+    const handleEditContact = async () => {
+        if (!editForm.name.trim() || !editForm.phone.trim()) {
+            setEditError('Name and phone are required');
+            return;
+        }
+        setEditLoading(true);
+        setEditError('');
+        try {
+            await api.put(`/contacts/${editTarget.id}`, editForm);
+            toast.success('Contact updated');
+            setEditOpen(false);
+            fetchContacts(currentPage, searchQuery);
+        } catch (err) {
+            setEditError(err?.response?.data?.message || 'Failed to update contact');
+        } finally {
+            setEditLoading(false);
+        }
+    };
 
     // Call / convert
     const [callingId, setCallingId] = useState(null);
@@ -221,285 +255,108 @@ const AllContacts = () => {
     const allSelectedOnPage = contacts.length > 0 && contacts.every((c) => selectedContactIds.includes(c.id));
 
     return (
-        <div className="space-y-5">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-linear-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-md">
-                        <Contact className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-lg font-semibold text-slate-800">All Contacts</h1>
-                        <p className="text-xs text-muted-foreground">Raw contacts — call to convert to leads</p>
-                    </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
-                        disabled={shiftLoading || selectedContactIds.length === 0}
-                        onClick={() => handleShiftToCall()}
-                    >
-                        {shiftLoading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <PhoneOutgoing className="h-3.5 w-3.5 mr-1.5" />}
-                        Shift Selected ({selectedContactIds.length})
-                    </Button>
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
-                        disabled={shiftLoading || totalCount === 0}
-                        onClick={() => handleShiftToCall({ selectAllFiltered: true })}
-                    >
-                        {shiftLoading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Users className="h-3.5 w-3.5 mr-1.5" />}
-                        Shift All Filtered
-                    </Button>
-                    <Link to="/all-contacts/bulk">
-                        <Button variant="outline" size="sm" className="gap-1.5 h-9 text-xs rounded-xl w-full sm:w-auto">
-                            <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
-                            Bulk Import
+        <>
+            {/* Selection action bar */}
+            {selectedContactIds.length > 0 && (
+                <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5">
+                    <span className="text-xs text-indigo-700 font-medium">{selectedContactIds.length} selected</span>
+                    <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost"
+                            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+                            disabled={shiftLoading} onClick={() => handleShiftToCall()}>
+                            {shiftLoading
+                                ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mr-1" />
+                                : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />
+                            }
+                            Shift to Queue
                         </Button>
-                    </Link>
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-sm h-9 text-xs gap-1.5 rounded-xl flex-1 sm:flex-none"
-                        onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
-                        <Plus className="h-3.5 w-3.5" />
-                        Add Contact
-                    </Button>
-                </div>
-            </div>
-
-            {/* Sub-page tabs */}
-            <div className="flex items-center gap-1 border-b border-border/50 pb-0 overflow-x-auto">
-                <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl min-w-max">
-                    <Link to="/all-contacts" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60">
-                        <Users className="h-3.5 w-3.5" />
-                        All Contacts
-                    </Link>
-                    <Link to="/calls/dialer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors">
-                        <PhoneOutgoing className="h-3.5 w-3.5" />
-                        Dialer
-                    </Link>
-                    <Link to="/contacts/shift-to-call" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors">
-                        <PhoneOutgoing className="h-3.5 w-3.5" />
-                        Shift to Call
-                    </Link>
-                    <Link to="/calls/history" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors">
-                        <History className="h-3.5 w-3.5" />
-                        Call History
-                    </Link>
-                    <Link to="/all-contacts/bulk" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors">
-                        <FileSpreadsheet className="h-3.5 w-3.5" />
-                        Bulk Import
-                    </Link>
-                </div>
-            </div>
-
-            {/* Filters */}
-            <Card className="card-elevated border-0">
-                <CardContent className="py-3 px-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="relative flex-1 min-w-full sm:min-w-55 max-w-md">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                            <Input
-                                placeholder="Search by name or phone..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 pr-9 h-9 text-sm rounded-xl border-border/60 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50"
-                                autoComplete="off"
-                            />
-                            {isSearching && (
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                    <div className="h-3.5 w-3.5 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-                                </div>
-                            )}
-                            {!isSearching && searchQuery && (
-                                <button onClick={() => setSearchQuery('')}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" tabIndex={-1}>
-                                    <X className="h-3.5 w-3.5" />
-                                </button>
-                            )}
-                        </div>
-
-                        {searchQuery && !loading && (
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground ml-auto">
-                                <span className="inline-flex items-center gap-1 bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full border border-primary/15">
-                                    {totalCount} result{totalCount !== 1 ? 's' : ''}
-                                </span>
-                                <button onClick={() => setSearchQuery('')}
-                                    className="text-[11px] text-muted-foreground hover:text-destructive transition-colors underline underline-offset-2">
-                                    Clear
-                                </button>
-                            </div>
-                        )}
+                        <Button size="sm" variant="ghost"
+                            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+                            disabled={shiftLoading || totalCount === 0}
+                            onClick={() => handleShiftToCall({ selectAllFiltered: true })}>
+                            Shift All
+                        </Button>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            )}
+
+            {/* Search + Sync + Add */}
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                        placeholder={synced ? `Search DB + ${deviceCount} device contacts...` : 'Search by name or phone...'}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8 pr-8 h-8 text-xs rounded-lg"
+                        autoComplete="off"
+                    />
+                    {isSearching && (
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                            <div className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                        </div>
+                    )}
+                    {!isSearching && searchQuery && (
+                        <button onClick={() => setSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    )}
+                </div>
+                <Button size="sm" variant={synced ? 'outline' : 'secondary'}
+                    className={`h-8 text-xs gap-1 rounded-lg px-2.5 shrink-0 ${synced ? 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100' : ''}`}
+                    onClick={syncContacts} disabled={syncing}>
+                    {syncing
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : synced ? <RefreshCw className="h-3.5 w-3.5" /> : <Smartphone className="h-3.5 w-3.5" />
+                    }
+                    {synced ? 'Synced' : 'Sync'}
+                </Button>
+                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 h-8 text-xs gap-1 rounded-lg px-3 shrink-0"
+                    onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
+                    <Plus className="h-3.5 w-3.5" />Add
+                </Button>
+            </div>
 
             {/* Contacts Table */}
             <Card className="card-elevated border-0 overflow-hidden">
-                <div className="md:hidden px-3 py-3 space-y-2.5">
-                    {loading ? (
-                        Array.from({ length: 5 }).map((_, i) => (
-                            <div key={i} className="rounded-xl border border-border/50 p-3 space-y-2.5 bg-white">
-                                <Skeleton className="h-4 w-24" />
-                                <Skeleton className="h-3 w-32" />
-                                <Skeleton className="h-3 w-20" />
-                                <div className="flex gap-2 pt-1">
-                                    <Skeleton className="h-8 flex-1" />
-                                    <Skeleton className="h-8 w-8" />
-                                </div>
-                            </div>
-                        ))
-                    ) : contacts.length === 0 ? (
-                        <div className="py-10 text-center">
-                            <div className="mx-auto mb-2 h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
-                                <Users className="h-6 w-6 text-slate-300" />
-                            </div>
-                            <p className="text-sm text-slate-500">No contacts found</p>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="flex items-center justify-between rounded-xl border border-border/50 bg-slate-50/70 px-3 py-2">
-                                <label className="inline-flex items-center gap-2 text-xs text-slate-600">
-                                    <input
-                                        type="checkbox"
-                                        checked={allSelectedOnPage}
-                                        onChange={toggleSelectAllOnPage}
-                                        className="h-4 w-4 rounded border-slate-300"
-                                        aria-label="Select all on page"
-                                    />
-                                    Select all on this page
-                                </label>
-                                <span className="text-xs text-slate-500">{contacts.length} items</span>
-                            </div>
-
-                            {contacts.map((c) => (
-                                <div key={c.id} className="rounded-xl border border-border/60 bg-white p-3 space-y-2.5 shadow-sm">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedContactIds.includes(c.id)}
-                                                onChange={() => toggleSelect(c.id)}
-                                                className="h-4 w-4 rounded border-slate-300 shrink-0"
-                                                aria-label={`Select ${c.name}`}
-                                            />
-                                            <div className="h-9 w-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
-                                                <span className="text-xs font-semibold text-indigo-600">{c.name?.charAt(0)?.toUpperCase()}</span>
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="font-medium text-slate-900 text-sm truncate">{c.name}</p>
-                                                <p className="text-xs text-slate-500 inline-flex items-center gap-1">
-                                                    <Phone className="h-3 w-3" />
-                                                    {c.phone}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        {c.is_converted && (
-                                            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 border-0 shrink-0">
-                                                Converted
-                                            </Badge>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50/70 rounded-lg px-2.5 py-1.5">
-                                        <span className="inline-flex items-center gap-1">
-                                            <CalendarDays className="h-3 w-3" />
-                                            {format(new Date(c.created_at), 'MMM dd, yyyy')}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1">
-                                            <PhoneOutgoing className="h-3 w-3" />
-                                            Calls: {c.calls_dialed ?? 0}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            size="sm"
-                                            className="h-8 flex-1 gap-1.5 text-xs bg-green-600 hover:bg-green-700"
-                                            onClick={() => handleCallAndConvert(c)}
-                                            disabled={callingId === c.id}
-                                        >
-                                            {callingId === c.id ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            ) : (
-                                                <PhoneOutgoing className="h-3.5 w-3.5" />
-                                            )}
-                                            Call
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            title="WhatsApp"
-                                            className="h-8 w-8 text-green-600 hover:bg-green-50"
-                                            onClick={() => handleOpenWhatsApp(c.phone)}
-                                        >
-                                            <WhatsAppIcon className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            title="Delete"
-                                            className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50"
-                                            onClick={() => { setDeleteTarget(c); setDeleteOpen(true); }}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                        </>
-                    )}
-                </div>
-
-                <div className="hidden md:block overflow-x-auto">
+                <div className="overflow-x-auto">
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                                <TableHead className="pl-5 w-10">
-                                    <input
-                                        type="checkbox"
-                                        checked={allSelectedOnPage}
-                                        onChange={toggleSelectAllOnPage}
-                                        className="h-4 w-4 rounded border-slate-300"
-                                        aria-label="Select all on page"
-                                    />
+                                <TableHead className="w-8 pl-3">
+                                    <input type="checkbox" checked={allSelectedOnPage} onChange={toggleSelectAllOnPage} className="h-4 w-4 rounded border-slate-300" aria-label="Select all" />
                                 </TableHead>
-                                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Name</TableHead>
-                                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Phone</TableHead>
-                                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500 text-center">Added On</TableHead>
-                                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500 text-center">Calls Dialed</TableHead>
-                                <TableHead className="text-right pr-5 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</TableHead>
+                                <TableHead className="pl-2 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Name</TableHead>
+                                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Phone</TableHead>
+                                <TableHead className="text-right pr-3 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {loading ? (
-                                [...Array(5)].map((_, i) => (
+                                [...Array(6)].map((_, i) => (
                                     <TableRow key={i}>
-                                        <TableCell className="pl-5 py-4"><Skeleton className="h-4 w-4" /></TableCell>
-                                        <TableCell className="py-4"><Skeleton className="h-5 w-32" /></TableCell>
-                                        <TableCell className="py-4"><Skeleton className="h-4 w-28" /></TableCell>
-                                        <TableCell className="py-4"><Skeleton className="h-4 w-20 mx-auto" /></TableCell>
-                                        <TableCell className="py-4"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                                        <TableCell className="pr-5 py-4 text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
+                                        <TableCell className="w-8 pl-3 py-3"><Skeleton className="h-4 w-4 rounded" /></TableCell>
+                                        <TableCell className="pl-2 py-3"><Skeleton className="h-5 w-28" /></TableCell>
+                                        <TableCell className="py-3"><Skeleton className="h-5 w-24" /></TableCell>
+                                        <TableCell className="pr-3 py-3 text-right"><Skeleton className="h-8 w-28 ml-auto" /></TableCell>
                                     </TableRow>
                                 ))
                             ) : contacts.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="py-16 text-center">
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
-                                                <Users className="h-6 w-6 text-slate-300" />
+                                    <TableCell colSpan={4} className="py-12 text-center">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                                                <Users className="h-5 w-5 text-slate-300" />
                                             </div>
-                                            <p className="text-sm text-slate-500 max-w-sm">No contacts found. Import contacts or add one manually.</p>
+                                            <p className="text-xs text-slate-500">No contacts found.</p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
                             ) : (
                                 contacts.map((c) => (
-                                    <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors group">
-                                        <TableCell className="pl-5 py-3.5">
+                                    <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <TableCell className="w-8 pl-3 py-3">
                                             <input
                                                 type="checkbox"
                                                 checked={selectedContactIds.includes(c.id)}
@@ -508,60 +365,43 @@ const AllContacts = () => {
                                                 aria-label={`Select ${c.name}`}
                                             />
                                         </TableCell>
-                                        <TableCell className="py-3.5">
-                                            <div className="flex items-center gap-3">
+                                        <TableCell className="pl-2 py-3">
+                                            <div className="flex items-center gap-2.5">
                                                 <div className="h-9 w-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
                                                     <span className="text-xs font-semibold text-indigo-600">{c.name?.charAt(0)?.toUpperCase()}</span>
                                                 </div>
                                                 <div>
-                                                    <p className="font-medium text-slate-900 text-sm">{c.name}</p>
+                                                    <p className="font-medium text-slate-900 text-sm leading-tight">{c.name}</p>
                                                     {c.is_converted && (
-                                                        <Badge variant="secondary" className="mt-1 text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 border-0">
-                                                            Converted to lead
+                                                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-0 font-medium">
+                                                            Converted
                                                         </Badge>
                                                     )}
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="py-3.5">
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                                                <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                                {c.phone}
-                                            </div>
+                                        <TableCell className="py-3">
+                                            <span className="text-sm text-slate-600">{c.phone || '—'}</span>
                                         </TableCell>
-                                        <TableCell className="py-3.5 text-center">
-                                            <div className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                                                <CalendarDays className="h-3 w-3 shrink-0" />
-                                                {format(new Date(c.created_at), 'MMM dd, yyyy')}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="py-3.5 text-center">
-                                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-semibold text-slate-700">
-                                                {c.calls_dialed ?? 0}
-                                            </span>
-                                        </TableCell>
-                                        <TableCell className="text-right pr-5 py-3.5">
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                <Button
-                                                    size="sm"
-                                                    className="h-8 gap-1.5 text-xs bg-green-600 hover:bg-green-700"
+                                        <TableCell className="text-right pr-3 py-3">
+                                            <div className="flex items-center justify-end gap-0.5">
+                                                <Button size="sm"
+                                                    className="h-8 gap-1 text-xs bg-green-600 hover:bg-green-700 rounded-lg px-2.5"
                                                     onClick={() => handleCallAndConvert(c)}
                                                     disabled={callingId === c.id}
                                                 >
-                                                    {callingId === c.id ? (
-                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                    ) : (
-                                                        <PhoneOutgoing className="h-3.5 w-3.5" />
-                                                    )}
+                                                    {callingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneOutgoing className="h-3.5 w-3.5" />}
                                                     Call
                                                 </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    title="WhatsApp"
+                                                <Button variant="ghost" size="icon" title="WhatsApp"
                                                     className="h-8 w-8 text-green-600 hover:bg-green-50"
                                                     onClick={() => handleOpenWhatsApp(c.phone)}>
                                                     <WhatsAppIcon className="h-4 w-4" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" title="Edit"
+                                                    className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                                    onClick={() => openEdit(c)}>
+                                                    <Pencil className="h-4 w-4" />
                                                 </Button>
                                                 <Button variant="ghost" size="icon" title="Delete"
                                                     className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50"
@@ -577,27 +417,125 @@ const AllContacts = () => {
                     </Table>
                 </div>
 
+                {/* Device contacts matching search - shown inline */}
+                {synced && searchQuery.trim().length >= 2 && (() => {
+                    const dbPhones = new Set(contacts.map(c => (c.phone || '').replace(/[^0-9]/g, '')));
+                    const deviceMatches = searchDeviceContacts(searchQuery)
+                        .filter(dc => !dbPhones.has((dc.phone || '').replace(/[^0-9]/g, '')))
+                        .slice(0, 15);
+                    if (!deviceMatches.length) return null;
+                    return (
+                        <>
+                            <TableRow className="bg-amber-50/60 hover:bg-amber-50/60">
+                                <TableCell colSpan={4} className="py-1.5 px-3">
+                                    <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                                        <Smartphone className="h-3 w-3" /> Device Contacts ({deviceMatches.length})
+                                    </span>
+                                </TableCell>
+                            </TableRow>
+                            {deviceMatches.map((dc) => (
+                                <TableRow key={`dev-${dc.phone}`} className="hover:bg-amber-50/30 transition-colors">
+                                    <TableCell className="w-8 pl-3 py-2.5" />
+                                    <TableCell className="pl-2 py-2.5">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                                                <span className="text-xs font-semibold text-amber-600">{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-900 text-sm leading-tight">{dc.name || 'Unknown'}</p>
+                                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-0 font-medium">
+                                                    Device
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="py-2.5">
+                                        <span className="text-sm text-slate-600">{dc.phone}</span>
+                                    </TableCell>
+                                    <TableCell className="text-right pr-3 py-2.5">
+                                        <div className="flex items-center justify-end gap-0.5">
+                                            <Button size="sm"
+                                                className="h-8 gap-1 text-xs bg-green-600 hover:bg-green-700 rounded-lg px-2.5"
+                                                onClick={() => {
+                                                    const params = new URLSearchParams({ number: dc.phone, name: dc.name || 'Unknown', autoCall: 'true' });
+                                                    navigate(`/calls/dialer?${params.toString()}`);
+                                                }}>
+                                                <PhoneOutgoing className="h-3.5 w-3.5" /> Call
+                                            </Button>
+                                            <Button variant="ghost" size="icon" title="WhatsApp"
+                                                className="h-8 w-8 text-green-600 hover:bg-green-50"
+                                                onClick={() => handleOpenWhatsApp(dc.phone)}>
+                                                <WhatsAppIcon className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </>
+                    );
+                })()}
+
                 {/* Pagination */}
                 {totalPages > 1 && (
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 sm:px-5 py-3 border-t border-border/40">
-                        <p className="text-xs text-muted-foreground text-center sm:text-left">
-                            Page {currentPage} of {totalPages} · {totalCount} contacts
-                        </p>
-                        <div className="flex items-center justify-center sm:justify-end gap-1">
-                            <Button variant="outline" size="icon" className="h-8 w-8"
-                                disabled={currentPage <= 1}
-                                onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); fetchContacts(currentPage - 1); }}>
-                                <ChevronLeft className="h-4 w-4" />
+                    <div className="border-t border-border/40 bg-slate-50/50 px-3 py-2 flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</p>
+                        <div className="flex items-center gap-1.5">
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
+                                disabled={currentPage <= 1 || loading}
+                                onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchContacts(p, searchQuery); }}>
+                                <ChevronLeft className="h-3.5 w-3.5" />
                             </Button>
-                            <Button variant="outline" size="icon" className="h-8 w-8"
-                                disabled={currentPage >= totalPages}
-                                onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); fetchContacts(currentPage + 1); }}>
-                                <ChevronRight className="h-4 w-4" />
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
+                                disabled={currentPage >= totalPages || loading}
+                                onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchContacts(p, searchQuery); }}>
+                                <ChevronRight className="h-3.5 w-3.5" />
                             </Button>
                         </div>
                     </div>
                 )}
             </Card>
+
+            {/* Edit Contact Dialog */}
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogContent className="sm:max-w-md bg-white">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base">
+                            <Pencil className="h-5 w-5 text-blue-600" />
+                            Edit Contact
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        {editError && (
+                            <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{editError}</p>
+                        )}
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">Name *</Label>
+                            <Input
+                                placeholder="Contact name"
+                                value={editForm.name}
+                                onChange={(e) => setEditForm(f => ({ ...f, name: e.target.value }))}
+                                className="h-9 text-sm"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold">Phone *</Label>
+                            <Input
+                                placeholder="Phone number"
+                                value={editForm.phone}
+                                onChange={(e) => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                                className="h-9 text-sm"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                        <Button onClick={handleEditContact} disabled={editLoading} className="bg-blue-600 hover:bg-blue-700">
+                            {editLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Add Contact Dialog */}
             <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -660,7 +598,7 @@ const AllContacts = () => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </div>
+        </>
     );
 };
 

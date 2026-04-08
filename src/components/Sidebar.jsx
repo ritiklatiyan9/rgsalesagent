@@ -17,7 +17,6 @@ import {
   CalendarClock,
   PhoneMissed,
   BarChart3,
-  Zap,
   UserPlus,
   List,
   Users,
@@ -38,6 +37,7 @@ import {
   Check,
 } from 'lucide-react';
 import { PhoneOutgoing } from 'lucide-react';
+import homeLogo from '@/assets/home.png';
 import {
   SidebarProvider,
   Sidebar as ShadSidebar,
@@ -192,10 +192,10 @@ function MenuNode({ item, unreadTotal, onChatClick }) {
   if (!item.subItems) {
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={isActive} className="relative h-10 rounded-xl text-[14px] font-medium data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-700 hover:bg-slate-50">
+        <SidebarMenuButton asChild isActive={isActive} className="relative h-10 rounded-xl text-[14px] font-medium text-slate-300 data-[active=true]:bg-white/10 data-[active=true]:text-white hover:bg-white/5 hover:text-white">
           <NavLink to={item.to} title={item.label} onMouseEnter={() => handlePrefetch(item.to)} onClick={handleItemClick}>
-            <span className={cn('h-7 w-7 rounded-lg grid place-items-center transition-colors', isActive ? 'bg-indigo-100' : 'bg-slate-100')}>
-              <item.icon className={cn('h-4.5 w-4.5', isActive ? 'text-indigo-700' : (item.iconColor || 'text-blue-500'))} />
+            <span className={cn('h-7 w-7 rounded-lg grid place-items-center transition-colors', isActive ? 'bg-white/15' : 'bg-white/5')}>
+              <item.icon className={cn('h-4.5 w-4.5', isActive ? 'text-white' : 'text-slate-400')} />
             </span>
             <span>{item.label}</span>
             {isChatItem && unreadTotal > 0 && (
@@ -323,34 +323,34 @@ function SidebarInner() {
   };
 
   return (
-    <ShadSidebar collapsible="icon" className="border-r border-slate-200/70 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-      <SidebarHeader className="relative border-b border-slate-100 px-3 py-4">
+    <ShadSidebar collapsible="icon" className="border-r border-slate-800 bg-slate-900 shadow-[0_8px_30px_rgb(0,0,0,0.2)]">
+      <SidebarHeader className="relative border-b border-slate-800 px-3 py-4">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="hidden md:flex absolute right-2 top-3 h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-colors hover:border-indigo-200 hover:text-indigo-600"
+          className="hidden md:flex absolute right-2 top-3 h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-slate-400 shadow-sm transition-colors hover:border-slate-600 hover:text-white"
           title={open ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           {open ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
 
         <div className="flex items-center gap-3 pr-9">
-          <div className="grid h-10 w-10 place-items-center rounded-lg bg-indigo-600 shadow-sm">
-            <Zap className="h-5 w-5 text-white" />
+          <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-800 border border-slate-700 shadow-sm overflow-hidden">
+            <img src={homeLogo} alt="RiverGreen" className="h-7 w-7 object-contain" />
           </div>
           <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <div className="truncate text-[16px] font-semibold tracking-tight text-slate-800">RiverGreen</div>
-            <div className="truncate text-[12px] text-slate-500">{isTeamHead ? 'Team Head Portal' : 'Agent Portal'}</div>
+            <div className="truncate text-[16px] font-semibold tracking-tight text-white">RiverGreen</div>
+            <div className="truncate text-[12px] text-slate-400">{isTeamHead ? 'Team Head Portal' : 'Agent Portal'}</div>
           </div>
         </div>
 
         <div className="mt-3 pr-9 group-data-[collapsible=icon]:hidden">
-          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">Active Site</div>
+          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">Active Site</div>
           <Select
             value={activeSiteId || undefined}
             onValueChange={handleSiteChange}
             disabled={siteLoading || !sites?.length}
           >
-            <SelectTrigger className="h-8 bg-slate-50 text-[12px]">
+            <SelectTrigger className="h-8 bg-slate-800 border-slate-700 text-slate-200 text-[12px]">
               <SelectValue placeholder={sites?.length ? 'Select site' : 'No site available'} />
             </SelectTrigger>
             <SelectContent>
@@ -378,7 +378,7 @@ function SidebarInner() {
       </SidebarHeader>
 
       <SidebarContent
-        className="min-h-0 overflow-y-auto px-0 py-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400 [&::-webkit-scrollbar-track]:bg-slate-200/60"
+        className="min-h-0 overflow-y-auto px-0 py-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-track]:bg-slate-800/60"
         style={{ scrollbarColor: '#94a3b8 #e2e8f0' }}
       >
         <div className="px-2 py-3">
@@ -402,27 +402,27 @@ function SidebarInner() {
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-100 p-3">
+      <SidebarFooter className="border-t border-slate-800 p-3">
         <div className="flex items-center gap-3 px-1 group-data-[collapsible=icon]:hidden">
-          <div className="h-9 w-9 overflow-hidden rounded-lg border border-indigo-100 bg-indigo-50">
+          <div className="h-9 w-9 overflow-hidden rounded-lg border border-slate-700 bg-slate-800">
             {user?.profile_photo ? (
               <img src={user.profile_photo} alt={user?.name} className="h-full w-full object-cover" />
             ) : (
-              <div className="grid h-full w-full place-items-center">
-                <Zap className="h-4.5 w-4.5 text-indigo-600" />
+              <div className="grid h-full w-full place-items-center bg-slate-800">
+                <span className="text-sm font-bold text-white">{user?.name?.charAt(0)?.toUpperCase() || 'A'}</span>
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-semibold text-slate-800">{user?.name || roleLabel}</div>
-            <div className="truncate text-[11.5px] text-slate-500">{user?.email || 'agent@rivergreen.com'}</div>
+            <div className="truncate text-[13.5px] font-semibold text-white">{user?.name || roleLabel}</div>
+            <div className="truncate text-[11.5px] text-slate-400">{user?.email || 'agent@rivergreen.com'}</div>
           </div>
         </div>
 
         <button
           onClick={handleLogout}
           className={cn(
-            'mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[14px] font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700',
+            'mt-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300',
             !open && 'justify-center px-0'
           )}
           title="Logout"

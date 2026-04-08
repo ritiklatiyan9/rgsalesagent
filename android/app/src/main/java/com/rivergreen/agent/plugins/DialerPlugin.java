@@ -2,12 +2,14 @@ package com.rivergreen.agent.plugins;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.ContentResolver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.CallLog;
+import android.provider.ContactsContract;
 import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
@@ -356,6 +358,62 @@ public class DialerPlugin extends Plugin {
         public void onCallStateChanged(int state) {
             handleStateChange(state);
         }
+    }
+
+    // ── Read device contacts ───────────────────────────────────────────────
+
+    @PluginMethod
+    public void getDeviceContacts(PluginCall call) {
+        if (getPermissionState("contacts") != PermissionState.GRANTED) {
+            JSObject ret = new JSObject();
+            ret.put("contacts", new JSArray());
+            call.resolve(ret);
+            return;
+        }
+
+        JSArray contacts = new JSArray();
+        ContentResolver cr = getContext().getContentResolver();
+        Cursor cursor = null;
+        try {
+            String[] projection = {
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            };
+
+            cursor = cr.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                projection,
+                null,
+                null,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            );
+
+            if (cursor != null) {
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                while (cursor.moveToNext()) {
+                    String name = cursor.getString(1);
+                    String number = cursor.getString(2);
+                    if (number == null || number.trim().isEmpty()) continue;
+                    String clean = number.replaceAll("[^0-9+]", "");
+                    if (clean.isEmpty() || seen.contains(clean)) continue;
+                    seen.add(clean);
+
+                    JSObject item = new JSObject();
+                    item.put("name", name == null ? "" : name);
+                    item.put("phone", clean);
+                    contacts.put(item);
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "getDeviceContacts failed", e);
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("contacts", contacts);
+        call.resolve(ret);
     }
 
     // ── Query CallLog for accurate talk duration ─────────────────────────────

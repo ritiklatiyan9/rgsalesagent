@@ -9,6 +9,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 const Login = lazy(() => import('@/pages/Login'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Leads = lazy(() => import('@/pages/Leads'));
+const LeadsLayout = lazy(() => import('@/pages/LeadsLayout'));
 const AddLead = lazy(() => import('@/pages/AddLead'));
 const LeadAssignment = lazy(() => import('@/pages/LeadAssignment'));
 const AssignmentHistory = lazy(() => import('@/pages/AssignmentHistory'));
@@ -39,6 +40,7 @@ const LeadsDialer = lazy(() => import('@/pages/LeadsDialer'));
 const DialerPage = lazy(() => import('@/pages/DialerPage'));
 const CallHistory = lazy(() => import('@/pages/CallHistory'));
 const ContentShare = lazy(() => import('@/pages/ContentShare'));
+const ContactsLayout = lazy(() => import('@/pages/ContactsLayout'));
 const AllContacts = lazy(() => import('@/pages/AllContacts'));
 const BulkImportContacts = lazy(() => import('@/pages/BulkImportContacts'));
 const ShiftToCallQueue = lazy(() => import('@/pages/ShiftToCallQueue'));
@@ -95,12 +97,14 @@ export default function App() {
               <Route index element={<Dashboard />} />
               <Route path="dashboard" element={<Navigate to="/" replace />} />
 
-              {/* Leads */}
-              <Route path="leads" element={<Leads />} />
-              <Route path="leads/add" element={<AddLead />} />
-              <Route path="leads/bulk" element={<BulkLeads />} />
-              <Route path="leads/assign" element={<LeadAssignment />} />
-              <Route path="leads/assignment-history" element={<AssignmentHistory />} />
+              {/* Leads — shared layout keeps header+tabs frozen on navigation */}
+              <Route path="leads" element={<LeadsLayout />}>
+                <Route index element={<Leads />} />
+                <Route path="add" element={<AddLead />} />
+                <Route path="bulk" element={<BulkLeads />} />
+                <Route path="assign" element={<LeadAssignment />} />
+                <Route path="assignment-history" element={<AssignmentHistory />} />
+              </Route>
 
               {/* Call Management */}
               <Route path="calls" element={<CallDashboard />} />
@@ -152,8 +156,10 @@ export default function App() {
               <Route path="chat" element={<Chat />} />
 
               {/* Contacts */}
-              <Route path="all-contacts" element={<AllContacts />} />
-              <Route path="all-contacts/bulk" element={<BulkImportContacts />} />
+              <Route path="all-contacts" element={<ContactsLayout />}>
+                <Route index element={<AllContacts />} />
+                <Route path="bulk" element={<BulkImportContacts />} />
+              </Route>
               <Route path="contacts/shift-to-call" element={<ShiftToCallQueue />} />
             </Route>
 

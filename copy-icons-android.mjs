@@ -1,11 +1,11 @@
 // Copy generated icons into Android mipmap resource directories
 import sharp from 'sharp';
-import { readFileSync, mkdirSync, existsSync, copyFileSync } from 'fs';
+import { mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const svgInput = readFileSync(join(__dirname, 'public', 'icon.svg'));
+const sourceImage = join(__dirname, 'src', 'assets', 'home.png');
 const resDir = join(__dirname, 'android', 'app', 'src', 'main', 'res');
 
 // Android mipmap sizes: mdpi=48, hdpi=72, xhdpi=96, xxhdpi=144, xxxhdpi=192
@@ -32,14 +32,14 @@ for (const { folder, size } of mipmapSizes) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
   // ic_launcher.png
-  await sharp(svgInput)
-    .resize(size, size)
+  await sharp(sourceImage)
+    .resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
     .png()
     .toFile(join(dir, 'ic_launcher.png'));
 
   // ic_launcher_round.png (same icon)
-  await sharp(svgInput)
-    .resize(size, size)
+  await sharp(sourceImage)
+    .resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
     .png()
     .toFile(join(dir, 'ic_launcher_round.png'));
 
@@ -50,8 +50,8 @@ for (const { folder, size } of foregroundSizes) {
   const dir = join(resDir, folder);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  await sharp(svgInput)
-    .resize(size, size)
+  await sharp(sourceImage)
+    .resize(size, size, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
     .png()
     .toFile(join(dir, 'ic_launcher_foreground.png'));
 
@@ -61,7 +61,7 @@ for (const { folder, size } of foregroundSizes) {
 // Also generate splash icon for drawable
 const drawableDir = join(resDir, 'drawable');
 if (!existsSync(drawableDir)) mkdirSync(drawableDir, { recursive: true });
-await sharp(svgInput).resize(512, 512).png().toFile(join(drawableDir, 'splash.png'));
+await sharp(sourceImage).resize(512, 512, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } }).png().toFile(join(drawableDir, 'splash.png'));
 console.log(`✓ drawable: splash.png (512x512)`);
 
 console.log('\n✅ All Android icons replaced with RiverGreen real estate logo!');

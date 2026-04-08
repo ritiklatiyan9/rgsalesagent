@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,9 +23,9 @@ import { cachedGet, invalidateCache } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
-  Plus, Pencil, Search, Phone, Mail, Users, Filter, UserPlus,
-  FileText, ChevronLeft, ChevronRight, AlertCircle, CalendarDays, Eye, List,
-  BellPlus, FileSpreadsheet, ArrowRightLeft, History, Camera, X, ImageIcon, PhoneOutgoing,
+  Plus, Pencil, Search, Users,
+  ChevronLeft, ChevronRight, AlertCircle, Eye,
+  BellPlus, Camera, X, ImageIcon, PhoneOutgoing,
 } from 'lucide-react';
 
 const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
@@ -166,17 +166,80 @@ const EMPTY_FORM = {
   name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_category: '', lead_source: 'Other', notes: '',
 };
 
-const CALL_NEXT_ACTIONS = [
-  { value: 'NONE', label: 'None' },
-  { value: 'FOLLOW_UP', label: 'Follow Up' },
-  { value: 'VISIT', label: 'Schedule Visit' },
-  { value: 'CLOSE', label: 'Close / Booking' },
-  { value: 'NO_RESPONSE', label: 'No Response' },
-];
+// O(1) status lookup — avoids .find() on every row render
+const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s]));
 
-const fmt2 = (n) => String(n).padStart(2, '0');
-
-const DialerDialog = () => null; // Dialer removed
+// Memoized table row — only re-renders when its own data or selection changes
+const LeadRow = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule }) => {
+  const statusObj = STATUS_MAP[lead.status] || STATUS_OPTIONS[0];
+  return (
+    <TableRow className="hover:bg-slate-50/50 transition-colors">
+      <TableCell className="w-8 pl-3 py-3">
+        <Checkbox checked={selected} onCheckedChange={() => onSelect(lead.id)} className="rounded" />
+      </TableCell>
+      <TableCell className="pl-2 py-3">
+        <div className="flex items-center gap-2.5">
+          <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+            {lead.photo_url ? (
+              <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
+            ) : (
+              <span className="text-xs font-bold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
+            )}
+          </div>
+          <div>
+            <p className="font-medium text-slate-900 text-sm leading-tight">{lead.name}</p>
+            {lead.lead_category && (
+              <span className="text-[10px] text-slate-400 font-medium">{lead.lead_category}</span>
+            )}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="py-3">
+        <span className="text-sm text-slate-600">{lead.phone || '—'}</span>
+      </TableCell>
+      <TableCell className="py-3">
+        <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 border-0 font-semibold ${statusObj.color}`}>
+          {statusObj.label}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-right pr-3 py-3">
+        <div className="flex items-center justify-end gap-0.5">
+          <Button variant="ghost" size="icon" title="Call"
+            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
+            onClick={() => onCall(lead)}
+          >
+            <PhoneOutgoing className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" title="WhatsApp"
+            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
+            onClick={() => onWhatsApp(lead.phone)}
+          >
+            <WhatsAppIcon className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" title="View"
+            className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+            onClick={() => onView(lead)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" title="Edit"
+            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+            onClick={() => onEdit(lead)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" title="Follow-up"
+            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50"
+            onClick={() => onSchedule(lead)}
+          >
+            <BellPlus className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+});
+LeadRow.displayName = 'LeadRow';
 
 const Leads = () => {
   const navigate = useNavigate();
@@ -219,7 +282,7 @@ const Leads = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [shiftLoading, setShiftLoading] = useState(false);
 
-  const fetchLeads = useCallback(async (page = currentPage, search = searchQuery, status = statusFilter, fresh = false, category = categoryFilter) => {
+  const fetchLeads = useCallback(async (page, search, status, fresh = false, category) => {
     try {
       setLoading(true);
       let url = `/leads?page=${page}&limit=15`;
@@ -239,7 +302,11 @@ const Leads = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, searchQuery, statusFilter, categoryFilter]);
+  }, []); // stable — all values passed as args, no state deps
+
+  // Keep a ref so the debounce effect always sees the latest fetchLeads without it being a dep
+  const fetchLeadsRef = useRef(fetchLeads);
+  fetchLeadsRef.current = fetchLeads;
 
   useEffect(() => {
     const nextSearch = searchParams.get('search') || '';
@@ -253,11 +320,12 @@ const Leads = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchLeads(1, searchQuery, statusFilter, false, categoryFilter);
+      // Use ref so fetchLeads is never a dep (prevents double-fetch on filter change)
+      fetchLeadsRef.current(1, searchQuery, statusFilter, false, categoryFilter);
       setCurrentPage(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, categoryFilter, fetchLeads]);
+  }, [searchQuery, statusFilter, categoryFilter]);
 
   // Keep URL in sync with active filters so dashboard quick-search works reliably.
   useEffect(() => {
@@ -284,7 +352,7 @@ const Leads = () => {
     setSelectedLeadIds((prev) => prev.filter((id) => currentIds.has(id)));
   }, [leads]);
 
-  const openEdit = (lead) => {
+  const openEdit = useCallback((lead) => {
     setEditId(lead.id);
     setForm({
       name: lead.name || '',
@@ -302,9 +370,9 @@ const Leads = () => {
     setRemovePhoto(false);
     setFormError('');
     setDialogOpen(true);
-  };
+  }, []);
 
-  const openView = async (lead) => {
+  const openView = useCallback(async (lead) => {
     setViewTarget(lead);
     setViewCallHistory([]);
     setViewOpen(true);
@@ -324,18 +392,18 @@ const Leads = () => {
         setViewCallLoading(false);
       }
     }
-  };
+  }, []);
 
-  const openSchedule = (lead) => {
+  const openSchedule = useCallback((lead) => {
     setScheduleLead(lead);
     setScheduleOpen(true);
-  };
+  }, []);
 
-  const toggleLeadSelection = (leadId) => {
+  const toggleLeadSelection = useCallback((leadId) => {
     setSelectedLeadIds((prev) => (
       prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
     ));
-  };
+  }, []);
 
   const toggleSelectAllOnPage = () => {
     const pageIds = leads.map((l) => l.id);
@@ -399,7 +467,7 @@ const Leads = () => {
       });
       toast.success('Lead updated successfully');
       invalidateCache('/leads');
-      fetchLeads(currentPage, searchQuery, statusFilter, true);
+      fetchLeads(currentPage, searchQuery, statusFilter, true, categoryFilter);
       setDialogOpen(false);
     } catch (err) {
       setFormError(err?.response?.data?.message || 'Failed to save lead.');
@@ -408,7 +476,7 @@ const Leads = () => {
     }
   };
 
-  const handleCallLead = (lead) => {
+  const handleCallLead = useCallback((lead) => {
     if (!lead?.phone) {
       toast.error('No phone number available');
       return;
@@ -421,9 +489,9 @@ const Leads = () => {
       source: 'leads',
     });
     navigate(`/calls/dialer?${params.toString()}`);
-  };
+  }, [navigate]);
 
-  const handleOpenWhatsApp = (phone) => {
+  const handleOpenWhatsApp = useCallback((phone) => {
     if (!phone) {
       toast.error('No phone number available');
       return;
@@ -431,312 +499,126 @@ const Leads = () => {
     const cleaned = String(phone).replace(/[^0-9]/g, '');
     const waNumber = cleaned.startsWith('91') ? cleaned : `91${cleaned}`;
     window.open(`https://wa.me/${waNumber}`, '_blank');
-  };
+  }, []);
+
+  // O(1) lookups — avoids .includes() on every row render
+  const selectedSet = useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const allSelected = useMemo(() => leads.length > 0 && leads.every((l) => selectedSet.has(l.id)), [leads, selectedSet]);
+  const someSelected = useMemo(() => !allSelected && leads.some((l) => selectedSet.has(l.id)), [allSelected, leads, selectedSet]);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-linear-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-md">
-            <Users className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-slate-800">My Leads</h1>
-            <p className="text-xs text-muted-foreground">Leads assigned to you</p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
-            disabled={shiftLoading || selectedLeadIds.length === 0}
+    <>
+      {/* Shift action bar — shows when leads are selected */}
+      {selectedLeadIds.length > 0 && (
+        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5">
+          <span className="text-xs text-indigo-700 font-medium">{selectedLeadIds.length} selected</span>
+          <Button size="sm" variant="ghost"
+            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+            disabled={shiftLoading}
             onClick={() => handleShiftToCall()}
           >
-            {shiftLoading ? (
-              <span className="inline-flex items-center">
-                <span className="h-3.5 w-3.5 mr-1.5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                Shifting...
-              </span>
-            ) : (
-              <>
-                <PhoneOutgoing className="h-3.5 w-3.5 mr-1.5" />
-                Shift Selected ({selectedLeadIds.length})
-              </>
-            )}
+            {shiftLoading
+              ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mr-1" />
+              : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />
+            }
+            Shift to Queue
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9 text-xs rounded-xl flex-1 sm:flex-none"
-            disabled={shiftLoading || leads.length === 0}
-            onClick={() => handleShiftToCall({ selectAllFiltered: true })}
-          >
-            {shiftLoading ? (
-              <span className="inline-flex items-center">
-                <span className="h-3.5 w-3.5 mr-1.5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                Shifting...
-              </span>
-            ) : (
-              <>
-                <Users className="h-3.5 w-3.5 mr-1.5" />
-                Shift All Filtered
-              </>
-            )}
-          </Button>
-          <Link to="/leads/add">
-            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 shadow-sm h-9 text-xs gap-1.5 rounded-xl w-full sm:w-auto">
-              <UserPlus className="h-3.5 w-3.5" />
-              Add Lead
-            </Button>
-          </Link>
         </div>
+      )}
+
+      {/* Filters — flat, no card */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input placeholder="Search name, phone..." value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-8 text-xs rounded-lg" />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-28 h-8 text-xs rounded-lg font-medium shrink-0">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL" className="text-xs font-medium">All Status</SelectItem>
+            {STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-24 h-8 text-xs rounded-lg font-medium shrink-0">
+            <SelectValue placeholder="Cat" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL" className="text-xs font-medium">All Cat</SelectItem>
+            {LEAD_CATEGORY_OPTIONS.map((c) => (
+              <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {/* Sub-page tabs */}
-      <div className="-mx-1 px-1 overflow-x-auto [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
-        <div className="flex items-center gap-1 border-b border-border/50 pb-0 min-w-max">
-          <div className="flex items-center gap-1 px-1 py-1 bg-muted/40 rounded-xl">
-            <Link
-              to="/leads"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-white shadow-sm text-indigo-700 border border-border/60 whitespace-nowrap"
-            >
-              <List className="h-3.5 w-3.5" />
-              My Leads
-            </Link>
-            <Link
-              to="/leads/add"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Add</span> Lead
-            </Link>
-            <Link
-              to="/leads/bulk"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Bulk</span> Import
-            </Link>
-            <Link
-              to="/leads/assign"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap"
-            >
-              <ArrowRightLeft className="h-3.5 w-3.5" />
-              Assign
-            </Link>
-            <Link
-              to="/leads/assignment-history"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-slate-700 hover:bg-white/60 transition-colors whitespace-nowrap"
-            >
-              <History className="h-3.5 w-3.5" />
-              History
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <Card className="card-elevated border-0">
-        <CardContent className="py-3 px-4">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-            <div className="relative flex-1 min-w-40 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search leads by name, phone, email..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 text-sm rounded-lg"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="flex-1 min-w-[110px] sm:w-40 h-9 text-xs rounded-lg font-medium">
-                  <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL" className="text-xs font-medium">All Statuses</SelectItem>
-                  {STATUS_OPTIONS.map((s) => (
-                    <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="flex-1 min-w-[110px] sm:w-40 h-9 text-xs rounded-lg font-medium">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL" className="text-xs font-medium">All Categories</SelectItem>
-                  {LEAD_CATEGORY_OPTIONS.map((c) => (
-                    <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Leads — Desktop Table */}
-      <Card className="card-elevated border-0 overflow-hidden hidden sm:block">
+      {/* Leads Table */}
+      <Card className="card-elevated border-0 overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                <TableHead className="w-12 pl-4">
+                <TableHead className="w-8 pl-3">
                   <Checkbox
-                    checked={leads.length > 0 && leads.every((l) => selectedLeadIds.includes(l.id))}
-                    indeterminate={leads.some((l) => selectedLeadIds.includes(l.id)) && !leads.every((l) => selectedLeadIds.includes(l.id))}
+                    checked={allSelected}
+                    indeterminate={someSelected}
                     onCheckedChange={toggleSelectAllOnPage}
                     className="rounded"
                   />
                 </TableHead>
-                <TableHead className="pl-3 font-semibold text-xs uppercase tracking-wider text-slate-500">Lead Details</TableHead>
-                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Contact</TableHead>
-                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Status</TableHead>
-                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Category</TableHead>
-                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500 text-center">Calls Dialed</TableHead>
-                <TableHead className="font-semibold text-xs uppercase tracking-wider text-slate-500">Added On</TableHead>
-                <TableHead className="text-right pr-5 font-semibold text-xs uppercase tracking-wider text-slate-500">Actions</TableHead>
+                <TableHead className="pl-2 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Name</TableHead>
+                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Phone</TableHead>
+                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Status</TableHead>
+                <TableHead className="text-right pr-3 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                [...Array(5)].map((_, i) => (
+                [...Array(6)].map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell className="w-12 pl-4 py-4"><Skeleton className="h-4 w-4 rounded" /></TableCell>
-                    <TableCell className="pl-3 py-4"><Skeleton className="h-5 w-32 mb-1.5" /><Skeleton className="h-3 w-24" /></TableCell>
-                    <TableCell className="py-4"><Skeleton className="h-4 w-28 mb-1.5" /><Skeleton className="h-4 w-36" /></TableCell>
-                    <TableCell className="py-4"><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-                    <TableCell className="py-4"><Skeleton className="h-4 w-16" /></TableCell>
-                    <TableCell className="py-4"><Skeleton className="h-4 w-8 mx-auto" /></TableCell>
-                    <TableCell className="py-4"><Skeleton className="h-4 w-20" /></TableCell>
-                    <TableCell className="pr-5 py-4 text-right"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
+                    <TableCell className="w-8 pl-3 py-3"><Skeleton className="h-4 w-4 rounded" /></TableCell>
+                    <TableCell className="pl-2 py-3"><Skeleton className="h-5 w-28" /></TableCell>
+                    <TableCell className="py-3"><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell className="py-3"><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                    <TableCell className="pr-3 py-3 text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
                   </TableRow>
                 ))
               ) : leads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
-                        <Users className="h-6 w-6 text-slate-300" />
+                  <TableCell colSpan={5} className="py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                        <Users className="h-5 w-5 text-slate-300" />
                       </div>
-                      <p className="text-sm text-slate-500 max-w-sm">No leads found. Add a new lead or adjust your search.</p>
+                      <p className="text-xs text-slate-500">No leads found.</p>
                       <Link to="/leads/add">
-                        <Button variant="outline" size="sm" className="mt-2 text-xs">
-                          <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Lead
+                        <Button variant="outline" size="sm" className="mt-1 text-xs h-7">
+                          <Plus className="h-3 w-3 mr-1" /> Add Lead
                         </Button>
                       </Link>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                leads.map((lead) => {
-                  const statusObj = STATUS_OPTIONS.find((s) => s.value === lead.status) || STATUS_OPTIONS[0];
-                  return (
-                    <TableRow key={lead.id} className="hover:bg-slate-50/50 transition-colors group">
-                      <TableCell className="w-12 pl-4 py-3.5">
-                        <Checkbox
-                          checked={selectedLeadIds.includes(lead.id)}
-                          onCheckedChange={() => toggleLeadSelection(lead.id)}
-                          className="rounded"
-                        />
-                      </TableCell>
-                      <TableCell className="pl-3 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                            {lead.photo_url ? (
-                              <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-xs font-semibold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-900 text-sm">{lead.name}</p>
-                            {lead.notes && (
-                              <div className="flex items-center gap-1 mt-0.5 text-slate-400">
-                                <FileText className="h-3 w-3" />
-                                <span className="text-xs truncate max-w-38">{lead.notes}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3.5 space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                          <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                          {lead.phone || '—'}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                          <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                          <span className="truncate max-w-38">{lead.email || '—'}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 border-0 font-medium ${statusObj.color}`}>
-                          {statusObj.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        {lead.lead_category ? (
-                          <Badge variant="outline" className="text-[10px] px-2 py-0.5 font-medium">
-                            {lead.lead_category}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3.5 text-center">
-                        <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-semibold text-slate-700">
-                          {lead.calls_dialed ?? 0}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-3.5">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <CalendarDays className="h-3 w-3 shrink-0" />
-                          {format(new Date(lead.created_at), 'MMM dd, yyyy')}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right pr-5 py-3.5">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" title="Call"
-                            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
-                            onClick={() => handleCallLead(lead)}
-                          >
-                            <PhoneOutgoing className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="WhatsApp"
-                            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
-                            onClick={() => handleOpenWhatsApp(lead.phone)}
-                          >
-                            <WhatsAppIcon className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="View Details"
-                            className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-                            onClick={() => openView(lead)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Edit Lead"
-                            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
-                            onClick={() => openEdit(lead)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Schedule Follow-up"
-                            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50"
-                            onClick={() => openSchedule(lead)}
-                          >
-                            <BellPlus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
+                leads.map((lead) => (
+                  <LeadRow
+                    key={lead.id}
+                    lead={lead}
+                    selected={selectedSet.has(lead.id)}
+                    onSelect={toggleLeadSelection}
+                    onCall={handleCallLead}
+                    onWhatsApp={handleOpenWhatsApp}
+                    onView={openView}
+                    onEdit={openEdit}
+                    onSchedule={openSchedule}
+                  />
+                ))
               )}
             </TableBody>
           </Table>
@@ -744,139 +626,25 @@ const Leads = () => {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="border-t border-border/40 bg-slate-50/50 px-4 py-3 flex items-center justify-between">
-            <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8 px-2"
-                onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); fetchLeads(currentPage - 1); }}
+          <div className="border-t border-border/40 bg-slate-50/50 px-3 py-2 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</p>
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
+                onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
                 disabled={currentPage === 1 || loading}
               >
-                <ChevronLeft className="h-4 w-4 mr-1" /> Prev
+                <ChevronLeft className="h-3.5 w-3.5" />
               </Button>
-              <Button variant="outline" size="sm" className="h-8 px-2"
-                onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); fetchLeads(currentPage + 1); }}
+              <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
+                onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
                 disabled={currentPage === totalPages || loading}
               >
-                Next <ChevronRight className="h-4 w-4 ml-1" />
+                <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
         )}
       </Card>
-
-      {/* Leads — Mobile Card View */}
-      <div className="sm:hidden space-y-3">
-        {loading ? (
-          [...Array(4)].map((_, i) => (
-            <Card key={i} className="p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-lg" />
-                <div className="flex-1"><Skeleton className="h-4 w-28 mb-1.5" /><Skeleton className="h-3 w-20" /></div>
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <Skeleton className="h-3 w-full" />
-            </Card>
-          ))
-        ) : leads.length === 0 ? (
-          <Card className="p-8 text-center">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center">
-                <Users className="h-6 w-6 text-slate-300" />
-              </div>
-              <p className="text-sm text-slate-500">No leads found.</p>
-              <Link to="/leads/add">
-                <Button variant="outline" size="sm" className="text-xs">
-                  <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Lead
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        ) : (
-          leads.map((lead) => {
-            const statusObj = STATUS_OPTIONS.find((s) => s.value === lead.status) || STATUS_OPTIONS[0];
-            return (
-              <Card key={lead.id} className="p-3.5 hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-                    {lead.photo_url ? (
-                      <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-sm font-semibold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-slate-900 text-sm truncate">{lead.name}</p>
-                      <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 border-0 font-medium shrink-0 ${statusObj.color}`}>
-                        {statusObj.label}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
-                      {lead.phone && (
-                        <div className="flex items-center gap-1 text-xs text-slate-500">
-                          <Phone className="h-3 w-3" />
-                          <span>{lead.phone}</span>
-                        </div>
-                      )}
-                      {lead.email && (
-                        <div className="flex items-center gap-1 text-xs text-slate-500">
-                          <Mail className="h-3 w-3" />
-                          <span className="truncate max-w-35">{lead.email}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-400">
-                      <CalendarDays className="h-2.5 w-2.5" />
-                      {format(new Date(lead.created_at), 'MMM dd, yyyy')}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      Calls Dialed: <span className="font-semibold text-slate-700">{lead.calls_dialed ?? 0}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/40">
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-green-600 hover:bg-green-50" onClick={() => handleCallLead(lead)}>
-                    <PhoneOutgoing className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-green-600 hover:bg-green-50" onClick={() => handleOpenWhatsApp(lead.phone)}>
-                    <WhatsAppIcon className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => openView(lead)}>
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-blue-600 hover:bg-blue-50" onClick={() => openEdit(lead)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-amber-600 hover:bg-amber-50" onClick={() => openSchedule(lead)}>
-                    <BellPlus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            );
-          })
-        )}
-
-        {/* Mobile Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-1 py-2">
-            <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-8 px-3 text-xs"
-                onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); fetchLeads(currentPage - 1); }}
-                disabled={currentPage === 1 || loading}
-              >
-                <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
-              </Button>
-              <Button variant="outline" size="sm" className="h-8 px-3 text-xs"
-                onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); fetchLeads(currentPage + 1); }}
-                disabled={currentPage === totalPages || loading}
-              >
-                Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Edit Lead Dialog (no delete, no reassign) */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -1170,7 +938,7 @@ const Leads = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 };
 
