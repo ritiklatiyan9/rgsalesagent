@@ -4,8 +4,9 @@ import { io } from 'socket.io-client';
 import Sidebar from './Sidebar';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, MoreHorizontal, MessageSquare, House, PhoneCall, Grid2x2 } from 'lucide-react';
+import { Bell, X, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, Clock, MessageSquare, House, PhoneCall, Calendar } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Drawer, DrawerContent, DrawerClose } from '@/components/ui/drawer';
 import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
@@ -147,6 +148,7 @@ const LayoutBody = () => {
   const [isPending, startTransition] = useTransition();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth < 640);
   const [calls, setCalls] = useState([]);
   const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
   const [chatNotifications, setChatNotifications] = useState([]);
@@ -163,6 +165,12 @@ const LayoutBody = () => {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsMobileView(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
   }, []);
 
   useEffect(() => {
@@ -387,18 +395,18 @@ const LayoutBody = () => {
                   )}
                 </button>
 
-                {notifOpen && (
-                  <>
-                    {/* Mobile: full-screen overlay */}
-                    <div className="sm:hidden fixed inset-0 bg-black/30 z-40" onClick={() => setNotifOpen(false)} />
-                    <div className="sm:hidden fixed inset-x-0 bottom-0 top-14 bg-white z-50 flex flex-col" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-                      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
-                        <p className="text-base font-semibold text-slate-800">Notifications</p>
-                        <button onClick={() => setNotifOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                          <Bell className="h-5 w-5" />
+                {/* Mobile: shadcn Drawer opens from below */}
+                <Drawer open={notifOpen && isMobileView} onOpenChange={(open) => { if (!open) setNotifOpen(false); }} direction="bottom">
+                  <DrawerContent className="flex flex-col max-h-[85vh]" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.5rem)' }}>
+                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+                      <p className="text-base font-semibold text-slate-800">Notifications</p>
+                      <DrawerClose asChild>
+                        <button className="text-slate-400 hover:text-slate-600 p-1.5 -mr-1">
+                          <X className="h-5 w-5" />
                         </button>
-                      </div>
-                      <div className="flex-1 overflow-y-auto">
+                      </DrawerClose>
+                    </div>
+                    <div className="flex-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
                         <div className="px-4 py-3">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
@@ -409,20 +417,20 @@ const LayoutBody = () => {
                           {chatNotifications.length === 0 ? (
                             <div className="text-sm text-slate-400 py-2">No unread messages</div>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-2.5">
                               {chatNotifications.map((item) => (
                                 <button
                                   key={item.id}
-                                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                                  className="w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
                                   onClick={() => { setNotifOpen(false); navigate('/chat'); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
-                                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none shrink-0">
                                       {item.unread > 99 ? '99+' : item.unread}
                                     </span>
                                   </div>
-                                  <p className="text-xs text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                  <p className="text-xs text-slate-500 truncate mt-1">{item.preview}</p>
                                 </button>
                               ))}
                             </div>
@@ -438,18 +446,18 @@ const LayoutBody = () => {
                           {missedCallNotifications.length === 0 ? (
                             <div className="text-sm text-slate-400 py-2">No missed calls</div>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-2.5">
                               {missedCallNotifications.map((item) => (
                                 <button
                                   key={item.id}
-                                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                                  className="w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
                                   onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); navigate('/calls/missed'); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
                                     <span className="text-xs text-slate-400 shrink-0">{timeAgo(item.createdAt)}</span>
                                   </div>
-                                  <p className="text-xs text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                  <p className="text-xs text-slate-500 truncate mt-1">{item.preview}</p>
                                 </button>
                               ))}
                             </div>
@@ -493,172 +501,173 @@ const LayoutBody = () => {
                           </div>
                         )}
                       </div>
-                      <div className="px-4 py-3 border-t border-slate-100 shrink-0">
+                    <div className="px-4 py-3 border-t border-slate-100 shrink-0">
                         <div className="grid grid-cols-2 gap-2">
-                          <button className="w-full text-sm text-center py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50" onClick={() => { setNotifOpen(false); startTransition(() => navigate('/chat')); }}>Open Chat</button>
-                          <button className="w-full text-sm text-center py-2 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50" onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); startTransition(() => navigate('/calls/missed')); }}>Missed Calls</button>
+                          <button className="w-full text-sm text-center py-2.5 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50 active:bg-indigo-100 transition-colors" onClick={() => { setNotifOpen(false); startTransition(() => navigate('/chat')); }}>Open Chat</button>
+                          <button className="w-full text-sm text-center py-2.5 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50 active:bg-indigo-100 transition-colors" onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); startTransition(() => navigate('/calls/missed')); }}>Missed Calls</button>
                         </div>
                       </div>
-                    </div>
+                  </DrawerContent>
+                </Drawer>
 
-                    {/* Desktop: dropdown */}
-                    <div className="hidden sm:block absolute right-0 top-[calc(100%+8px)] w-80 max-w-80 bg-white rounded-2xl shadow-[0_8px_40px_-8px_rgba(0,0,0,0.18)] border border-slate-100 z-50 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                      <p className="text-sm font-semibold text-slate-800">Notifications</p>
-                      <button
-                        className="text-[11px] text-indigo-600 hover:underline flex items-center gap-0.5 font-medium"
-                        onClick={() => {
-                          setNotifOpen(false);
-                          navigate('/chat');
-                        }}
-                      >
-                        Open chat <ChevronRight className="h-3 w-3" />
-                      </button>
-                    </div>
+                {/* Desktop: dropdown popover with highest z-index */}
+                {notifOpen && (
+                    <div className="hidden sm:block absolute right-0 top-[calc(100%+8px)] w-80 max-w-80 bg-white rounded-2xl shadow-[0_20px_60px_-12px_rgba(0,0,0,0.25)] border border-slate-100 z-50 overflow-hidden transition-all duration-200 origin-top-right">
+                      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-slate-800">Notifications</p>
+                        <button
+                          className="text-[11px] text-indigo-600 hover:underline flex items-center gap-0.5 font-medium"
+                          onClick={() => {
+                            setNotifOpen(false);
+                            navigate('/chat');
+                          }}
+                        >
+                          Open chat <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </div>
 
-                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-50 [scrollbar-width:thin]">
-                      <div className="px-4 py-2.5">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                            <MessageSquare className="h-3.5 w-3.5 text-rose-500" /> Unread Chats
-                          </p>
-                          <span className="text-[11px] text-rose-600 font-semibold">{chatUnreadTotal}</span>
+                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-50 [scrollbar-width:thin]">
+                        <div className="px-4 py-2.5">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                              <MessageSquare className="h-3.5 w-3.5 text-rose-500" /> Unread Chats
+                            </p>
+                            <span className="text-[11px] text-rose-600 font-semibold">{chatUnreadTotal}</span>
+                          </div>
+                          {chatNotifications.length === 0 ? (
+                            <div className="text-[11px] text-slate-400 py-1">No unread messages</div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {chatNotifications.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
+                                  onClick={() => {
+                                    setNotifOpen(false);
+                                    navigate('/chat');
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
+                                    <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
+                                      {item.unread > 99 ? '99+' : item.unread}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        {chatNotifications.length === 0 ? (
-                          <div className="text-[11px] text-slate-400 py-1">No unread messages</div>
+
+                        <div className="px-4 py-2.5 border-t border-slate-100/80">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                              <PhoneMissed className="h-3.5 w-3.5 text-rose-500" /> Missed Calls
+                            </p>
+                            <span className="text-[11px] text-rose-600 font-semibold">{missedUnreadTotal}</span>
+                          </div>
+                          {missedCallNotifications.length === 0 ? (
+                            <div className="text-[11px] text-slate-400 py-1">No missed calls</div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {missedCallNotifications.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
+                                  onClick={() => {
+                                    setNotifOpen(false);
+                                    markMissedCallsAsSeen();
+                                    navigate('/calls/missed');
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
+                                    <span className="text-[10px] text-slate-400 shrink-0 font-medium">{timeAgo(item.createdAt)}</span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.preview}</p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {callsLoading ? (
+                          <div className="p-4 space-y-3">
+                            {Array.from({ length: 4 }).map((_, i) => (
+                              <div key={i} className="flex items-center gap-3">
+                                <Skeleton className="h-7 w-7 rounded-lg" />
+                                <div className="flex-1 space-y-1">
+                                  <Skeleton className="h-3 w-28 rounded" />
+                                  <Skeleton className="h-2.5 w-20 rounded" />
+                                </div>
+                                <Skeleton className="h-2.5 w-10 rounded" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : calls.length === 0 ? (
+                          <div className="py-4 text-center text-sm text-slate-400">No recent calls</div>
                         ) : (
-                          <div className="space-y-1.5">
-                            {chatNotifications.map((item) => (
-                              <button
-                                key={item.id}
-                                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                                onClick={() => {
-                                  setNotifOpen(false);
-                                  navigate('/chat');
-                                }}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
-                                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center leading-none">
-                                    {item.unread > 99 ? '99+' : item.unread}
+                          <>
+                            <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50 text-[11px] font-semibold text-slate-600">Recent Calls</div>
+                            {calls.map((c) => {
+                              const meta = CALL_TYPE_ICON[c.call_type] ?? CALL_TYPE_ICON.OUTBOUND;
+                              const IconComp = meta.icon;
+                              return (
+                                <div
+                                  key={c.id}
+                                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
+                                  onClick={() => { setNotifOpen(false); startTransition(() => navigate(`/calls/lead/${c.lead_id}`)); }}
+                                >
+                                  <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                    <IconComp className={`h-3.5 w-3.5 ${meta.color}`} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-slate-800 truncate">
+                                      {c.lead_name || c.lead_phone || 'Unknown lead'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 truncate">
+                                      {c.outcome_label ? c.outcome_label : c.call_type?.toLowerCase()}
+                                    </p>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 shrink-0 font-medium">
+                                    {timeAgo(c.call_start || c.created_at)}
                                   </span>
                                 </div>
-                                <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.preview}</p>
-                              </button>
-                            ))}
-                          </div>
+                              );
+                            })}
+                          </>
                         )}
                       </div>
 
-                      <div className="px-4 py-2.5 border-t border-slate-100/80">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                            <PhoneMissed className="h-3.5 w-3.5 text-rose-500" /> Missed Calls
-                          </p>
-                          <span className="text-[11px] text-rose-600 font-semibold">{missedUnreadTotal}</span>
+                      <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
+                            onClick={() => {
+                              setNotifOpen(false);
+                              startTransition(() => navigate('/chat'));
+                            }}
+                          >
+                            Open Chat
+                          </button>
+                          <button
+                            className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
+                            onClick={() => {
+                              setNotifOpen(false);
+                              markMissedCallsAsSeen();
+                              startTransition(() => navigate('/calls/missed'));
+                            }}
+                          >
+                            Missed Calls
+                          </button>
                         </div>
-                        {missedCallNotifications.length === 0 ? (
-                          <div className="text-[11px] text-slate-400 py-1">No missed calls</div>
-                        ) : (
-                          <div className="space-y-1.5">
-                            {missedCallNotifications.map((item) => (
-                              <button
-                                key={item.id}
-                                className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                                onClick={() => {
-                                  setNotifOpen(false);
-                                  markMissedCallsAsSeen();
-                                  navigate('/calls/missed');
-                                }}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
-                                  <span className="text-[10px] text-slate-400 shrink-0 font-medium">{timeAgo(item.createdAt)}</span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.preview}</p>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {callsLoading ? (
-                        <div className="p-4 space-y-3">
-                          {Array.from({ length: 4 }).map((_, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                              <Skeleton className="h-7 w-7 rounded-lg" />
-                              <div className="flex-1 space-y-1">
-                                <Skeleton className="h-3 w-28 rounded" />
-                                <Skeleton className="h-2.5 w-20 rounded" />
-                              </div>
-                              <Skeleton className="h-2.5 w-10 rounded" />
-                            </div>
-                          ))}
-                        </div>
-                      ) : calls.length === 0 ? (
-                        <div className="py-4 text-center text-sm text-slate-400">No recent calls</div>
-                      ) : (
-                        <>
-                          <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50 text-[11px] font-semibold text-slate-600">Recent Calls</div>
-                          {calls.map((c) => {
-                            const meta = CALL_TYPE_ICON[c.call_type] ?? CALL_TYPE_ICON.OUTBOUND;
-                            const IconComp = meta.icon;
-                            return (
-                              <div
-                                key={c.id}
-                                className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
-                                onClick={() => { setNotifOpen(false); startTransition(() => navigate(`/calls/lead/${c.lead_id}`)); }}
-                              >
-                                <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                  <IconComp className={`h-3.5 w-3.5 ${meta.color}`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-slate-800 truncate">
-                                    {c.lead_name || c.lead_phone || 'Unknown lead'}
-                                  </p>
-                                  <p className="text-[11px] text-slate-400 truncate">
-                                    {c.outcome_label ? c.outcome_label : c.call_type?.toLowerCase()}
-                                  </p>
-                                </div>
-                                <span className="text-[10px] text-slate-400 shrink-0 font-medium">
-                                  {timeAgo(c.call_start || c.created_at)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </>
-                      )}
-                    </div>
-
-                    <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
-                          onClick={() => {
-                            setNotifOpen(false);
-                            startTransition(() => navigate('/chat'));
-                          }}
-                        >
-                          Open Chat
-                        </button>
-                        <button
-                          className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
-                          onClick={() => {
-                            setNotifOpen(false);
-                            markMissedCallsAsSeen();
-                            startTransition(() => navigate('/calls/missed'));
-                          }}
-                        >
-                          Missed Calls
-                        </button>
                       </div>
                     </div>
-                    </div>
-                  </>
                 )}
-              </div>
+          </div>
 
-              <div className="relative" ref={profileRef}>
+          <div className="relative" ref={profileRef}>
                 <button
                   onClick={() => setProfileOpen(o => !o)}
                   className={`h-9 w-9 sm:h-10 sm:w-10 rounded-xl flex items-center justify-center border ml-0.5 sm:ml-1 transition-all shrink-0 overflow-hidden
@@ -804,11 +813,17 @@ const LayoutBody = () => {
               })}
 
               <button
-                onClick={() => setOpenMobile(true)}
+                onClick={() => navigate('/calls/scheduled')}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 active:scale-90"
               >
-                <Grid2x2 className="h-5 w-5 text-slate-500 transition-colors duration-150" strokeWidth={1.8} />
-                <span className="text-[9px] font-bold text-slate-500">More</span>
+                <div className="relative flex items-center justify-center">
+                  {(pathname === '/calls/scheduled' || pathname.startsWith('/calls/scheduled')) && <div className="absolute inset-0 h-8 w-8 -top-1.5 -left-1.5 rounded-full bg-indigo-500/15 blur-md" />}
+                  <Calendar 
+                    className={`relative h-5 w-5 transition-colors duration-150 ${(pathname === '/calls/scheduled' || pathname.startsWith('/calls/scheduled')) ? 'text-indigo-600' : 'text-slate-500'}`}
+                    strokeWidth={(pathname === '/calls/scheduled' || pathname.startsWith('/calls/scheduled')) ? 2.4 : 1.8}
+                  />
+                </div>
+                <span className={`text-[9px] font-bold transition-colors duration-150 ${(pathname === '/calls/scheduled' || pathname.startsWith('/calls/scheduled')) ? 'text-indigo-600' : 'text-slate-500'}`}>Scheduled</span>
               </button>
             </div>
           </div>

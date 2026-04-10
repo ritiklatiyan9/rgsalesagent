@@ -164,12 +164,15 @@ function Inner() {
     const isMissed = normalizedCallType === 'MISSED';
     const isReal = durationSeconds >= 1;
 
+    // Check BEFORE phone enrichment — only open drawer for calls initiated from the app
+    const appFallback = getDialerFallback();
+    const isAppInitiated = Boolean(appFallback?.phoneNumber);
+
     if (!phoneNumber) {
-      const fallback = getDialerFallback();
-      if (fallback?.phoneNumber) {
-        phoneNumber = fallback.phoneNumber;
-        if (!contactName && fallback.contactName) {
-          contactName = fallback.contactName;
+      if (appFallback?.phoneNumber) {
+        phoneNumber = appFallback.phoneNumber;
+        if (!contactName && appFallback.contactName) {
+          contactName = appFallback.contactName;
         }
       }
     }
@@ -244,6 +247,10 @@ function Inner() {
 
     const isOutgoing = normalizedCallType === 'OUTGOING';
     if (!isReal && !isMissed && !isOutgoing) return;
+
+    // Only open the drawer if this call was started from within the app.
+    // Background / external calls are auto-logged above but don't pop the UI.
+    if (!isAppInitiated) return;
 
     setCallData(enrichedData);
     setDrawerOpen(true);

@@ -132,7 +132,9 @@ export default function App() {
               <Route path="reminders" element={<Reminders />} />
 
               {/* Call History */}
-              <Route path="calls/history" element={<CallHistory />} />
+              <Route path="calls" element={<ContactsLayout />}>
+                <Route path="history" element={<CallHistory />} />
+              </Route>
 
               {/* Team */}
               <Route path="team" element={<TeamMembers />} />
@@ -160,7 +162,9 @@ export default function App() {
                 <Route index element={<AllContacts />} />
                 <Route path="bulk" element={<BulkImportContacts />} />
               </Route>
-              <Route path="contacts/shift-to-call" element={<ShiftToCallQueue />} />
+              <Route path="contacts" element={<ContactsLayout />}>
+                <Route path="shift-to-call" element={<ShiftToCallQueue />} />
+              </Route>
             </Route>
 
             {/* Fallback */}

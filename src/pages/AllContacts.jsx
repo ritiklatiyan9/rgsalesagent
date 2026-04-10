@@ -20,7 +20,7 @@ import api from '@/lib/axios';
 import { toast } from 'sonner';
 import {
     Search, Users, UserPlus, ChevronLeft, ChevronRight, Trash2,
-    Plus, Loader2, X, PhoneOutgoing, Pencil, RefreshCw, Smartphone,
+    Plus, Loader2, X, PhoneOutgoing, Pencil, Smartphone,
 } from 'lucide-react';
 import { useDeviceContacts } from '@/hooks/useDeviceContacts';
 
@@ -32,7 +32,7 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
 
 const AllContacts = () => {
     const navigate = useNavigate();
-    const { synced, syncing, syncContacts, searchDeviceContacts, count: deviceCount } = useDeviceContacts();
+    const { synced, syncing, syncContacts, searchDeviceContacts, clearCache, count: deviceCount } = useDeviceContacts();
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -92,7 +92,7 @@ const AllContacts = () => {
     const [selectedContactIds, setSelectedContactIds] = useState([]);
     const [shiftLoading, setShiftLoading] = useState(false);
 
-    const fetchContacts = useCallback(async (page = currentPage, search = searchQuery) => {
+    const fetchContacts = useCallback(async (page, search) => {
         try {
             setLoading(true);
             if (search) setIsSearching(true);
@@ -110,15 +110,15 @@ const AllContacts = () => {
             setLoading(false);
             setIsSearching(false);
         }
-    }, [currentPage, searchQuery]);
+    }, []);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchContacts(1, searchQuery);
             setCurrentPage(1);
+            fetchContacts(1, searchQuery);
         }, 300);
         return () => clearTimeout(timer);
-    }, [searchQuery, fetchContacts]);
+    }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const currentIds = new Set(contacts.map((c) => c.id));
@@ -280,42 +280,54 @@ const AllContacts = () => {
                 </div>
             )}
 
-            {/* Search + Sync + Add */}
-            <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                    <Input
-                        placeholder={synced ? `Search DB + ${deviceCount} device contacts...` : 'Search by name or phone...'}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-8 pr-8 h-8 text-xs rounded-lg"
-                        autoComplete="off"
-                    />
-                    {isSearching && (
-                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                            <div className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-                        </div>
-                    )}
-                    {!isSearching && searchQuery && (
-                        <button onClick={() => setSearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+            {/* Search + Sync/Unsync + Add — sticky below tabs */}
+            <div className="sticky top-13 z-10 bg-background pb-2 pt-0.5 -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8">
+                <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                        <Input
+                            placeholder={synced ? `Search DB + ${deviceCount} device contacts...` : 'Search by name or phone...'}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-8 pr-8 h-9 text-xs rounded-xl"
+                            autoComplete="off"
+                        />
+                        {isSearching && (
+                            <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                                <div className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                            </div>
+                        )}
+                        {!isSearching && searchQuery && (
+                            <button onClick={() => setSearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    {synced ? (
+                        <Button size="sm" variant="outline"
+                            className="h-9 text-xs gap-1 rounded-xl px-2.5 shrink-0 text-red-600 border-red-200 bg-red-50 hover:bg-red-100"
+                            onClick={() => { clearCache(); toast.info('Device contacts unsynced'); }}
+                            disabled={syncing}>
                             <X className="h-3.5 w-3.5" />
-                        </button>
+                            Unsync
+                        </Button>
+                    ) : (
+                        <Button size="sm" variant="secondary"
+                            className="h-9 text-xs gap-1 rounded-xl px-2.5 shrink-0"
+                            onClick={syncContacts} disabled={syncing}>
+                            {syncing
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Smartphone className="h-3.5 w-3.5" />
+                            }
+                            Sync
+                        </Button>
                     )}
+                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 h-9 text-xs gap-1 rounded-xl px-3 shrink-0"
+                        onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
+                        <Plus className="h-3.5 w-3.5" />Add
+                    </Button>
                 </div>
-                <Button size="sm" variant={synced ? 'outline' : 'secondary'}
-                    className={`h-8 text-xs gap-1 rounded-lg px-2.5 shrink-0 ${synced ? 'text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100' : ''}`}
-                    onClick={syncContacts} disabled={syncing}>
-                    {syncing
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : synced ? <RefreshCw className="h-3.5 w-3.5" /> : <Smartphone className="h-3.5 w-3.5" />
-                    }
-                    {synced ? 'Synced' : 'Sync'}
-                </Button>
-                <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 h-8 text-xs gap-1 rounded-lg px-3 shrink-0"
-                    onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
-                    <Plus className="h-3.5 w-3.5" />Add
-                </Button>
             </div>
 
             {/* Contacts Table */}

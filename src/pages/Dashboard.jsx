@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import LeadSearchWidget from '@/components/LeadSearchWidget';
 import { cachedGet, invalidateCache } from '@/lib/queryCache';
 import api from '@/lib/axios';
@@ -209,8 +210,8 @@ const Dashboard = () => {
       tone: 'orange',
     },
     {
-      key: 'tasks',
-      label: 'Open Tasks',
+      key: 'reminders',
+      label: 'Reminders',
       hint: `${fmtNum(followupCounts?.today ?? 0)} due today`,
       value: followupCounts?.scheduled ?? 0,
       nav: '/reminders',
@@ -304,7 +305,7 @@ const Dashboard = () => {
           <Plus className="h-3.5 w-3.5 mr-1" /> Add Lead
         </Button>
         <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white text-amber-700 border border-amber-200 hover:bg-amber-50 text-[11px] font-medium shadow-sm">
-          <Clock className="h-3.5 w-3.5 mr-1" /> Tasks
+          <Clock className="h-3.5 w-3.5 mr-1" /> Reminders
         </Button>
         <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white text-cyan-700 border border-cyan-200 hover:bg-cyan-50 text-[11px] font-medium shadow-sm">
           <Users className="h-3.5 w-3.5 mr-1" /> Contacts
@@ -319,16 +320,17 @@ const Dashboard = () => {
         </div>
         <LeadSearchWidget />
         <div className="flex items-center gap-2 mt-3">
-          <select
-            value={browseCat}
-            onChange={(e) => setBrowseCat(e.target.value)}
-            className="h-10 w-full text-sm rounded-xl bg-slate-50 border border-slate-200 text-slate-700 px-3 outline-none focus:ring-2 focus:ring-cyan-200"
-          >
-            <option value="ALL">All Categories</option>
-            {LEAD_CATEGORY_VALUES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <Select value={browseCat} onValueChange={setBrowseCat}>
+            <SelectTrigger className="h-10 w-full rounded-xl bg-slate-50 border-slate-200 text-slate-700 text-sm focus:ring-cyan-200">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Categories</SelectItem>
+              {LEAD_CATEGORY_VALUES.map((c) => (
+                <SelectItem key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             size="icon"
             className="h-10 w-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shrink-0"
