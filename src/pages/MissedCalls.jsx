@@ -92,6 +92,7 @@ const MissedCalls = () => {
     }
 
     const isApp = window.Capacitor?.isNativePlatform?.() || false;
+    try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone, name: call?.lead_name || call?.contact_name || '', leadId: call?.lead_id || null, timestamp: Date.now() })); } catch {}
     if (isApp && window.Capacitor?.Plugins?.CallNumber) {
       try {
         await window.Capacitor.Plugins.CallNumber.callNumber({ number: phone, bypassAppChooser: false });

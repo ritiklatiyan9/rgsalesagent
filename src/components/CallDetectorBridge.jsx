@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useRef, Component } from 'react';
+import { useCallback, useEffect, useRef, Component } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCallListener } from '@/hooks/useCallListener';
 import { useDialer } from '@/hooks/useDialer';
-import CallLeadDrawer from '@/components/CallLeadDrawer';
+import { useCallDrawer } from '@/context/CallDrawerContext';
 import api from '@/lib/axios';
 
 const sanitizePhone = (value) => String(value || '').replace(/[^0-9+]/g, '');
@@ -39,6 +40,17 @@ const getDialerFallback = () => {
   } catch {
     return null;
   }
+};
+
+const consumeDialerFallback = () => {
+  try { localStorage.removeItem('rg:lastDialedCall'); } catch { /* noop */ }
+};
+
+/** Compare last N digits of two phone numbers (handles +91 / 0 prefix differences) */
+const phoneTailMatch = (a, b, digits = 10) => {
+  const ta = sanitizePhone(a).replace(/^\+/, '').slice(-digits);
+  const tb = sanitizePhone(b).replace(/^\+/, '').slice(-digits);
+  return ta.length >= 7 && tb.length >= 7 && ta === tb;
 };
 
 const readPendingCallLogs = () => {
@@ -97,9 +109,9 @@ class SafeWrap extends Component {
 
 function Inner() {
   const { getRecentCalls } = useDialer();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [callData, setCallData] = useState(null);
-  const flushingRef = useRef(false);
+  const { openDrawer } = useCallDrawer();
+  const navigate       = useNavigate();
+  const flushingRef    = useRef(false);
 
   const logCallNow = useCallback(async (payload) => {
     const { data: response } = await api.post('/calls/quick-log', payload);
@@ -166,7 +178,21 @@ function Inner() {
 
     // Check BEFORE phone enrichment — only open drawer for calls initiated from the app
     const appFallback = getDialerFallback();
-    const isAppInitiated = Boolean(appFallback?.phoneNumber);
+
+    // Determine if this specific call was started from inside the app:
+    // 1. A recent rg:lastDialedCall entry must exist (set only when dialer page fires a call)
+    // 2. The phone number from the native detector must match what was dialed
+    //    (prevents external incoming/outgoing calls from triggering the drawer)
+    let isAppInitiated = false;
+    if (appFallback?.phoneNumber) {
+      // If the native detector gave us a phone, compare it
+      if (phoneNumber) {
+        isAppInitiated = phoneTailMatch(phoneNumber, appFallback.phoneNumber);
+      } else {
+        // No phone from detector yet — we'll enrich below; defer the match check
+        isAppInitiated = true; // tentative, re-checked after enrichment
+      }
+    }
 
     if (!phoneNumber) {
       if (appFallback?.phoneNumber) {
@@ -192,6 +218,17 @@ function Inner() {
 
     const hasNumber = Boolean(phoneNumber);
     if (!hasNumber) return;
+
+    // Re-verify after enrichment: if we tentatively set isAppInitiated=true because
+    // detector had no phone, now compare the enriched number against what was dialed.
+    if (isAppInitiated && appFallback?.phoneNumber && phoneNumber) {
+      isAppInitiated = phoneTailMatch(phoneNumber, appFallback.phoneNumber);
+    }
+
+    // Consume the fallback so it can't trigger the drawer for the next unrelated call
+    if (isAppInitiated) {
+      consumeDialerFallback();
+    }
 
     const enrichedData = {
       ...data,
@@ -248,26 +285,16 @@ function Inner() {
     const isOutgoing = normalizedCallType === 'OUTGOING';
     if (!isReal && !isMissed && !isOutgoing) return;
 
-    // Only open the drawer if this call was started from within the app.
+    // Only open the summary page if this call was started from within the app.
     // Background / external calls are auto-logged above but don't pop the UI.
     if (!isAppInitiated) return;
 
-    setCallData(enrichedData);
-    setDrawerOpen(true);
-  }, [getRecentCalls, logCallNow]);
+    openDrawer(enrichedData);
+  }, [getRecentCalls, logCallNow, openDrawer]);
 
   useCallListener({ onCallEnded: handleCallEnded });
 
-  return (
-    <CallLeadDrawer
-      open={drawerOpen}
-      callData={callData}
-      onClose={() => {
-        setDrawerOpen(false);
-        setCallData(null);
-      }}
-    />
-  );
+  return null;
 }
 
 export default function CallDetectorBridge() {

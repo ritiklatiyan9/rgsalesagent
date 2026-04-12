@@ -80,13 +80,11 @@
         <service
             android:name=".plugins.CallDetectorService"
             android:foregroundServiceType="dataSync"
-            android:exported="false"
-            android:process=":call_detector" />
+            android:exported="false" />
 
         <service
             android:name=".plugins.PostCallOverlayService"
-            android:exported="false"
-            android:process=":call_detector" />
+            android:exported="false" />
     </application>
 
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />

@@ -1,14 +1,32 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
-const Dialer = registerPlugin('Dialer');
 const noopHandle = { remove: () => {} };
 
-const isNative = () => Capacitor.isNativePlatform();
+const isNative = () => {
+  try { return Capacitor.isNativePlatform(); } catch { return false; }
+};
+
+// Lazy init — avoid calling registerPlugin at module-load time
+// to prevent Vite module initialization ordering issues on web.
+let _dialer = null;
+function getDialer() {
+  if (_dialer) return _dialer;
+  try {
+    if (isNative()) {
+      _dialer = registerPlugin('Dialer');
+      return _dialer;
+    }
+  } catch (e) {
+    console.warn('[useDialer] registerPlugin failed:', e);
+  }
+  _dialer = null;
+  return null;
+}
 
 export const useDialer = () => {
   const requestPermissions = async () => {
     if (!isNative()) return { callPhone: false, callLog: false, phoneState: false, contacts: false };
-    return Dialer.requestPermissions();
+    return getDialer()?.requestPermissions() ?? { callPhone: false, callLog: false, phoneState: false, contacts: false };
   };
 
   const makeCall = async (phoneNumber, simSlot = -1) => {
@@ -18,7 +36,7 @@ export const useDialer = () => {
       window.open(`tel:${clean}`, '_self');
       return { started: true, phoneNumber: clean };
     }
-    return Dialer.makeCall({ phoneNumber: clean, simSlot });
+    return getDialer()?.makeCall({ phoneNumber: clean, simSlot }) ?? { started: false };
   };
 
   const openDialer = async (phoneNumber) => {
@@ -27,40 +45,40 @@ export const useDialer = () => {
       window.open(`tel:${clean}`, '_self');
       return { opened: true };
     }
-    return Dialer.openDialer({ phoneNumber: clean });
+    return getDialer()?.openDialer({ phoneNumber: clean }) ?? { opened: false };
   };
 
   const getRecentCalls = async (limit = 50) => {
     if (!isNative()) return [];
-    const res = await Dialer.getRecentCalls({ limit });
+    const res = await (getDialer()?.getRecentCalls({ limit }) ?? Promise.resolve(null));
     return res?.calls || [];
   };
 
   const getSIMInfo = async () => {
     if (!isNative()) return [];
-    const res = await Dialer.getSIMInfo();
+    const res = await (getDialer()?.getSIMInfo() ?? Promise.resolve(null));
     return res?.sims || [];
   };
 
   const getDeviceContacts = async () => {
     if (!isNative()) return [];
-    const res = await Dialer.getDeviceContacts();
+    const res = await (getDialer()?.getDeviceContacts() ?? Promise.resolve(null));
     return res?.contacts || [];
   };
 
   const onCallStateChanged = (callback) => {
     if (!isNative()) return noopHandle;
-    return Dialer.addListener('callStateChanged', callback);
+    return getDialer()?.addListener('callStateChanged', callback) ?? noopHandle;
   };
 
   const onCallConnected = (callback) => {
     if (!isNative()) return noopHandle;
-    return Dialer.addListener('callConnected', callback);
+    return getDialer()?.addListener('callConnected', callback) ?? noopHandle;
   };
 
   const onCallEnded = (callback) => {
     if (!isNative()) return noopHandle;
-    return Dialer.addListener('callEnded', callback);
+    return getDialer()?.addListener('callEnded', callback) ?? noopHandle;
   };
 
   return {

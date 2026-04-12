@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Delete, PhoneCall, PhoneOff, Search, X,
   ArrowDownLeft, ArrowUpRight, PhoneMissed, Smartphone,
-  Clock, Keyboard, Loader2, User, Phone, ChevronRight,
+  Clock, Keyboard, Loader2, User, Phone, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import api from '@/lib/axios';
 import { useDialer } from '@/hooks/useDialer';
+import { useDeviceContacts } from '@/hooks/useDeviceContacts';
 
 /* ── Constants ──────────────────────────────────────────────────────────── */
 const KEYS = [
@@ -21,8 +22,7 @@ const KEYS = [
 
 const TAB_CONFIG = [
   { key: 'keypad', label: 'Keypad', Icon: Keyboard },
-  { key: 'search', label: 'Search', Icon: Search },
-  { key: 'history', label: 'History', Icon: Clock },
+  { key: 'recents', label: 'Recents', Icon: Clock },
 ];
 
 const HISTORY_LIMIT = 30;
@@ -143,43 +143,6 @@ const HistoryRow = memo(({ call, onCall, style }) => {
 });
 HistoryRow.displayName = 'HistoryRow';
 
-/* ── Search result row ─────────────────────────────────────────────────────── */
-const SearchResultRow = memo(({ item, onCall }) => (
-  <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100/80 last:border-0
-                  hover:bg-slate-50/50 transition-colors duration-150 group">
-    <div className="h-10 w-10 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0
-                    transition-transform duration-200 group-hover:scale-105">
-      <User className="h-4.5 w-4.5 text-violet-500" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-center gap-2">
-        <p className="text-sm font-medium text-slate-900 truncate">{item.name || 'Unknown'}</p>
-        {item.lead_category && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${statusBadge(item.lead_category)}`}>
-            {item.lead_category}
-          </span>
-        )}
-      </div>
-      <p className="text-xs text-slate-500 font-mono truncate">{item.phone}</p>
-      {item.total_calls > 0 && (
-        <p className="text-[10px] text-slate-400 mt-0.5">
-          {item.total_calls} call{item.total_calls > 1 ? 's' : ''} · Last: {fmtDate(item.last_call_at)}
-        </p>
-      )}
-    </div>
-    <button
-      type="button"
-      onClick={() => onCall(item.phone, { name: item.name, leadId: item.id })}
-      className="h-10 w-10 rounded-full bg-green-500/10 hover:bg-green-500/20
-                 flex items-center justify-center text-green-600
-                 transition-all duration-200 active:scale-90 shrink-0"
-    >
-      <PhoneCall className="h-4 w-4" />
-    </button>
-  </div>
-));
-SearchResultRow.displayName = 'SearchResultRow';
-
 /* ── Skeleton rows ────────────────────────────────────────────────────────── */
 const SkeletonRows = ({ count = 5 }) => (
   <div className="divide-y divide-slate-100/80">
@@ -202,7 +165,9 @@ const SkeletonRows = ({ count = 5 }) => (
 const DialerPage = () => {
   const [searchParams] = useSearchParams();
   const { requestPermissions, makeCall, openDialer, getRecentCalls, getSIMInfo,
-          onCallConnected, onCallEnded, getDeviceContacts } = useDialer();
+          onCallConnected, onCallEnded } = useDialer();
+  const { deviceContacts: syncedContacts, syncing: contactsSyncing, synced: contactsSynced,
+          syncContacts, clearCache: clearContactsCache, count: deviceContactCount } = useDeviceContacts();
 
   /* ── Core state ── */
   const [tab, setTab]                   = useState('keypad');
@@ -211,6 +176,7 @@ const DialerPage = () => {
   const [selectedSim, setSelectedSim]   = useState('-1');
   const [activeCall, setActiveCall]     = useState(null);
   const [timerSec, setTimerSec]         = useState(0);
+  const [syncingAll, setSyncingAll]     = useState(false);
 
   /* ── History state (cursor-paginated) ── */
   const [history, setHistory]               = useState([]);
@@ -220,16 +186,12 @@ const DialerPage = () => {
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyFilter, setHistoryFilter]   = useState('ALL');
 
-  /* ── Search state ── */
-  const [searchQuery, setSearchQuery]       = useState('');
-  const [searchResults, setSearchResults]   = useState([]);
-  const [searchLoading, setSearchLoading]   = useState(false);
-  const [deviceContacts, setDeviceContacts] = useState([]);
+  /* ── Recents search state ── */
+  const [recentsSearch, setRecentsSearch]   = useState('');
 
   const timerRef          = useRef(null);
   const autoCallTriggered = useRef(false);
   const callIdRef         = useRef(null);
-  const searchTimerRef    = useRef(null);
   const historyEndRef     = useRef(null);
 
   const activeName = useMemo(
@@ -264,56 +226,122 @@ const DialerPage = () => {
     }
   }, [historyCursor, historyFilter]);
 
-  /* ── Search debounced ── */
-  const runSearch = useCallback(async (q) => {
-    const trimmed = String(q || '').trim();
-    if (trimmed.length < 2) { setSearchResults([]); return; }
-    setSearchLoading(true);
+  /* ── Filtered history (local search + exclude missed from ALL) ── */
+  const filteredHistory = useMemo(() => {
+    let result = history;
+    // When filter is ALL, hide MISSED calls from recents
+    if (historyFilter === 'ALL') {
+      result = result.filter(c => String(c.call_type).toUpperCase() !== 'MISSED');
+    }
+    if (!recentsSearch.trim()) return result;
+    const q = recentsSearch.toLowerCase().trim();
+    return result.filter((c) => {
+      const name = (c.lead_name || '').toLowerCase();
+      const phone = c.phone_number_dialed || c.lead_phone || '';
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [history, recentsSearch, historyFilter]);
+
+  /* ── Filtered device contacts (shown when synced & searching) ── */
+  const filteredDeviceContacts = useMemo(() => {
+    if (!contactsSynced || !recentsSearch.trim()) return [];
+    const q = recentsSearch.toLowerCase().trim();
+    const historyPhones = new Set(history.map(c => cleanNumber(c.phone_number_dialed || c.lead_phone || '')));
+    return syncedContacts
+      .filter((c) => {
+        const name = String(c.displayName || c.name || '').toLowerCase();
+        const phone = String(c.phoneNumber || c.number || '');
+        return name.includes(q) || phone.includes(q);
+      })
+      .filter(c => !historyPhones.has(cleanNumber(c.phoneNumber || c.number || '')))
+      .slice(0, 15);
+  }, [syncedContacts, contactsSynced, recentsSearch, history]);
+
+  /* ── Search debounced (removed — now uses local filteredHistory) ── */
+
+  /* ── Sync contacts + phone recent calls ── */
+  const handleSyncAll = useCallback(async () => {
+    if (syncingAll) return;
+    setSyncingAll(true);
     try {
-      const { data } = await api.get(`/calls/dialer-search?q=${encodeURIComponent(trimmed)}&limit=20`);
-      const dbResults = data.success ? (data.results || []) : [];
+      // 1. Sync device contacts
+      await syncContacts();
 
-      // Merge device contacts (filtered client-side)
-      const lower = trimmed.toLowerCase();
-      const contactMatches = deviceContacts
+      // 2. Fetch phone's native recent call log
+      const recentCalls = await getRecentCalls(200);
+      if (recentCalls.length > 0) {
+        const payload = recentCalls
+          .filter(c => {
+            const type = String(c.type || '').toUpperCase();
+            // Only sync INCOMING and MISSED calls (OUTGOING are already logged by the app)
+            return type === 'INCOMING' || type === 'MISSED';
+          })
+          .map(c => ({
+            phone_number: c.number || '',
+            call_type: String(c.type || '').toUpperCase(),
+            call_start: c.date ? new Date(Number(c.date)).toISOString() : new Date().toISOString(),
+            duration_seconds: Number(c.duration) || 0,
+          }));
+
+        if (payload.length > 0) {
+          const { data } = await api.post('/calls/sync-device-log', { calls: payload });
+          if (data.success) {
+            toast.success(`Synced ${data.synced} call${data.synced !== 1 ? 's' : ''} from phone${data.skipped ? ` (${data.skipped} duplicates skipped)` : ''}`);
+          }
+        } else {
+          toast.info('No new incoming calls to sync');
+        }
+      }
+
+      // 3. Reload history
+      loadHistory(true);
+    } catch (err) {
+      toast.error('Sync failed');
+    } finally {
+      setSyncingAll(false);
+    }
+  }, [syncingAll, syncContacts, getRecentCalls, loadHistory]);
+
+  const handleUnsync = useCallback(() => {
+    clearContactsCache();
+    toast('Device contacts unsynced');
+  }, [clearContactsCache]);
+
+  /* ── Auto-sync recent incoming/missed calls from phone CallLog on native ── */
+  const autoSyncDeviceCalls = useCallback(async () => {
+    const isNative = window.Capacitor?.isNativePlatform?.() || false;
+    if (!isNative) return;
+    try {
+      const recentCalls = await getRecentCalls(50);
+      if (!recentCalls?.length) return;
+      const payload = recentCalls
         .filter(c => {
-          const name = String(c.displayName || c.name || '').toLowerCase();
-          const phone = String(c.phoneNumber || c.number || '');
-          return name.includes(lower) || phone.includes(trimmed);
+          const type = String(c.type || '').toUpperCase();
+          return type === 'INCOMING' || type === 'MISSED';
         })
-        .slice(0, 10)
         .map(c => ({
-          id: `contact-${c.contactId || c.id}`,
-          name: c.displayName || c.name || 'Contact',
-          phone: c.phoneNumber || c.number || '',
-          source: 'contact',
+          phone_number: c.number || '',
+          call_type: String(c.type || '').toUpperCase(),
+          call_start: c.date ? new Date(Number(c.date)).toISOString() : new Date().toISOString(),
+          duration_seconds: Number(c.duration) || 0,
         }));
-
-      // Deduplicate by phone
-      const seen = new Set(dbResults.map(r => cleanNumber(r.phone)));
-      const merged = [
-        ...dbResults,
-        ...contactMatches.filter(c => !seen.has(cleanNumber(c.phone))),
-      ];
-      setSearchResults(merged);
-    } catch { setSearchResults([]); }
-    finally { setSearchLoading(false); }
-  }, [deviceContacts]);
-
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => runSearch(searchQuery), 300);
-    return () => clearTimeout(searchTimerRef.current);
-  }, [searchQuery, runSearch]);
+      if (payload.length > 0) {
+        await api.post('/calls/sync-device-log', { calls: payload });
+      }
+    } catch { /* silent background sync */ }
+  }, [getRecentCalls]);
 
   /* ── Load history on tab switch or filter change ── */
   useEffect(() => {
-    if (tab === 'history') loadHistory(true);
+    if (tab === 'recents') {
+      // Auto-sync device call log first, then load history
+      autoSyncDeviceCalls().finally(() => loadHistory(true));
+    }
   }, [tab, historyFilter]);
 
   /* ── Infinite scroll for history ── */
   useEffect(() => {
-    if (tab !== 'history' || !historyHasMore || historyLoadingMore) return;
+    if (tab !== 'recents' || !historyHasMore || historyLoadingMore) return;
     const el = historyEndRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -324,7 +352,18 @@ const DialerPage = () => {
     return () => observer.disconnect();
   }, [tab, historyHasMore, historyLoadingMore, loadHistory]);
 
-  /* ── Init: permissions, SIMs, device contacts ── */
+  /* ── Re-sync when app returns to foreground while on recents tab ── */
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && tab === 'recents') {
+        autoSyncDeviceCalls().finally(() => loadHistory(true));
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [tab, autoSyncDeviceCalls]);
+
+  /* ── Init: permissions, SIMs ── */
   useEffect(() => {
     (async () => {
       try { await requestPermissions(); } catch {}
@@ -333,10 +372,6 @@ const DialerPage = () => {
         setSims(simList || []);
         if (simList?.length) setSelectedSim(String(simList[0].slotIndex));
       } catch { setSims([]); }
-      try {
-        const contacts = await getDeviceContacts();
-        setDeviceContacts(Array.isArray(contacts) ? contacts : []);
-      } catch { setDeviceContacts([]); }
     })();
   }, []);
 
@@ -364,7 +399,7 @@ const DialerPage = () => {
       setActiveCall(null);
       callIdRef.current = null;
       // Refresh history if on that tab
-      if (tab === 'history') loadHistory(true);
+      if (tab === 'recents') loadHistory(true);
     });
 
     return () => {
@@ -422,7 +457,7 @@ const DialerPage = () => {
     setTimerSec(0);
     setActiveCall(null);
     callIdRef.current = null;
-    if (tab === 'history') loadHistory(true);
+    if (tab === 'recents') loadHistory(true);
   }, [activeCall, timerSec, tab]);
 
   const onPressKey  = useCallback((v) => setNumber((p) => cleanNumber(p + v)), []);
@@ -558,73 +593,63 @@ const DialerPage = () => {
         </div>
       )}
 
-      {/* ═══════════════════ SEARCH TAB ═══════════════════ */}
-      {tab === 'search' && (
+      {/* ═══════════════════ RECENTS TAB ═══════════════════ */}
+      {tab === 'recents' && (
         <div className="w-full max-w-sm animate-in fade-in duration-200">
-          {/* Search input */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search name or phone number…"
-              autoFocus
-              className="w-full h-11 pl-10 pr-10 rounded-xl border border-slate-200 bg-white
-                         text-sm text-slate-900 placeholder:text-slate-400
-                         focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500
-                         transition-all duration-200"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => { setSearchQuery(''); setSearchResults([]); }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-slate-200
-                           hover:bg-slate-300 flex items-center justify-center transition-colors"
-              >
-                <X className="h-3 w-3 text-slate-500" />
-              </button>
-            )}
+          {/* Search input + Sync button */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={recentsSearch}
+                onChange={(e) => setRecentsSearch(e.target.value)}
+                placeholder={contactsSynced ? `Search recents + ${deviceContactCount} contacts…` : 'Search recents…'}
+                className="w-full h-10 pl-10 pr-9 rounded-xl border border-slate-200 bg-white
+                           text-sm text-slate-900 placeholder:text-slate-400
+                           focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500
+                           transition-all duration-200"
+              />
+              {recentsSearch && (
+                <button
+                  type="button"
+                  onClick={() => setRecentsSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-slate-200
+                             hover:bg-slate-300 flex items-center justify-center transition-colors"
+                >
+                  <X className="h-3 w-3 text-slate-500" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => contactsSynced ? handleUnsync() : handleSyncAll()}
+              disabled={syncingAll || contactsSyncing}
+              className={`shrink-0 h-10 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 active:scale-95 ${
+                contactsSynced
+                  ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {(syncingAll || contactsSyncing) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : contactsSynced ? (
+                <X className="h-3.5 w-3.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              {(syncingAll || contactsSyncing) ? 'Syncing' : contactsSynced ? 'Unsync' : 'Sync'}
+            </button>
           </div>
 
-          {/* Results */}
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-            {searchLoading ? (
-              <SkeletonRows count={4} />
-            ) : searchResults.length === 0 ? (
-              <div className="py-12 text-center">
-                <Search className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">
-                  {searchQuery.length >= 2 ? 'No results found' : 'Type to search leads & contacts'}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="px-4 py-2 bg-slate-50/80 border-b border-slate-100">
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                {searchResults.map((item) => (
-                  <SearchResultRow key={String(item.id)} item={item} onCall={startCall} />
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════ HISTORY TAB ═══════════════════ */}
-      {tab === 'history' && (
-        <div className="w-full max-w-sm animate-in fade-in duration-200">
           {/* Filter chips */}
-          <div className="flex items-center gap-1.5 mb-3 px-0.5 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1.5 mb-3 px-0.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {['ALL', 'OUTGOING', 'INCOMING', 'MISSED'].map((f) => (
               <button
                 key={f}
                 type="button"
                 onClick={() => setHistoryFilter(f)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap
+                className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap
                            transition-all duration-200 ${
                   historyFilter === f
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -640,28 +665,74 @@ const DialerPage = () => {
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
             {historyLoading ? (
               <SkeletonRows count={6} />
-            ) : history.length === 0 ? (
+            ) : filteredHistory.length === 0 && filteredDeviceContacts.length === 0 ? (
               <div className="py-12 text-center">
                 <Clock className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">No call history yet</p>
+                <p className="text-sm text-slate-400">
+                  {recentsSearch ? 'No results found' : 'No call history yet'}
+                </p>
               </div>
             ) : (
               <>
-                {history.map((call, i) => (
+                {filteredHistory.map((call, i) => (
                   <HistoryRow key={call.id || i} call={call} onCall={startCall} />
                 ))}
-                {/* Infinite scroll sentinel */}
-                <div ref={historyEndRef} className="h-1" />
-                {historyLoadingMore && (
-                  <div className="flex items-center justify-center py-4 gap-2 text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-xs font-medium">Loading more…</span>
-                  </div>
+
+                {/* Device contacts matches */}
+                {filteredDeviceContacts.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 bg-amber-50/80 border-y border-amber-100">
+                      <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider">
+                        Device Contacts ({filteredDeviceContacts.length})
+                      </p>
+                    </div>
+                    {filteredDeviceContacts.map((c, i) => {
+                      const phone = c.phoneNumber || c.number || '';
+                      const name = c.displayName || c.name || 'Contact';
+                      return (
+                        <div
+                          key={`dc-${c.contactId || c.id || i}`}
+                          className="flex items-center gap-3 px-4 py-3 border-b border-slate-100/80 last:border-0
+                                     hover:bg-slate-50/50 transition-colors duration-150 group"
+                        >
+                          <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                            <User className="h-4.5 w-4.5 text-amber-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-900 truncate">{name}</p>
+                            <p className="text-xs text-slate-500 font-mono truncate">{phone}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => startCall(phone, { name })}
+                            className="h-10 w-10 rounded-full bg-green-500/10 hover:bg-green-500/20
+                                       flex items-center justify-center text-green-600
+                                       transition-all duration-200 active:scale-90 shrink-0"
+                          >
+                            <PhoneCall className="h-4 w-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
-                {!historyHasMore && history.length > 0 && (
-                  <div className="py-3 text-center">
-                    <p className="text-[10px] text-slate-300 font-medium">End of history</p>
-                  </div>
+
+                {/* Infinite scroll sentinel */}
+                {!recentsSearch && (
+                  <>
+                    <div ref={historyEndRef} className="h-1" />
+                    {historyLoadingMore && (
+                      <div className="flex items-center justify-center py-4 gap-2 text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-xs font-medium">Loading more…</span>
+                      </div>
+                    )}
+                    {!historyHasMore && history.length > 0 && (
+                      <div className="py-3 text-center">
+                        <p className="text-[10px] text-slate-300 font-medium">End of history</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

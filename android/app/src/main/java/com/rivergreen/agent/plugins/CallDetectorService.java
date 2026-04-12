@@ -201,8 +201,10 @@ public class CallDetectorService extends Service {
                         // Store in SharedPreferences for the Capacitor plugin to pick up
                         storeCallEvent(number, resolvedType, accurateDuration);
 
-                        // Launch overlay
-                        launchOverlay(number, resolvedType, accurateDuration);
+                        // Do NOT launch overlay or deep link here — the JS side
+                        // (CallDetectorBridge) will pick up the pending call via
+                        // SharedPreferences polling and only open the drawer if
+                        // the call was initiated from within the app.
                     }, 1500);
                 }
 

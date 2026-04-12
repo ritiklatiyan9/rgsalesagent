@@ -14,6 +14,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
+} from '@/components/ui/drawer';
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -157,10 +160,13 @@ const STATUS_OPTIONS = [
   { value: 'NEGOTIATION', label: 'Negotiation', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
   { value: 'BOOKED', label: 'Booked', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
   { value: 'LOST', label: 'Lost', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+  { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
+  { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-100 text-red-700 hover:bg-red-200' },
+  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200' },
 ];
 
 const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
-const LEAD_SOURCE_OPTIONS = ['Direct', 'Referral', 'Website', 'Advertisement', 'Event', 'Other'];
+const LEAD_SOURCE_OPTIONS = ['Direct', 'Referral', 'Website', 'Advertisement', 'Event', 'Direct Visit', 'Calling Visit', 'Site Visit', 'Other'];
 
 const EMPTY_FORM = {
   name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_category: '', lead_source: 'Other', notes: '',
@@ -353,6 +359,7 @@ const Leads = () => {
   }, [leads]);
 
   const openEdit = useCallback((lead) => {
+    console.log('testCallDrawer()');
     setEditId(lead.id);
     setForm({
       name: lead.name || '',
@@ -646,20 +653,15 @@ const Leads = () => {
         )}
       </Card>
 
-      {/* Edit Lead Dialog (no delete, no reassign) */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Pencil className="h-4 w-4 text-blue-600" />
-              </div>
-              Edit Lead
-            </DialogTitle>
-            <DialogDescription>Update lead status and details.</DialogDescription>
-          </DialogHeader>
+      {/* Edit Lead Drawer */}
+      <Drawer open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DrawerContent className="max-h-[92vh]">
+          <DrawerHeader className="pb-2">
+            <DrawerTitle className="text-base font-bold text-center">Edit Lead</DrawerTitle>
+            <DrawerDescription className="text-center text-xs text-muted-foreground">Update lead status and details.</DrawerDescription>
+          </DrawerHeader>
 
-          <form onSubmit={handleSubmit} className="mt-2 space-y-4 overflow-y-auto flex-1 pr-1">
+          <form onSubmit={handleSubmit} className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">
             {formError && (
               <Alert variant="destructive" className="py-2.5 bg-red-50 border-red-200">
                 <AlertCircle className="h-4 w-4 text-red-600" />
@@ -726,7 +728,7 @@ const Leads = () => {
               <Input id="name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="h-9" autoFocus />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="phone" className="text-xs font-semibold uppercase tracking-wider text-slate-500">Phone</Label>
                 <Input id="phone" value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className="h-9" />
@@ -737,11 +739,7 @@ const Leads = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Profession</Label>
-                <Input value={form.profession} onChange={(e) => setForm((p) => ({ ...p, profession: e.target.value }))} className="h-9" />
-              </div>
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</Label>
                 <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
@@ -753,9 +751,6 @@ const Leads = () => {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Category</Label>
                 <Select value={form.lead_category || 'NONE'} onValueChange={(v) => setForm((p) => ({ ...p, lead_category: v === 'NONE' ? '' : v }))}>
@@ -768,6 +763,9 @@ const Leads = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Source</Label>
                 <Select value={form.lead_source || 'Other'} onValueChange={(v) => setForm((p) => ({ ...p, lead_source: v }))}>
@@ -778,6 +776,10 @@ const Leads = () => {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Profession</Label>
+                <Input value={form.profession} onChange={(e) => setForm((p) => ({ ...p, profession: e.target.value }))} className="h-9" />
               </div>
             </div>
 
@@ -791,15 +793,17 @@ const Leads = () => {
               <Textarea id="notes" value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} rows={3} className="resize-none" />
             </div>
 
-            <DialogFooter className="pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="h-9 px-4 text-sm">Cancel</Button>
-              <Button type="submit" disabled={formLoading} className="h-9 px-4 text-sm bg-indigo-600 hover:bg-indigo-700">
-                {formLoading ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </DialogFooter>
+            <DrawerFooter className="pt-4 border-t px-0">
+              <div className="flex gap-2 w-full">
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="flex-1 h-9 text-sm">Cancel</Button>
+                <Button type="submit" disabled={formLoading} className="flex-1 h-9 text-sm bg-indigo-600 hover:bg-indigo-700">
+                  {formLoading ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </DrawerFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+      </Drawer>
 
       {/* Schedule Follow-up Dialog */}
       {scheduleLead && (
@@ -810,20 +814,20 @@ const Leads = () => {
         />
       )}
 
-      {/* View Details Dialog */}
-      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
+      {/* View Details Drawer */}
+      <Drawer open={viewOpen} onOpenChange={setViewOpen}>
+        <DrawerContent className="max-h-[92vh]">
+          <DrawerHeader className="shrink-0 border-b border-slate-100 pb-3">
+            <DrawerTitle className="flex items-center gap-2">
               <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center">
                 <Eye className="h-4 w-4 text-indigo-600" />
               </div>
               Lead Details
-            </DialogTitle>
-            <DialogDescription>All information for {viewTarget?.name}</DialogDescription>
-          </DialogHeader>
+            </DrawerTitle>
+            <DrawerDescription>All information for {viewTarget?.name}</DrawerDescription>
+          </DrawerHeader>
           {viewTarget && (
-            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1">
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-4 py-4">
               {/* Lead Photo */}
               {viewTarget.photo_url && (
                 <div className="flex justify-center pb-3 border-b border-border/40">
@@ -832,7 +836,7 @@ const Leads = () => {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Name</p>
                   <p className="font-medium">{viewTarget.name}</p>
@@ -899,7 +903,7 @@ const Leads = () => {
                 ) : viewCallHistory.length === 0 ? (
                   <p className="text-xs text-slate-500 text-center py-4">No call history found.</p>
                 ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                  <div className="space-y-2">
                     {viewCallHistory.map((call, idx) => {
                       const callType = call.call_type || call.callType || 'UNKNOWN';
                       const callTypeColor = callType === 'INCOMING' ? 'text-emerald-600 bg-emerald-50' : callType === 'OUTGOING' ? 'text-blue-600 bg-blue-50' : 'text-rose-600 bg-rose-50';
@@ -933,11 +937,11 @@ const Leads = () => {
               </div>
             </div>
           )}
-          <DialogFooter className="shrink-0 pt-3 border-t border-border/40">
-            <Button type="button" onClick={() => setViewOpen(false)} className="h-9 px-4 text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 shadow-none">Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <DrawerFooter className="shrink-0 border-t border-slate-100 pt-3">
+            <Button type="button" onClick={() => setViewOpen(false)} className="h-9 w-full text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 shadow-none">Close</Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 };

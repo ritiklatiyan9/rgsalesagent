@@ -117,7 +117,8 @@ const ScheduledCalls = () => {
     // ─── List state ───
     const [followups, setFollowups] = useState([]);
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-    const [counts, setCounts] = useState({ pending: 0, snoozed: 0, total: 0 });
+    const [counts, setCounts] = useState({ pending: 0, snoozed: 0, total: 0, done_today: 0 });
+    const abortRef = useRef(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
     const [datePreset, setDatePreset] = useState('all');
@@ -163,6 +164,11 @@ const ScheduledCalls = () => {
 
     // ─── Fetch followups ───
     const fetchData = useCallback(async (page = 1) => {
+        // Cancel any in-flight request
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -171,19 +177,16 @@ const ScheduledCalls = () => {
             const range = getDateRange();
             if (range.from) params.set('date_from', range.from);
             if (range.to) params.set('date_to', range.to);
-            const { data } = await api.get(`/followups/scheduled?${params}`);
+            const { data } = await api.get(`/followups/scheduled?${params}`, { signal: controller.signal });
             if (data.success) {
                 setFollowups(data.followups);
                 setPagination(data.pagination || { page: 1, totalPages: 1, total: data.followups?.length || 0 });
-                // Derive quick counts
-                const all = data.followups || [];
-                setCounts({
-                    total: data.pagination?.total || all.length,
-                    pending: all.filter(f => f.status === 'PENDING').length,
-                    snoozed: all.filter(f => f.status === 'SNOOZED').length,
-                });
+                // Use server-side counts (accurate across all pages)
+                if (data.counts) {
+                    setCounts(data.counts);
+                }
             }
-        } catch { /* ignore */ }
+        } catch (err) { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') { /* ignore */ } }
         finally { setLoading(false); }
     }, [getDateRange]);
 
@@ -196,7 +199,12 @@ const ScheduledCalls = () => {
         } catch { /* ignore */ }
     }, []);
 
-    useEffect(() => { fetchData(1); fetchOutcomes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // Auto-fetch when date filters change
+    useEffect(() => { fetchData(1); }, [datePreset, customDateFrom, customDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { fetchOutcomes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Cleanup abort controller on unmount
+    useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
 
     // ─── Native call events ───
     useEffect(() => {
@@ -274,6 +282,7 @@ const ScheduledCalls = () => {
                 setCapturedDurationSec(null);
                 setFollowups(prev => prev.map(f => f.id === followup.id ? { ...f, _calling: true } : f));
                 setActiveCall({ callId: data.call.id, followupId: followup.id, leadId: followup.lead_id, leadName: followup.lead_name, leadPhone: followup.lead_phone, connectedAt: null, isConnected: false });
+                try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: followup.lead_phone, name: followup.lead_name || '', leadId: followup.lead_id || null, timestamp: Date.now() })); } catch {}
                 if (isApp && window.Capacitor?.Plugins?.CallNumber) {
                     try { await window.Capacitor.Plugins.CallNumber.callNumber({ number: followup.lead_phone, bypassAppChooser: false }); }
                     catch { window.open(`tel:${followup.lead_phone}`, '_self'); }
@@ -353,7 +362,7 @@ const ScheduledCalls = () => {
                     <StatTile label="Total" value={counts.total} icon={CalendarClock} tone="from-indigo-400 to-indigo-500" hex="#6366f1" />
                     <StatTile label="Pending" value={counts.pending} icon={Clock} tone="from-amber-400 to-amber-500" hex="#f59e0b" />
                     <StatTile label="Snoozed" value={counts.snoozed} icon={AlarmClock} tone="from-sky-400 to-sky-500" hex="#0ea5e9" />
-                    <StatTile label="Done Today" value={0} icon={CheckCircle2} tone="from-emerald-400 to-emerald-500" hex="#10b981" />
+                    <StatTile label="Done Today" value={counts.done_today} icon={CheckCircle2} tone="from-emerald-400 to-emerald-500" hex="#10b981" />
                 </div>
             </div>
 
@@ -616,12 +625,28 @@ const ScheduledCalls = () => {
                     <p className="text-[11px] text-slate-400 font-medium">
                         {pagination.total} total · page {pagination.page}/{pagination.totalPages}
                     </p>
-                    <div className="flex gap-1.5">
+                    <div className="flex items-center gap-1">
                         <Button variant="outline" size="sm"
                             className="h-8 w-8 p-0 rounded-lg border-slate-200"
                             disabled={pagination.page <= 1 || loading} onClick={() => fetchData(pagination.page - 1)}>
                             <ChevronLeft className="h-4 w-4" />
                         </Button>
+                        {(() => {
+                            const pages = [];
+                            const current = pagination.page;
+                            const total = pagination.totalPages;
+                            let start = Math.max(1, current - 2);
+                            let end = Math.min(total, start + 4);
+                            if (end - start < 4) start = Math.max(1, end - 4);
+                            for (let i = start; i <= end; i++) pages.push(i);
+                            return pages.map(p => (
+                                <Button key={p} variant={p === current ? 'default' : 'outline'} size="sm"
+                                    className={`h-8 w-8 p-0 rounded-lg text-xs font-semibold ${
+                                        p === current ? 'bg-slate-900 text-white' : 'border-slate-200 text-slate-600'
+                                    }`}
+                                    onClick={() => fetchData(p)}>{p}</Button>
+                            ));
+                        })()}
                         <Button variant="outline" size="sm"
                             className="h-8 w-8 p-0 rounded-lg border-slate-200"
                             disabled={pagination.page >= pagination.totalPages || loading} onClick={() => fetchData(pagination.page + 1)}>

@@ -8,6 +8,10 @@ export default defineConfig({
 
   server: {
     port: 5176,
+    hmr: {
+      host: 'localhost',
+      port: 5176,
+    },
   },
 
   resolve: {

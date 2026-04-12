@@ -109,6 +109,7 @@ const MissedFollowups = () => {
     }
 
     const isApp = window.Capacitor?.isNativePlatform?.() || false;
+    try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone, name: followup?.lead_name || '', leadId: followup?.lead_id || null, timestamp: Date.now() })); } catch {}
     if (isApp && window.Capacitor?.Plugins?.CallNumber) {
       try {
         await window.Capacitor.Plugins.CallNumber.callNumber({ number: phone, bypassAppChooser: false });

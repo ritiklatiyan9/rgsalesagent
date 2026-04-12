@@ -209,6 +209,7 @@ const LeadsDialer = () => {
                 lead_id: lead.id,
                 call_source: isApp ? 'APP' : 'WEB',
             });
+            try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: lead.phone, name: lead.name || '', leadId: lead.id || null, timestamp: Date.now() })); } catch {}
             if (isApp && window.Capacitor?.Plugins?.CallNumber) {
                 try { await window.Capacitor.Plugins.CallNumber.callNumber({ number: lead.phone, bypassAppChooser: false }); }
                 catch { window.open(`tel:${lead.phone}`, '_self'); }

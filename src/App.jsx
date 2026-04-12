@@ -1,25 +1,34 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
+import { CallDrawerProvider } from '@/context/CallDrawerContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Lazy load all pages
-const Login = lazy(() => import('@/pages/Login'));
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
-const Leads = lazy(() => import('@/pages/Leads'));
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import Leads from '@/pages/Leads';
+import CallDashboard from '@/pages/CallDashboard';
+import AllContacts from '@/pages/AllContacts';
+import Chat from '@/pages/Chat';
+import MissedCalls from '@/pages/MissedCalls';
+import DialerPage from '@/pages/DialerPage';
+import CallHistory from '@/pages/CallHistory';
+import ScheduledCalls from '@/pages/ScheduledCalls';
+
+// Lazy load secondary/sub pages
 const LeadsLayout = lazy(() => import('@/pages/LeadsLayout'));
 const AddLead = lazy(() => import('@/pages/AddLead'));
 const LeadAssignment = lazy(() => import('@/pages/LeadAssignment'));
 const AssignmentHistory = lazy(() => import('@/pages/AssignmentHistory'));
 const BulkLeads = lazy(() => import('@/pages/BulkLeads'));
-const CallDashboard = lazy(() => import('@/pages/CallDashboard'));
 const LogCall = lazy(() => import('@/pages/LogCall'));
 const DailyCallEntry = lazy(() => import('@/pages/DailyCallEntry'));
-const ScheduledCalls = lazy(() => import('@/pages/ScheduledCalls'));
+// ScheduledCalls is eagerly loaded above
 const MissedFollowups = lazy(() => import('@/pages/MissedFollowups'));
-const MissedCalls = lazy(() => import('@/pages/MissedCalls'));
+// MissedCalls is eagerly loaded above
 const CallAnalytics = lazy(() => import('@/pages/CallAnalytics'));
 const LeadCallHistory = lazy(() => import('@/pages/LeadCallHistory'));
 const ColonyMaps = lazy(() => import('@/pages/ColonyMaps'));
@@ -37,13 +46,13 @@ const MemberCallAnalytics = lazy(() => import('@/pages/MemberCallAnalytics'));
 const TeamAgentRegister = lazy(() => import('@/pages/TeamAgentRegister'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const LeadsDialer = lazy(() => import('@/pages/LeadsDialer'));
-const DialerPage = lazy(() => import('@/pages/DialerPage'));
-const CallHistory = lazy(() => import('@/pages/CallHistory'));
+// DialerPage is eagerly loaded above
+// CallHistory is eagerly loaded above
 const ContentShare = lazy(() => import('@/pages/ContentShare'));
 const ContactsLayout = lazy(() => import('@/pages/ContactsLayout'));
-const AllContacts = lazy(() => import('@/pages/AllContacts'));
 const BulkImportContacts = lazy(() => import('@/pages/BulkImportContacts'));
 const ShiftToCallQueue = lazy(() => import('@/pages/ShiftToCallQueue'));
+const CallDrawer = lazy(() => import('@/components/CallDrawer'));
 
 const CallDetectorBridge = lazy(() =>
   import('@/components/CallDetectorBridge').catch((err) => {
@@ -60,8 +69,7 @@ const BookingDetail = lazy(() => import('@/pages/BookingDetail'));
 const MarkAttendance = lazy(() => import('@/pages/MarkAttendance'));
 const MyAttendance = lazy(() => import('@/pages/MyAttendance'));
 
-// Chat
-const Chat = lazy(() => import('@/pages/Chat'));
+// Chat is eagerly loaded above
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen bg-[#f8fafc]">
@@ -78,8 +86,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+        <CallDrawerProvider>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/share/plot/:plotId" element={<SharedPlot />} />
@@ -173,8 +182,10 @@ export default function App() {
         </Suspense>
 
         <Suspense fallback={null}>
+          <CallDrawer />
           <CallDetectorBridge />
         </Suspense>
+        </CallDrawerProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

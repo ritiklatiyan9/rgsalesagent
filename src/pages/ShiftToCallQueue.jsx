@@ -44,6 +44,7 @@ const ShiftToCallQueue = () => {
                 call_source: 'SHIFT_TO_CALL',
                 shift_queue_id: item.queue_id,
             });
+            try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: item.phone, name: item.contact_name || '', leadId: item.lead_id || null, timestamp: Date.now() })); } catch {}
             if (isApp && window.Capacitor?.Plugins?.CallNumber) {
                 try { await window.Capacitor.Plugins.CallNumber.callNumber({ number: item.phone, bypassAppChooser: false }); }
                 catch { window.open(`tel:${item.phone}`, '_self'); }

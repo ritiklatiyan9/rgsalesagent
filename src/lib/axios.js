@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
 
-export const API_URL = 'https://rivergreenbackend.onrender.com';
+export const API_URL = import.meta.env.VITE_API_URL || 'https://rivergreenbackend.onrender.com';
 
 // Persistence keys
 const ACCESS_TOKEN_KEY = 'rg_access_token';

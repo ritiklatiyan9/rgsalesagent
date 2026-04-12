@@ -16,6 +16,7 @@ import {
   Activity, Plus, ArrowRight, Flame,
   CheckCircle2, Clock, AlertCircle,
   BellRing, Check, AlarmClock, Phone, TrendingUp, Users,
+  MessageSquare, UsersRound, SlidersHorizontal,
 } from 'lucide-react';
 import {
   AreaChart, Area, PieChart, Pie, Cell,
@@ -289,96 +290,127 @@ const Dashboard = () => {
     <div className="space-y-5 pb-6">
       {/* ── Greeting ── */}
       <div>
-        <p className="text-[11px] text-slate-400 font-medium tracking-wide">{todayDateStr}</p>
-        <h1 className="text-[22px] sm:text-2xl font-semibold text-slate-900 mt-0.5 leading-snug">
+        <p className="text-[11px] text-slate-500 font-medium tracking-wide">{todayDateStr}</p>
+        <h1 className="text-[22px] sm:text-2xl font-bold text-slate-900 mt-0.5 leading-snug">
           {greeting},{' '}
-          <span className="text-cyan-700">{user?.name?.split(' ')[0] || roleLabel}</span>
+          <span className="text-indigo-600">{user?.name?.split(' ')[0] || roleLabel}</span>
         </h1>
-        <span className="mt-1.5 inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-500 font-medium">
+        <span className="mt-1.5 inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.16em] text-indigo-600 font-semibold border border-indigo-100">
           {roleLabel} Dashboard
         </span>
       </div>
 
       {/* ── Quick Actions ── */}
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => navigate('/leads/add')} className="h-9 rounded-full bg-slate-900 text-white hover:bg-slate-800 text-[11px] font-medium shadow-sm">
+      <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <Button size="sm" onClick={() => navigate('/leads/add')} className="shrink-0 h-9 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 text-[11px] font-semibold shadow-sm">
           <Plus className="h-3.5 w-3.5 mr-1" /> Add Lead
         </Button>
-        <Button size="sm" onClick={() => navigate('/reminders')} className="h-9 rounded-full bg-white text-amber-700 border border-amber-200 hover:bg-amber-50 text-[11px] font-medium shadow-sm">
+        <Button size="sm" onClick={() => navigate('/reminders')} className="shrink-0 h-9 rounded-full bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 text-[11px] font-semibold shadow-sm">
           <Clock className="h-3.5 w-3.5 mr-1" /> Reminders
         </Button>
-        <Button size="sm" onClick={() => navigate('/all-contacts')} className="h-9 rounded-full bg-white text-cyan-700 border border-cyan-200 hover:bg-cyan-50 text-[11px] font-medium shadow-sm">
-          <Users className="h-3.5 w-3.5 mr-1" /> Contacts
+        <Button size="sm" onClick={() => navigate('/chat')} className="shrink-0 h-9 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 text-[11px] font-semibold shadow-sm">
+          <MessageSquare className="h-3.5 w-3.5 mr-1" /> Chat
+        </Button>
+        <Button size="sm" onClick={() => navigate('/team')} className="shrink-0 h-9 rounded-full bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 text-[11px] font-semibold shadow-sm">
+          <UsersRound className="h-3.5 w-3.5 mr-1" /> My Team
         </Button>
       </div>
       
       {/* ── Quick Find ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 p-4 shadow-sm">
-        <div className="mb-3">
-          <p className="text-sm font-semibold text-slate-800">Quick Find</p>
-          <p className="text-[11px] text-slate-400">Search leads or browse by category</p>
+      <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+        {/* Top accent bar */}
+        <div className="h-0.5 bg-linear-to-r from-violet-500 to-indigo-500" />
+        <div className="p-4">
+          {/* Header */}
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+              <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-slate-800 leading-tight">Quick Find</p>
+              <p className="text-[10px] text-slate-400">Search leads &amp; contacts</p>
+            </div>
+          </div>
+
+          {/* Category pills — horizontally scrollable on mobile */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 mb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {['ALL', ...LEAD_CATEGORY_VALUES].map((c) => {
+              const active = browseCat === c;
+              const pillCls = {
+                ALL:    active ? 'bg-slate-800 text-white border-slate-800'     : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50',
+                PRIME:  active ? 'bg-amber-500 text-white border-amber-500'    : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100',
+                HOT:    active ? 'bg-rose-500 text-white border-rose-500'      : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100',
+                NORMAL: active ? 'bg-sky-500 text-white border-sky-500'        : 'bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100',
+                COLD:   active ? 'bg-cyan-500 text-white border-cyan-500'      : 'bg-cyan-50 text-cyan-600 border-cyan-200 hover:bg-cyan-100',
+                DEAD:   active ? 'bg-slate-400 text-white border-slate-400'    : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100',
+              }[c] || 'bg-white text-slate-500 border-slate-200';
+              return (
+                <button
+                  key={c}
+                  onClick={() => setBrowseCat(c)}
+                  className={`shrink-0 h-6 px-2.5 rounded-full text-[10px] font-semibold border transition-all duration-150 active:scale-95 ${pillCls}`}
+                >
+                  {c === 'ALL' ? 'All' : c.charAt(0) + c.slice(1).toLowerCase()}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search */}
+          <LeadSearchWidget category={browseCat} />
+
+          {/* Footer */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+            <span className="text-[10px] text-slate-400 font-medium">
+              {browseCat === 'ALL' ? 'All categories' : `Filter: ${browseCat.charAt(0) + browseCat.slice(1).toLowerCase()}`}
+            </span>
+            <button
+              onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
+              className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              Browse all <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
         </div>
-        <LeadSearchWidget />
-        <div className="flex items-center gap-2 mt-3">
-          <Select value={browseCat} onValueChange={setBrowseCat}>
-            <SelectTrigger className="h-10 w-full rounded-xl bg-slate-50 border-slate-200 text-slate-700 text-sm focus:ring-cyan-200">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Categories</SelectItem>
-              {LEAD_CATEGORY_VALUES.map((c) => (
-                <SelectItem key={c} value={c}>{c.charAt(0) + c.slice(1).toLowerCase()}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="icon"
-            className="h-10 w-10 rounded-xl bg-slate-900 hover:bg-slate-800 text-white shrink-0"
-            onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
-          >
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-        <FlowCurve color="#8b5cf6" opacity={0.07} />
       </div>
 
       {/* ── Stat Cards with Flow Curves ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {snapshotRows.slice(0, 4).map((row) => {
           const Icon = row.icon;
           return (
             <div
               key={row.key}
               onClick={() => navigate(row.nav)}
-              className="relative overflow-hidden rounded-xl bg-white border border-slate-100 p-3 pb-12 cursor-pointer active:scale-95 transition-all duration-200 shadow-sm hover:shadow-md hover:border-slate-200 group"
+              className="relative overflow-hidden rounded-xl bg-white border border-slate-200/80 p-3.5 pb-12 cursor-pointer active:scale-[0.97] transition-all duration-200 shadow-sm hover:shadow-lg hover:border-slate-300 group"
             >
               {/* Top accent bar */}
               <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${
-                row.tone === 'sky' ? 'from-sky-400 to-sky-500' :
-                row.tone === 'orange' ? 'from-orange-400 to-orange-500' :
-                row.tone === 'emerald' ? 'from-emerald-400 to-emerald-500' :
-                row.tone === 'rose' ? 'from-rose-400 to-rose-500' :
-                'from-amber-400 to-amber-500'
+                row.tone === 'sky' ? 'from-sky-400 to-blue-500' :
+                row.tone === 'orange' ? 'from-orange-400 to-red-500' :
+                row.tone === 'emerald' ? 'from-emerald-400 to-teal-500' :
+                row.tone === 'rose' ? 'from-rose-400 to-pink-500' :
+                'from-amber-400 to-orange-500'
               }`} />
               
               {/* Icon */}
-              <div className={`h-8 w-8 rounded-lg flex items-center justify-center transition-transform duration-200 group-hover:scale-110 ${TONE_ICON_CLS[row.tone]}`}>
-                <Icon className="h-4 w-4" />
+              <div className={`h-9 w-9 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-110 ${TONE_ICON_CLS[row.tone]}`}>
+                <Icon className="h-4.5 w-4.5" />
               </div>
               
               {/* Number */}
-              <p className="text-[22px] font-bold text-slate-900 mt-2.5 leading-none">
-                {loading ? <Skeleton className="h-6 w-12 rounded" /> : fmtNum(row.value)}
-              </p>
+              <div className="text-2xl font-extrabold text-slate-900 mt-2.5 leading-none tracking-tight">
+                {loading ? <Skeleton className="h-7 w-14 rounded" /> : fmtNum(row.value)}
+              </div>
               
               {/* Label */}
-              <p className="text-xs font-semibold text-slate-700 mt-1">{row.label}</p>
+              <p className="text-[13px] font-semibold text-slate-700 mt-1">{row.label}</p>
               
               {/* Hint */}
-              <p className="text-[9px] text-slate-400 mt-0.5">{row.hint}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5 font-medium">{row.hint}</p>
               
               {/* Flow Curve */}
-              <FlowCurve color={TONE_HEX[row.tone]} opacity={0.1} />
+              <FlowCurve color={TONE_HEX[row.tone]} opacity={0.15} />
             </div>
           );
         })}
@@ -387,11 +419,11 @@ const Dashboard = () => {
       {/* ── Schedule + Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Today's Schedule */}
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+        <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200/80">
             <div className="flex items-center gap-2">
               <BellRing className="h-4 w-4 text-violet-600" />
-              <p className="text-sm font-semibold text-slate-800">Today's Schedule</p>
+              <p className="text-sm font-bold text-slate-800">Today's Schedule</p>
               {todayFollowups.length > 0 && (
                 <Badge className="h-5 px-1.5 text-[10px] bg-violet-100 text-violet-700 border-none">
                   {todayFollowups.length}
@@ -520,13 +552,13 @@ const Dashboard = () => {
         {/* Charts & Pipeline */}
         <div className="flex flex-col gap-4">
           {/* Call Analytics */}
-          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 shadow-sm">
-            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-100">
+          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+            <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-slate-200/80">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-sky-600" />
-                <p className="text-sm font-semibold text-slate-800">Call Analytics</p>
+                <p className="text-sm font-bold text-slate-800">Call Analytics</p>
               </div>
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">30 Days</span>
+              <span className="text-[10px] font-semibold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full uppercase tracking-widest border border-sky-100">30 Days</span>
             </div>
             <div className="px-4 pt-4 pb-2">
               {loading ? (
@@ -576,10 +608,10 @@ const Dashboard = () => {
           </div>
 
           {/* Pipeline */}
-          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-100 p-4 shadow-sm">
+          <div className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Target className="h-4 w-4 text-emerald-600" />
-              <p className="text-sm font-semibold text-slate-800">Pipeline</p>
+              <p className="text-sm font-bold text-slate-800">Pipeline</p>
             </div>
             <div className="space-y-4">
               {loading ? (
@@ -595,13 +627,13 @@ const Dashboard = () => {
                     const pct = maxPipelineCount > 0 ? (count / maxPipelineCount) * 100 : 0;
                     return (
                       <div key={item.status} className="space-y-1.5 group cursor-pointer" onClick={() => navigate(`/leads?status=${item.status}`)}>
-                        <div className="flex items-center justify-between text-[11px] font-medium">
-                          <span className="flex items-center gap-1.5 text-slate-500 group-hover:text-slate-700 transition-colors">
-                            <item.icon className="h-3 w-3" /> {item.label}
+                        <div className="flex items-center justify-between text-[11px] font-semibold">
+                          <span className="flex items-center gap-1.5 text-slate-600 group-hover:text-slate-800 transition-colors">
+                            <item.icon className="h-3.5 w-3.5" /> {item.label}
                           </span>
-                          <span className="text-slate-800 font-bold">{count}</span>
+                          <span className="text-slate-900 font-bold text-xs">{count}</span>
                         </div>
-                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
                           <div 
                             className={`h-full ${item.color} rounded-full transition-all duration-700 shadow-sm`} 
                             style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }} 
