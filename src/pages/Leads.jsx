@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,13 +15,10 @@ import {
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
 } from '@/components/ui/drawer';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import api from '@/lib/axios';
-import { cachedGet, invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
@@ -30,6 +26,7 @@ import {
   ChevronLeft, ChevronRight, AlertCircle, Eye,
   BellPlus, Camera, X, ImageIcon, PhoneOutgoing,
 } from 'lucide-react';
+import CallTimeline from '@/components/CallTimeline';
 
 const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -175,94 +172,131 @@ const EMPTY_FORM = {
 // O(1) status lookup — avoids .find() on every row render
 const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s]));
 
-// Memoized table row — only re-renders when its own data or selection changes
-const LeadRow = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule }) => {
+// Builds the canonical API URL for a given filter set — used both in fetchLeads and cache probe
+function buildLeadsUrl(page, search, status, category) {
+  let url = `/leads?page=${page}&limit=15`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (status === 'ACTIVE') url += `&exclude_status=NEW`;
+  else if (status !== 'ALL') url += `&status=${status}`;
+  if (category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
+  return url;
+}
+
+// Memoised card — only re-renders when its own data or selection changes
+const LeadCard = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule }) => {
   const statusObj = STATUS_MAP[lead.status] || STATUS_OPTIONS[0];
   return (
-    <TableRow className="hover:bg-slate-50/50 transition-colors">
-      <TableCell className="w-8 pl-3 py-3">
-        <Checkbox checked={selected} onCheckedChange={() => onSelect(lead.id)} className="rounded" />
-      </TableCell>
-      <TableCell className="pl-2 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
-            {lead.photo_url ? (
-              <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
-            ) : (
-              <span className="text-xs font-bold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
-            )}
-          </div>
-          <div>
-            <p className="font-medium text-slate-900 text-sm leading-tight">{lead.name}</p>
+    <div
+      className={`relative bg-white rounded-2xl border transition-all duration-150 shadow-sm ${
+        selected ? 'border-indigo-300 bg-indigo-50/20 shadow-indigo-100' : 'border-slate-100 hover:border-slate-200'
+      }`}
+    >
+      {/* Top section: avatar + details + checkbox */}
+      <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
+        {/* Avatar */}
+        <div className="h-12 w-12 rounded-xl bg-linear-to-br from-slate-100 to-slate-200 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+          {lead.photo_url ? (
+            <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
+          ) : (
+            <span className="text-base font-bold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-slate-900 text-sm leading-snug truncate pr-1">{lead.name}</p>
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            <span className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-semibold border-0 ${statusObj.color}`}>
+              {statusObj.label}
+            </span>
             {lead.lead_category && (
-              <span className="text-[10px] text-slate-400 font-medium">{lead.lead_category}</span>
+              <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded-full">
+                {lead.lead_category}
+              </span>
             )}
           </div>
+          {lead.phone && (
+            <p className="text-xs text-slate-500 mt-1 font-medium">{lead.phone}</p>
+          )}
         </div>
-      </TableCell>
-      <TableCell className="py-3">
-        <span className="text-sm text-slate-600">{lead.phone || '—'}</span>
-      </TableCell>
-      <TableCell className="py-3">
-        <Badge variant="secondary" className={`text-[10px] px-2 py-0.5 border-0 font-semibold ${statusObj.color}`}>
-          {statusObj.label}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-right pr-3 py-3">
-        <div className="flex items-center justify-end gap-0.5">
-          <Button variant="ghost" size="icon" title="Call"
-            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
-            onClick={() => onCall(lead)}
-          >
-            <PhoneOutgoing className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title="WhatsApp"
-            className="h-8 w-8 text-slate-500 hover:text-green-600 hover:bg-green-50"
-            onClick={() => onWhatsApp(lead.phone)}
-          >
-            <WhatsAppIcon className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title="View"
-            className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-            onClick={() => onView(lead)}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title="Edit"
-            className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
-            onClick={() => onEdit(lead)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title="Follow-up"
-            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50"
-            onClick={() => onSchedule(lead)}
-          >
-            <BellPlus className="h-4 w-4" />
-          </Button>
+
+        {/* Checkbox — far right */}
+        <div className="shrink-0 pt-0.5">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onSelect(lead.id)}
+            className="h-5 w-5 rounded-md border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+          />
         </div>
-      </TableCell>
-    </TableRow>
+      </div>
+
+      {/* Action row */}
+      <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-slate-50">
+        <Button
+          variant="ghost" size="sm"
+          className="flex-1 h-9 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl gap-1.5"
+          onClick={() => onCall(lead)}
+        >
+          <PhoneOutgoing className="h-3.5 w-3.5" /> Call
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 rounded-xl gap-1.5"
+          onClick={() => onWhatsApp(lead.phone)}
+        >
+          <WhatsAppIcon className="h-3.5 w-3.5" /> WA
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          className="flex-1 h-9 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 rounded-xl gap-1.5"
+          onClick={() => onView(lead)}
+        >
+          <Eye className="h-3.5 w-3.5" /> View
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          className="flex-1 h-9 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800 rounded-xl gap-1.5"
+          onClick={() => onEdit(lead)}
+        >
+          <Pencil className="h-3.5 w-3.5" /> Edit
+        </Button>
+        <Button
+          variant="ghost" size="sm"
+          className="flex-1 h-9 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded-xl gap-1.5"
+          onClick={() => onSchedule(lead)}
+        >
+          <BellPlus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
   );
 });
-LeadRow.displayName = 'LeadRow';
+LeadCard.displayName = 'LeadCard';
 
 const Leads = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const initialSearch = searchParams.get('search') || '';
-  const initialStatus = searchParams.get('status') || 'ALL';
+  // Default to ACTIVE (all statuses except NEW) — NEW leads have their own Fresh Leads section on Dashboard
+  const initialStatus = searchParams.get('status') || 'ACTIVE';
   const initialCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
 
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Probe memory cache synchronously so we can skip skeleton on navigation back
+  const _initCached = getCachedSync(buildLeadsUrl(1, initialSearch, initialStatus, initialCategory));
+
+  const [leads, setLeads] = useState(() => _initCached?.leads ?? []);
+  const [loading, setLoading] = useState(() => !_initCached);
+  const [refreshing, setRefreshing] = useState(false); // silent background sync indicator
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalPages, setTotalPages] = useState(() => _initCached?.pagination?.totalPages ?? 1);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [categoryFilter, setCategoryFilter] = useState(initialCategory);
+
+  // Track whether we already have data so fetchLeads knows to skip skeleton
+  const hasDataRef = useRef(Boolean(_initCached));
 
   // Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -289,24 +323,23 @@ const Leads = () => {
   const [shiftLoading, setShiftLoading] = useState(false);
 
   const fetchLeads = useCallback(async (page, search, status, fresh = false, category) => {
+    const hasData = hasDataRef.current;
+    if (!hasData) setLoading(true);
+    else setRefreshing(true);
     try {
-      setLoading(true);
-      let url = `/leads?page=${page}&limit=15`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      if (status !== 'ALL') url += `&status=${status}`;
-      if (category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
-      if (fresh) url += `&_t=${Date.now()}`;
-
-      const { data } = await api.get(url);
+      const url = buildLeadsUrl(page, search, status, category) + (fresh ? `&_t=${Date.now()}` : '');
+      const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000 });
       if (data.success) {
         setLeads(data.leads);
         setTotalPages(data.pagination.totalPages);
+        hasDataRef.current = true;
       }
     } catch (err) {
       console.error('Failed to fetch leads', err);
-      toast.error('Failed to load leads');
+      if (!hasDataRef.current) toast.error('Failed to load leads');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []); // stable — all values passed as args, no state deps
 
@@ -316,7 +349,7 @@ const Leads = () => {
 
   useEffect(() => {
     const nextSearch = searchParams.get('search') || '';
-    const nextStatus = searchParams.get('status') || 'ALL';
+    const nextStatus = searchParams.get('status') || 'ACTIVE';
     const nextCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
 
     setSearchQuery((prev) => (prev === nextSearch ? prev : nextSearch));
@@ -345,11 +378,7 @@ const Leads = () => {
   // Pre-fetch next page
   useEffect(() => {
     if (currentPage < totalPages) {
-      let url = `/leads?page=${currentPage + 1}&limit=15`;
-      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
-      if (statusFilter !== 'ALL') url += `&status=${statusFilter}`;
-      if (categoryFilter !== 'ALL') url += `&lead_category=${encodeURIComponent(categoryFilter)}`;
-      cachedGet(url);
+      cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter));
     }
   }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter]);
 
@@ -533,27 +562,34 @@ const Leads = () => {
         </div>
       )}
 
-      {/* Filters — flat, no card */}
+      {/* Filters */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input placeholder="Search name, phone..." value={searchQuery}
+          <Input
+            placeholder="Search name, phone..."
+            value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-8 text-xs rounded-lg" />
+            className="pl-8 h-9 text-sm rounded-xl border-slate-200"
+          />
+          {refreshing && (
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
+          )}
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-28 h-8 text-xs rounded-lg font-medium shrink-0">
+          <SelectTrigger className="w-28 h-9 text-xs rounded-xl font-medium shrink-0 border-slate-200">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL" className="text-xs font-medium">All Status</SelectItem>
+            <SelectItem value="ACTIVE" className="text-xs font-medium text-emerald-700">All Active</SelectItem>
+            <SelectItem value="ALL" className="text-xs font-medium">All (incl. New)</SelectItem>
             {STATUS_OPTIONS.map((s) => (
               <SelectItem key={s.value} value={s.value} className="text-xs">{s.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-24 h-8 text-xs rounded-lg font-medium shrink-0">
+          <SelectTrigger className="w-24 h-9 text-xs rounded-xl font-medium shrink-0 border-slate-200">
             <SelectValue placeholder="Cat" />
           </SelectTrigger>
           <SelectContent>
@@ -565,93 +601,98 @@ const Leads = () => {
         </Select>
       </div>
 
-      {/* Leads Table */}
-      <Card className="card-elevated border-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                <TableHead className="w-8 pl-3">
-                  <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onCheckedChange={toggleSelectAllOnPage}
-                    className="rounded"
-                  />
-                </TableHead>
-                <TableHead className="pl-2 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Name</TableHead>
-                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Phone</TableHead>
-                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Status</TableHead>
-                <TableHead className="text-right pr-3 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                [...Array(6)].map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="w-8 pl-3 py-3"><Skeleton className="h-4 w-4 rounded" /></TableCell>
-                    <TableCell className="pl-2 py-3"><Skeleton className="h-5 w-28" /></TableCell>
-                    <TableCell className="py-3"><Skeleton className="h-5 w-24" /></TableCell>
-                    <TableCell className="py-3"><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
-                    <TableCell className="pr-3 py-3 text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
-                  </TableRow>
-                ))
-              ) : leads.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-slate-300" />
-                      </div>
-                      <p className="text-xs text-slate-500">No leads found.</p>
-                      <Link to="/leads/add">
-                        <Button variant="outline" size="sm" className="mt-1 text-xs h-7">
-                          <Plus className="h-3 w-3 mr-1" /> Add Lead
-                        </Button>
-                      </Link>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                leads.map((lead) => (
-                  <LeadRow
-                    key={lead.id}
-                    lead={lead}
-                    selected={selectedSet.has(lead.id)}
-                    onSelect={toggleLeadSelection}
-                    onCall={handleCallLead}
-                    onWhatsApp={handleOpenWhatsApp}
-                    onView={openView}
-                    onEdit={openEdit}
-                    onSchedule={openSchedule}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
+      {/* Count + Select All row */}
+      {!loading && leads.length > 0 && (
+        <div className="flex items-center justify-between px-0.5">
+          <span className="text-xs text-slate-500 font-medium">
+            {leads.length} lead{leads.length !== 1 ? 's' : ''}
+            {selectedLeadIds.length > 0 && (
+              <span className="ml-1 text-indigo-600">· {selectedLeadIds.length} selected</span>
+            )}
+          </span>
+          <button
+            className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+            onClick={toggleSelectAllOnPage}
+          >
+            {allSelected ? 'Deselect All' : 'Select All'}
+          </button>
         </div>
+      )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="border-t border-border/40 bg-slate-50/50 px-3 py-2 flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</p>
-            <div className="flex items-center gap-1.5">
-              <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
-                disabled={currentPage === 1 || loading}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
-                onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
-                disabled={currentPage === totalPages || loading}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
+      {/* Lead Cards */}
+      <div className="space-y-2">
+        {loading ? (
+          [...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-3.5 shadow-sm space-y-2.5">
+              <div className="flex items-start gap-3">
+                <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-20 rounded-full" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                <Skeleton className="h-5 w-5 rounded-md shrink-0" />
+              </div>
+              <Skeleton className="h-9 w-full rounded-xl" />
             </div>
+          ))
+        ) : leads.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-16">
+            <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center shadow-sm">
+              <Users className="h-7 w-7 text-slate-300" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-semibold text-slate-600">No leads found</p>
+              <p className="text-xs text-slate-400 mt-0.5">Try adjusting your filters</p>
+            </div>
+            <Link to="/leads/add">
+              <Button variant="outline" size="sm" className="mt-1 text-xs h-8 rounded-xl">
+                <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Lead
+              </Button>
+            </Link>
           </div>
+        ) : (
+          leads.map((lead) => (
+            <LeadCard
+              key={lead.id}
+              lead={lead}
+              selected={selectedSet.has(lead.id)}
+              onSelect={toggleLeadSelection}
+              onCall={handleCallLead}
+              onWhatsApp={handleOpenWhatsApp}
+              onView={openView}
+              onEdit={openEdit}
+              onSchedule={openSchedule}
+            />
+          ))
         )}
-      </Card>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && !loading && (
+        <div className="flex items-center justify-between pt-1 pb-2">
+          <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline" size="sm"
+              className="h-9 px-3 text-xs rounded-xl font-semibold"
+              onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              className="h-9 px-3 text-xs rounded-xl font-semibold"
+              onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
+              disabled={currentPage === totalPages}
+            >
+              Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+
 
       {/* Edit Lead Drawer */}
       <Drawer open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -893,48 +934,7 @@ const Leads = () => {
                 </div>
               </div>
 
-              {/* Call Timeline */}
-              <div className="border-t border-slate-200 pt-4">
-                <p className="text-muted-foreground text-xs uppercase font-semibold mb-3">Call Timeline</p>
-                {viewCallLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="h-5 w-5 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
-                  </div>
-                ) : viewCallHistory.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">No call history found.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {viewCallHistory.map((call, idx) => {
-                      const callType = call.call_type || call.callType || 'UNKNOWN';
-                      const callTypeColor = callType === 'INCOMING' ? 'text-emerald-600 bg-emerald-50' : callType === 'OUTGOING' ? 'text-blue-600 bg-blue-50' : 'text-rose-600 bg-rose-50';
-                      
-                      return (
-                        <div key={call.id || idx} className={`p-2.5 rounded-lg border border-slate-200 ${callTypeColor.split(' ')[1]}`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[11px] font-semibold text-slate-700">
-                                {call.call_start ? format(new Date(call.call_start), 'MMM dd, yyyy HH:mm') : 'Unknown Date'}
-                              </p>
-                              <p className="text-[10px] text-slate-600 mt-0.5">
-                                <span className={`font-semibold ${callTypeColor.split(' ')[0]}`}>{callType}</span>
-                                {call.duration_seconds && ` • ${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`}
-                              </p>
-                            </div>
-                            {call.outcome_label && (
-                              <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0">
-                                {call.outcome_label}
-                              </Badge>
-                            )}
-                          </div>
-                          {call.customer_notes && (
-                            <p className="text-[10px] text-slate-600 mt-1.5 line-clamp-2">{call.customer_notes}</p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <CallTimeline calls={viewCallHistory} loading={viewCallLoading} />
             </div>
           )}
           <DrawerFooter className="shrink-0 border-t border-slate-100 pt-3">

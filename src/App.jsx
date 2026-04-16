@@ -1,10 +1,12 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
+import { OfflineProvider } from '@/context/OfflineContext';
 import { CallDrawerProvider } from '@/context/CallDrawerContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import OfflineIndicator from '@/components/OfflineIndicator';
 
 // Lazy load all pages
 import Login from '@/pages/Login';
@@ -52,6 +54,7 @@ const ContentShare = lazy(() => import('@/pages/ContentShare'));
 const ContactsLayout = lazy(() => import('@/pages/ContactsLayout'));
 const BulkImportContacts = lazy(() => import('@/pages/BulkImportContacts'));
 const ShiftToCallQueue = lazy(() => import('@/pages/ShiftToCallQueue'));
+const MatterLeads = lazy(() => import('@/pages/MatterLeads'));
 const CallDrawer = lazy(() => import('@/components/CallDrawer'));
 
 const CallDetectorBridge = lazy(() =>
@@ -86,6 +89,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
+        <OfflineProvider>
         <CallDrawerProvider>
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -174,9 +178,12 @@ export default function App() {
               <Route path="contacts" element={<ContactsLayout />}>
                 <Route path="shift-to-call" element={<ShiftToCallQueue />} />
               </Route>
+
+              {/* Matter Leads */}
+              <Route path="matter-leads" element={<MatterLeads />} />
             </Route>
 
-            {/* Fallback */}
+              {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -185,7 +192,9 @@ export default function App() {
           <CallDrawer />
           <CallDetectorBridge />
         </Suspense>
+        <OfflineIndicator />
         </CallDrawerProvider>
+        </OfflineProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

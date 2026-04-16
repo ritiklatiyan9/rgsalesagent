@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
-import { invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
+import { useCallAction } from '@/hooks/useCallAction';
+import { useCallAction } from '@/hooks/useCallAction';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -186,8 +188,8 @@ const ScheduleDialog = ({ lead, open, onClose, onScheduled }) => {
     );
 };
 
-/* ─── Reminder Card ─── */
-const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, actionLoading, navigate }) => {
+/* ─── Reminder Card ─── */onCall, 
+const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoading, navigate }) => {
     const theme = TYPE_THEME[r.type] || TYPE_THEME.OTHER;
     const TypeIcon = theme.icon;
     const { text: timeText, overdue, urgent } = formatDueTime(r.due_date, r.status);
@@ -261,8 +263,8 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, actionLoading, navi
                 {!isDone && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 pl-[52px]">
                         {isLead ? (
-                            <>
-                                <Button size="sm" onClick={() => navigate('/leads')}
+                            <>onCall(r
+                                <Button size="sm" onClick={() => onCall(r)}
                                     className="flex-1 h-8 rounded-lg text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1">
                                     <PhoneCall className="h-3.5 w-3.5" /> Call Now
                                 </Button>
@@ -355,29 +357,44 @@ const StatTile = ({ label, value, icon: Icon, tone, hex, active, onClick }) => (
 /* ─── Main ─── */
 const Reminders = () => {
     const navigate = useNavigate();
-    const [reminders, setReminders] = useState([]);
+    const { initiateCall } = useCallAction();
+    const _initCached = getCachedSync('/followups/reminders?page=1&limit=30&filter=all');
+    const [reminders, setReminders] = useState(() => _initCached?.reminders ?? []);
     const [counts, setCounts] = useState({ pending: 0, completed: 0, snoozed: 0, uncontacted: 0, dueToday: 0 });
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
-    const [loading, setLoading] = useState(true);
+    const hasDataRef = useRef(Boolean(_initCached));
+    const [loading, setLoading] = useState(!_initCached);
+    const [refreshing, setRefreshing] = useState(false);
     const [filter, setFilter] = useState('all');
     const [search, setSearch] = useState('');
     const [scheduleTarget, setScheduleTarget] = useState(null);
     const [actionLoading, setActionLoading] = useState(null);
 
+    const handleCallReminder = useCallback((r) => {
+        const phone = r.client_phone;
+        if (!phone) { toast.error('No phone number for this reminder'); return; }
+        initiateCall(phone, { leadId: r.lead_id, name: r.client_name });
+    }, [initiateCall]);
+
     const fetchReminders = useCallback(async (pg = 1, currentFilter, currentSearch) => {
-        setLoading(true);
+        if (!hasDataRef.current) setLoading(true);
+        else setRefreshing(true);
         try {
             const params = new URLSearchParams({ page: pg, limit: 30, filter: currentFilter });
             if (currentSearch) params.set('search', currentSearch);
-            const { data } = await api.get(`/followups/reminders?${params}`);
+            const data = await cachedGet(`/followups/reminders?${params}`, { staleTime: 120_000, cacheTime: 300_000 });
             if (data.success) {
                 setReminders(data.reminders || []);
                 setCounts(data.counts || {});
                 setPagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
+                hasDataRef.current = true;
             }
         } catch {
             toast.error('Failed to load reminders');
-        } finally { setLoading(false); }
+        } finally { 
+            setLoading(false);
+            setRefreshing(false);
+        }
     }, []);
 
     useEffect(() => {
@@ -458,10 +475,13 @@ const Reminders = () => {
                             <X className="h-4 w-4" />
                         </button>
                     ) : (
-                        <button onClick={() => fetchReminders(pagination.page, filter, search)} disabled={loading}
-                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 disabled:opacity-40" tabIndex={-1}>
-                            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                        </button>
+                        <>
+                            <button onClick={() => fetchReminders(pagination.page, filter, search)} disabled={loading}
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 disabled:opacity-40" tabIndex={-1}>
+                                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                            </button>
+                            {refreshing && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />}
+                        </>
                     )}
                 </div>
 
@@ -515,6 +535,7 @@ const Reminders = () => {
                             onComplete={handleComplete}
                             onSnooze={handleSnooze}
                             onSchedule={setScheduleTarget}
+                            onCall={handleCallReminder}
                             actionLoading={actionLoading}
                             navigate={navigate}
                         />

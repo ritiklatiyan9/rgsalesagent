@@ -14,7 +14,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import api from '@/lib/axios';
-import { invalidateCache } from '@/lib/queryCache';
+import { cachedGet, invalidateCache } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import {
     Search, Users, ArrowRightLeft,
@@ -53,7 +53,7 @@ const LeadAssignment = () => {
             setLoading(true);
             let url = `/leads?page=${page}&limit=20`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
-            const { data } = await api.get(url);
+            const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000 });
             if (data.success) {
                 setLeads(data.leads);
                 setTotalPages(data.pagination.totalPages);
@@ -68,7 +68,7 @@ const LeadAssignment = () => {
     const fetchUsers = useCallback(async () => {
         try {
             setUsersLoading(true);
-            const { data } = await api.get('/leads/assignable-users');
+            const data = await cachedGet('/leads/assignable-users', { staleTime: 600_000, cacheTime: 1_200_000 });
             if (data.success) {
                 setUsers(data.users);
             }

@@ -205,11 +205,12 @@ const LeadsDialer = () => {
         if (!lead.phone) { toast.error('This lead has no phone number'); return; }
         try {
             const isApp = window.Capacitor?.isNativePlatform?.() || false;
-            await api.post('/calls/quick-log', {
+            const { data } = await api.post('/calls/quick-log', {
                 lead_id: lead.id,
                 call_source: isApp ? 'APP' : 'WEB',
             });
-            try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: lead.phone, name: lead.name || '', leadId: lead.id || null, timestamp: Date.now() })); } catch {}
+            const cid = data?.call?.id || null;
+            try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: lead.phone, name: lead.name || '', leadId: lead.id || null, timestamp: Date.now(), callId: cid })); } catch {}
             if (isApp && window.Capacitor?.Plugins?.CallNumber) {
                 try { await window.Capacitor.Plugins.CallNumber.callNumber({ number: lead.phone, bypassAppChooser: false }); }
                 catch { window.open(`tel:${lead.phone}`, '_self'); }

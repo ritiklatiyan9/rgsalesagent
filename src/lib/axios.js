@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { Preferences } from '@capacitor/preferences';
+import { enqueue } from './storage/syncQueue';
+import { isOnline } from './network';
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://rivergreenbackend.onrender.com';
 
@@ -145,5 +147,54 @@ api.interceptors.response.use(
 export default api;
 export { api };
 
+// ---------------------------------------------------------------------------
+// Offline mutation queue: intercept write failures & queue for background sync
+// ---------------------------------------------------------------------------
+// URLs that should NOT be queued (auth, file uploads, one-time actions)
+const QUEUE_SKIP_PATTERNS = ['/auth/', '/upload'];
 
+function _shouldQueue(config) {
+  if (!config) return false;
+  const method = (config.method || '').toLowerCase();
+  if (method === 'get' || method === 'head' || method === 'options') return false;
+  const url = config.url || '';
+  if (QUEUE_SKIP_PATTERNS.some((p) => url.includes(p))) return false;
+  // Don't queue FormData (file uploads)
+  if (config.data instanceof FormData) return false;
+  return true;
+}
 
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const config = error?.config;
+    const status = error?.response?.status;
+
+    // Only queue if it's a network error (no response) or server error (5xx) AND device is offline
+    const isNetworkError = !error.response && error.code !== 'ERR_CANCELED';
+    const isServerError = status >= 500;
+
+    if ((isNetworkError || (isServerError && !isOnline())) && _shouldQueue(config)) {
+      try {
+        await enqueue({
+          method: config.method,
+          url: config.url,
+          data: config.data ? (typeof config.data === 'string' ? JSON.parse(config.data) : config.data) : null,
+        });
+        console.debug(`[offline-queue] Queued ${config.method?.toUpperCase()} ${config.url}`);
+        // Return a "queued" mock response so the caller doesn't crash
+        return {
+          data: { success: true, _queued: true, message: 'Saved offline — will sync automatically' },
+          status: 202,
+          statusText: 'Queued',
+          headers: {},
+          config,
+        };
+      } catch {
+        // queueing failed, fall through to normal error
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);

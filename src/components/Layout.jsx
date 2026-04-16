@@ -4,9 +4,9 @@ import { io } from 'socket.io-client';
 import Sidebar from './Sidebar';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, X, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, Clock, MessageSquare, House, PhoneCall, Calendar } from 'lucide-react';
+import { Bell, X, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, Clock, MessageSquare, House, PhoneCall, Calendar } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Drawer, DrawerContent, DrawerClose } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerClose, DrawerTitle } from '@/components/ui/drawer';
 import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
@@ -34,6 +34,7 @@ const routeNames = {
   '/attendance': 'Mark Attendance',
   '/attendance/history': 'My Attendance',
   '/chat': 'Chat',
+  '/matter-leads': 'Matter Leads',
 };
 
 const PageSkeleton = () => (
@@ -52,84 +53,7 @@ const PageSkeleton = () => (
   </div>
 );
 
-const CALL_TYPE_ICON = {
-  INBOUND: { icon: PhoneIncoming, color: 'text-emerald-500' },
-  OUTBOUND: { icon: PhoneOutgoing, color: 'text-sky-500' },
-  MISSED: { icon: PhoneMissed, color: 'text-rose-500' },
-};
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://rivergreenbackend.onrender.com';
-const MISSED_CALLS_SEEN_KEY = 'rg:lastSeenMissedCallAt';
-
-const getParticipantPhone = (participant) => {
-  const raw = participant?.phone
-    || participant?.phone_number
-    || participant?.mobile
-    || participant?.mobile_number
-    || participant?.whatsapp_number
-    || participant?.contact_number
-    || participant?.number;
-  return raw ? String(raw).trim() : '';
-};
-
-const getParticipantDisplayName = (participant) => {
-  const name = participant?.name || participant?.contact_name || participant?.lead_name;
-  if (name && String(name).trim()) return String(name).trim();
-  const phone = getParticipantPhone(participant);
-  return phone || 'Unknown';
-};
-
-const getIncomingMessageTitle = (msg) => {
-  const senderName = msg?.sender_name || msg?.senderName;
-  if (senderName && String(senderName).trim()) return String(senderName).trim();
-  const senderPhone = msg?.sender_phone
-    || msg?.senderPhone
-    || msg?.sender_mobile
-    || msg?.senderMobile
-    || msg?.sender_number
-    || msg?.senderNumber;
-  return senderPhone ? String(senderPhone).trim() : 'Unknown';
-};
-
-const getIncomingMessagePreview = (msg) => {
-  if (msg?.is_deleted) return 'Message deleted';
-  return msg?.message_text || msg?.messageText || (msg?.file_name || msg?.fileName ? 'File received' : 'New message');
-};
-
-const getMissedCallPhone = (call) => String(
-  call?.phone_number_dialed
-  || call?.lead_phone
-  || call?.phone_number
-  || call?.phone
-  || ''
-).trim();
-
-const toMissedNotification = (call) => {
-  const phone = getMissedCallPhone(call);
-  const title = call?.lead_name || call?.contact_name || phone || 'Unknown number';
-  return {
-    id: String(call?.id || `${phone}-${call?.call_start || call?.created_at || Date.now()}`),
-    title,
-    phone,
-    preview: phone ? `Missed call from ${phone}` : 'Missed call detected',
-    createdAt: call?.call_start || call?.created_at || new Date().toISOString(),
-  };
-};
-
-const getMissedSeenAt = () => {
-  try {
-    return localStorage.getItem(MISSED_CALLS_SEEN_KEY) || null;
-  } catch {
-    return null;
-  }
-};
-
-const setMissedSeenNow = () => {
-  try {
-    localStorage.setItem(MISSED_CALLS_SEEN_KEY, new Date().toISOString());
-  } catch {
-    // no-op
-  }
-};
 
 const timeAgo = (dateStr) => {
   if (!dateStr) return '';
@@ -150,12 +74,8 @@ const LayoutBody = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isMobileView, setIsMobileView] = useState(typeof window !== 'undefined' && window.innerWidth < 640);
-  const [calls, setCalls] = useState([]);
   const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
   const [chatNotifications, setChatNotifications] = useState([]);
-  const [missedUnreadTotal, setMissedUnreadTotal] = useState(0);
-  const [missedCallNotifications, setMissedCallNotifications] = useState([]);
-  const [callsLoading, setCallsLoading] = useState(false);
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
@@ -197,8 +117,8 @@ const LayoutBody = () => {
           const isGroup = !!conv?.is_group;
           const other = conv?.other_participants?.[0];
           const title = isGroup
-            ? (conv?.group_name || conv?.other_participants?.map((p) => getParticipantDisplayName(p)).filter(Boolean).slice(0, 2).join(', ') || 'Group Chat')
-            : getParticipantDisplayName(other);
+            ? (conv?.group_name || conv?.other_participants?.map((p) => p?.name || p?.contact_name || '').filter(Boolean).slice(0, 2).join(', ') || 'Group Chat')
+            : (other?.name || other?.contact_name || other?.lead_name || other?.phone || 'Unknown');
 
           const preview = conv?.last_message?.is_deleted
             ? 'Message deleted'
@@ -220,9 +140,7 @@ const LayoutBody = () => {
       setChatUnreadTotal((prev) => (isOnChatPage ? total : Math.max(prev, total)));
       setChatNotifications((prev) => {
         const next = unreadConversations.slice(0, 6);
-        if (!isOnChatPage && next.length === 0 && prev.length > 0) {
-          return prev;
-        }
+        if (!isOnChatPage && next.length === 0 && prev.length > 0) return prev;
         return next;
       });
     } catch {
@@ -230,47 +148,11 @@ const LayoutBody = () => {
     }
   };
 
-  const loadMissedCallNotifications = async () => {
-    try {
-      const { data } = await api.get('/calls?limit=30&call_type=MISSED');
-      if (!data?.success || !Array.isArray(data.calls)) return;
-
-      const seenAt = getMissedSeenAt();
-      const seenTs = seenAt ? new Date(seenAt).getTime() : 0;
-
-      const items = data.calls
-        .map(toMissedNotification)
-        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-      const unread = items.filter((item) => {
-        const ts = new Date(item.createdAt || 0).getTime();
-        return Number.isFinite(ts) && ts > seenTs;
-      });
-
-      setMissedUnreadTotal(unread.length);
-      setMissedCallNotifications(unread.slice(0, 6));
-    } catch {
-      // Ignore intermittent fetch failures.
-    }
-  };
-
-  const markMissedCallsAsSeen = () => {
-    setMissedSeenNow();
-    setMissedUnreadTotal(0);
-    setMissedCallNotifications([]);
-  };
-
-  useEffect(() => {
-    if (!/^\/calls\/missed\/?$/.test(pathname)) return;
-    markMissedCallsAsSeen();
-  }, [pathname]);
-
   useEffect(() => {
     const token = getAccessToken();
     if (!token || !user?.id) return;
 
     loadChatNotifications();
-    loadMissedCallNotifications();
 
     const socket = io(SOCKET_URL, {
       auth: { token },
@@ -291,10 +173,16 @@ const LayoutBody = () => {
       if (/^\/chat\/?$/.test(pathname)) return;
 
       const convId = String(msg?.conversation_id ?? msg?.conversationId ?? `temp-${Date.now()}`);
+      const senderName = msg?.sender_name || msg?.senderName;
+      const title = (senderName && String(senderName).trim())
+        ? String(senderName).trim()
+        : String(msg?.sender_phone || msg?.senderPhone || msg?.sender_number || msg?.senderNumber || 'Unknown').trim();
+      const preview = msg?.is_deleted ? 'Message deleted'
+        : (msg?.message_text || msg?.messageText || (msg?.file_name || msg?.fileName ? 'File received' : 'New message'));
       const optimistic = {
         id: convId,
-        title: getIncomingMessageTitle(msg),
-        preview: getIncomingMessagePreview(msg),
+        title,
+        preview,
         unread: 1,
         createdAt: msg?.created_at || msg?.createdAt || new Date().toISOString(),
       };
@@ -318,47 +206,20 @@ const LayoutBody = () => {
       queueRefresh();
     });
 
-    const onMissedCall = (evt) => {
-      if (/^\/calls\/missed\/?$/.test(pathname)) return;
-      const mapped = toMissedNotification(evt?.detail || {});
-
-      setMissedCallNotifications((prev) => {
-        const rest = prev.filter((item) => String(item.id) !== String(mapped.id));
-        return [mapped, ...rest].slice(0, 6);
-      });
-      setMissedUnreadTotal((prev) => prev + 1);
-
-      // Sync with server state after quick-log write settles.
-      setTimeout(() => {
-        loadMissedCallNotifications();
-      }, 1200);
-    };
-    window.addEventListener('rg:missed-call', onMissedCall);
-
     // Start background location tracking
     startBackgroundTracking();
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
-      window.removeEventListener('rg:missed-call', onMissedCall);
       socket?.disconnect();
       stopBackgroundTracking();
     };
   }, [user?.id, pathname]);
 
-  useEffect(() => {
-    if (!notifOpen || calls.length > 0) return;
-    setCallsLoading(true);
-    api.get('/calls?limit=15')
-      .then(({ data }) => { if (data.success) setCalls(data.calls ?? []); })
-      .catch(() => { })
-      .finally(() => setCallsLoading(false));
-  }, [notifOpen]);
-
   const pageTitle = routeNames[pathname]
     || (pathname.includes('/calls/lead/') ? 'Call History'
       : 'Dashboard');
-  const totalNotificationCount = (chatUnreadTotal || 0) + (missedUnreadTotal || 0);
+  const totalNotificationCount = chatUnreadTotal || 0;
 
   return (
     <>
@@ -399,6 +260,7 @@ const LayoutBody = () => {
                 {/* Mobile: shadcn Drawer opens from below */}
                 <Drawer open={notifOpen && isMobileView} onOpenChange={(open) => { if (!open) setNotifOpen(false); }} direction="bottom">
                   <DrawerContent className="flex flex-col max-h-[85vh]" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.5rem)' }}>
+                    <DrawerTitle className="sr-only">Chat Notifications</DrawerTitle>
                     <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
                       <p className="text-base font-semibold text-slate-800">Notifications</p>
                       <DrawerClose asChild>
@@ -423,7 +285,7 @@ const LayoutBody = () => {
                                 <button
                                   key={item.id}
                                   className="w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                                  onClick={() => { setNotifOpen(false); navigate('/chat'); }}
+                                  onClick={() => { setNotifOpen(false); navigate(`/chat?conversation=${item.id}`); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
@@ -437,76 +299,9 @@ const LayoutBody = () => {
                             </div>
                           )}
                         </div>
-                        <div className="px-4 py-3 border-t border-slate-100">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                              <PhoneMissed className="h-4 w-4 text-rose-500" /> Missed Calls
-                            </p>
-                            <span className="text-xs text-rose-600 font-semibold">{missedUnreadTotal}</span>
-                          </div>
-                          {missedCallNotifications.length === 0 ? (
-                            <div className="text-sm text-slate-400 py-2">No missed calls</div>
-                          ) : (
-                            <div className="space-y-2.5">
-                              {missedCallNotifications.map((item) => (
-                                <button
-                                  key={item.id}
-                                  className="w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                                  onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); navigate('/calls/missed'); }}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
-                                    <span className="text-xs text-slate-400 shrink-0">{timeAgo(item.createdAt)}</span>
-                                  </div>
-                                  <p className="text-xs text-slate-500 truncate mt-1">{item.preview}</p>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        {callsLoading ? (
-                          <div className="p-4 space-y-3">
-                            {Array.from({ length: 4 }).map((_, i) => (
-                              <div key={i} className="flex items-center gap-3">
-                                <Skeleton className="h-8 w-8 rounded-lg" />
-                                <div className="flex-1 space-y-1">
-                                  <Skeleton className="h-4 w-28 rounded" />
-                                  <Skeleton className="h-3 w-20 rounded" />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : calls.length > 0 && (
-                          <div className="border-t border-slate-100">
-                            <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600">Recent Calls</div>
-                            {calls.map((c) => {
-                              const meta = CALL_TYPE_ICON[c.call_type] ?? CALL_TYPE_ICON.OUTBOUND;
-                              const IconComp = meta.icon;
-                              return (
-                                <div
-                                  key={c.id}
-                                  className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50"
-                                  onClick={() => { setNotifOpen(false); navigate(`/calls/lead/${c.lead_id}`); }}
-                                >
-                                  <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                    <IconComp className={`h-4 w-4 ${meta.color}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-slate-800 truncate">{c.lead_name || c.lead_phone || 'Unknown'}</p>
-                                    <p className="text-xs text-slate-400 truncate">{c.outcome_label || c.call_type?.toLowerCase()}</p>
-                                  </div>
-                                  <span className="text-[11px] text-slate-400 shrink-0">{timeAgo(c.call_start || c.created_at)}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
                       </div>
                     <div className="px-4 py-3 border-t border-slate-100 shrink-0">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button className="w-full text-sm text-center py-2.5 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50 active:bg-indigo-100 transition-colors" onClick={() => { setNotifOpen(false); navigate('/chat'); }}>Open Chat</button>
-                          <button className="w-full text-sm text-center py-2.5 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50 active:bg-indigo-100 transition-colors" onClick={() => { setNotifOpen(false); markMissedCallsAsSeen(); navigate('/calls/missed'); }}>Missed Calls</button>
-                        </div>
+                        <button className="w-full text-sm text-center py-2.5 text-indigo-600 font-medium rounded-lg hover:bg-indigo-50 active:bg-indigo-100 transition-colors" onClick={() => { setNotifOpen(false); navigate('/chat'); }}>Open Chat</button>
                       </div>
                   </DrawerContent>
                 </Drawer>
@@ -527,7 +322,7 @@ const LayoutBody = () => {
                         </button>
                       </div>
 
-                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-50 [scrollbar-width:thin]">
+                      <div className="max-h-72 overflow-y-auto [scrollbar-width:thin]">
                         <div className="px-4 py-2.5">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
@@ -543,10 +338,7 @@ const LayoutBody = () => {
                                 <button
                                   key={item.id}
                                   className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                                  onClick={() => {
-                                    setNotifOpen(false);
-                                    navigate('/chat');
-                                  }}
+                                  onClick={() => { setNotifOpen(false); navigate(`/chat?conversation=${item.id}`); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
@@ -560,109 +352,15 @@ const LayoutBody = () => {
                             </div>
                           )}
                         </div>
-
-                        <div className="px-4 py-2.5 border-t border-slate-100/80">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                              <PhoneMissed className="h-3.5 w-3.5 text-rose-500" /> Missed Calls
-                            </p>
-                            <span className="text-[11px] text-rose-600 font-semibold">{missedUnreadTotal}</span>
-                          </div>
-                          {missedCallNotifications.length === 0 ? (
-                            <div className="text-[11px] text-slate-400 py-1">No missed calls</div>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {missedCallNotifications.map((item) => (
-                                <button
-                                  key={item.id}
-                                  className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                                  onClick={() => {
-                                    setNotifOpen(false);
-                                    markMissedCallsAsSeen();
-                                    navigate('/calls/missed');
-                                  }}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
-                                    <span className="text-[10px] text-slate-400 shrink-0 font-medium">{timeAgo(item.createdAt)}</span>
-                                  </div>
-                                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.preview}</p>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {callsLoading ? (
-                          <div className="p-4 space-y-3">
-                            {Array.from({ length: 4 }).map((_, i) => (
-                              <div key={i} className="flex items-center gap-3">
-                                <Skeleton className="h-7 w-7 rounded-lg" />
-                                <div className="flex-1 space-y-1">
-                                  <Skeleton className="h-3 w-28 rounded" />
-                                  <Skeleton className="h-2.5 w-20 rounded" />
-                                </div>
-                                <Skeleton className="h-2.5 w-10 rounded" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : calls.length === 0 ? (
-                          <div className="py-4 text-center text-sm text-slate-400">No recent calls</div>
-                        ) : (
-                          <>
-                            <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50 text-[11px] font-semibold text-slate-600">Recent Calls</div>
-                            {calls.map((c) => {
-                              const meta = CALL_TYPE_ICON[c.call_type] ?? CALL_TYPE_ICON.OUTBOUND;
-                              const IconComp = meta.icon;
-                              return (
-                                <div
-                                  key={c.id}
-                                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
-                                  onClick={() => { setNotifOpen(false); startTransition(() => navigate(`/calls/lead/${c.lead_id}`)); }}
-                                >
-                                  <div className="h-7 w-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                                    <IconComp className={`h-3.5 w-3.5 ${meta.color}`} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-medium text-slate-800 truncate">
-                                      {c.lead_name || c.lead_phone || 'Unknown lead'}
-                                    </p>
-                                    <p className="text-[11px] text-slate-400 truncate">
-                                      {c.outcome_label ? c.outcome_label : c.call_type?.toLowerCase()}
-                                    </p>
-                                  </div>
-                                  <span className="text-[10px] text-slate-400 shrink-0 font-medium">
-                                    {timeAgo(c.call_start || c.created_at)}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
                       </div>
 
                       <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
-                            onClick={() => {
-                              setNotifOpen(false);
-                              startTransition(() => navigate('/chat'));
-                            }}
-                          >
-                            Open Chat
-                          </button>
-                          <button
-                            className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
-                            onClick={() => {
-                              setNotifOpen(false);
-                              markMissedCallsAsSeen();
-                              startTransition(() => navigate('/calls/missed'));
-                            }}
-                          >
-                            Missed Calls
-                          </button>
-                        </div>
+                        <button
+                          className="w-full text-xs text-center text-indigo-600 hover:underline font-medium"
+                          onClick={() => { setNotifOpen(false); startTransition(() => navigate('/chat')); }}
+                        >
+                          Open Chat
+                        </button>
                       </div>
                     </div>
                 )}
@@ -759,12 +457,14 @@ const LayoutBody = () => {
 
           <div className="bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
             <div className="relative flex h-14 items-stretch">
-              {/* Left tabs: Home, Leads */}
+              {/* Left tabs: Leads, Calls */}
               {[
-                { to: '/dashboard', icon: House, label: 'Home' },
                 { to: '/leads', icon: Users, label: 'Leads' },
+                { to: '/calls/dialer', icon: PhoneCall, label: 'Calls' },
               ].map(({ to, icon: Icon, label }) => {
-                const isActive = pathname === to || (to === '/leads' && pathname.startsWith('/leads'));
+                const isActive = to === '/calls/dialer'
+                  ? (pathname === '/calls/dialer' || pathname.startsWith('/calls/'))
+                  : (pathname === to || pathname.startsWith(to + '/'));
                 return (
                   <button
                     key={to}
@@ -829,23 +529,23 @@ const LayoutBody = () => {
             </div>
           </div>
 
-          {/* Raised center Calls button */}
+          {/* Raised center Home button */}
           {(() => {
-            const callsActive = pathname === '/calls/dialer' || pathname.startsWith('/calls/');
+            const homeActive = pathname === '/dashboard';
             return (
               <button
-                onClick={() => navigate('/calls/dialer')}
+                onClick={() => navigate('/dashboard')}
                 className="absolute left-1/2 -translate-x-1/2 -top-6 flex flex-col items-center active:scale-90 transition-transform duration-150"
               >
                 <div className={`h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 ${
-                  callsActive
+                  homeActive
                     ? 'bg-indigo-600 shadow-[0_4px_20px_rgba(99,102,241,0.5)]'
-                    : 'bg-slate-900 shadow-slate-400/30 hover:bg-slate-800'
+                    : 'bg-orange-500 shadow-slate-400/30 hover:bg-slate-800'
                 }`}>
-                  <PhoneCall className="h-6 w-6 text-white" strokeWidth={2.2} />
+                  <House className="h-7 w-7 text-white" strokeWidth={homeActive ? 2.4 : 2} />
                 </div>
-                <span className={`text-[9px] font-bold mt-0.5 transition-colors duration-150 ${callsActive ? 'text-indigo-600' : 'text-slate-500'}`}>
-                  Calls
+                <span className={`text-[10px] font-bold mt-0.5 transition-colors duration-150 ${homeActive ? 'text-indigo-600' : 'text-slate-500'}`}>
+                  Home
                 </span>
               </button>
             );

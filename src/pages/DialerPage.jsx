@@ -4,11 +4,12 @@ import {
   Delete, PhoneCall, PhoneOff, Search, X,
   ArrowDownLeft, ArrowUpRight, PhoneMissed, Smartphone,
   Clock, Keyboard, Loader2, User, Phone, ChevronRight, RefreshCw,
+  ChevronDown, Pencil, Save, MessageSquare, ExternalLink,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import api from '@/lib/axios';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
 import { useDialer } from '@/hooks/useDialer';
 import { useDeviceContacts } from '@/hooks/useDeviceContacts';
 
@@ -63,6 +64,12 @@ const statusBadge = (status) => {
 
 const cleanNumber = (v) => String(v || '').replace(/[^0-9+*#]/g, '');
 
+const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+  </svg>
+);
+
 /* ── Keypad button with haptic-feel animation ─────────────────────────────── */
 const KeyBtn = memo(({ digit, letters, onPress }) => {
   const [pressed, setPressed] = useState(false);
@@ -93,68 +100,225 @@ const KeyBtn = memo(({ digit, letters, onPress }) => {
 });
 KeyBtn.displayName = 'KeyBtn';
 
-/* ── History row (DB-sourced) ──────────────────────────────────────────────── */
-const HistoryRow = memo(({ call, onCall, style }) => {
+/* ── History row — expandable accordion ─────────────────────────────────── */
+const HistoryRow = memo(({ call, onCall, outcomes, onUpdate }) => {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: '', phone: '', notes: '', outcomeId: '' });
+  const [saving, setSaving] = useState(false);
+
   const { Icon, color, bg } = typeMeta(call.call_type);
   const phone = call.phone_number_dialed || call.lead_phone || '';
-  const name = call.lead_name || phone || 'Unknown';
+  const name = call.lead_name || 'Unknown';
   const isMissed = String(call.call_type).toUpperCase() === 'MISSED';
+  const waLink = phone ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}` : null;
+  const dur = call.duration_seconds > 0 ? fmtDuration(call.duration_seconds) : null;
+
+  const startEdit = () => {
+    setForm({
+      name: call.lead_name || '',
+      phone: phone,
+      notes: call.customer_notes || '',
+      outcomeId: call.outcome_id || '',
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      // Update call notes/outcome
+      if (call.id) {
+        const body = { customer_notes: form.notes };
+        if (form.outcomeId) body.outcome_id = form.outcomeId;
+        await api.put(`/calls/${call.id}`, body);
+      }
+      // Update lead name/phone if linked and changed
+      if (call.lead_id && (form.name !== (call.lead_name || '') || form.phone !== phone)) {
+        await api.put(`/leads/${call.lead_id}`, { name: form.name, phone: form.phone });
+      }
+      toast.success('Updated');
+      setEditing(false);
+      if (onUpdate) onUpdate(call.id, {
+        customer_notes: form.notes,
+        outcome_id: form.outcomeId,
+        outcome_label: outcomes?.find(o => String(o.id) === String(form.outcomeId))?.label || call.outcome_label,
+        lead_name: form.name || call.lead_name,
+        phone_number_dialed: form.phone || phone,
+      });
+    } catch { toast.error('Failed to save'); }
+    finally { setSaving(false); }
+  };
 
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 border-b border-slate-100/80 last:border-0
-                 hover:bg-slate-50/50 transition-colors duration-150 group"
-      style={style}
-    >
-      <div className={`h-10 w-10 rounded-full ${bg} flex items-center justify-center shrink-0
-                       transition-transform duration-200 group-hover:scale-105`}>
-        <Icon className={`h-4.5 w-4.5 ${color}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${isMissed ? 'text-rose-600' : 'text-slate-900'}`}>
-          {name}
-        </p>
-        {name !== phone && phone && (
-          <p className="text-xs text-slate-500 font-mono truncate">{phone}</p>
-        )}
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] text-slate-400">{fmtDate(call.call_start)}</span>
-          {call.duration_seconds > 0 && (
-            <span className="text-[10px] text-slate-400">· {fmtDuration(call.duration_seconds)}</span>
-          )}
-          {call.outcome_label && (
-            <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-medium">
-              {call.outcome_label}
-            </span>
-          )}
-        </div>
-      </div>
+    <div className={`border-b border-slate-100 last:border-0 ${open ? 'bg-slate-50/60' : ''}`}>
+      {/* Summary */}
       <button
         type="button"
-        onClick={() => onCall(phone, { name, leadId: call.lead_id })}
-        className="h-10 w-10 rounded-full bg-green-500/10 hover:bg-green-500/20
-                   flex items-center justify-center text-green-600
-                   transition-all duration-200 active:scale-90 shrink-0"
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-100/60"
+        onClick={() => setOpen(o => !o)}
       >
-        <PhoneCall className="h-4 w-4" />
+        <div className={`h-9 w-9 rounded-full ${bg} flex items-center justify-center shrink-0`}>
+          <Icon className={`h-4 w-4 ${color}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-[13px] font-semibold truncate leading-tight ${isMissed ? 'text-rose-600' : 'text-slate-900'}`}>{name}</p>
+          <p className="text-[11px] text-slate-500 font-mono truncate leading-tight">{phone || '—'}</p>
+          <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{fmtDate(call.call_start)}{dur ? ` · ${dur}` : ''}</p>
+          {call.customer_notes && (
+            <p className="text-[10px] text-indigo-500 truncate leading-tight mt-0.5 flex items-center gap-1">
+              <MessageSquare className="h-2.5 w-2.5 shrink-0" />
+              {call.customer_notes}
+            </p>
+          )}
+        </div>
+        {call.outcome_label && (
+          <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded-full px-2 py-0.5 shrink-0">{call.outcome_label}</span>
+        )}
+        <ChevronDown className={`h-3.5 w-3.5 text-slate-300 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
+
+      {/* Expanded */}
+      {open && (
+        <div className="px-4 pb-3 animate-in fade-in duration-150">
+          {editing ? (
+            /* ── Edit mode ── */
+            <div className="space-y-2 bg-white rounded-xl border border-slate-200 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Name</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Phone</label>
+                  <input
+                    value={form.phone}
+                    onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5 font-mono
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Call notes…"
+                  rows={2}
+                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 mt-0.5 resize-none
+                    focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                  onClick={e => e.stopPropagation()}
+                />
+              </div>
+              {outcomes?.length > 0 && (
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Outcome</label>
+                  <select
+                    value={form.outcomeId}
+                    onChange={(e) => setForm(f => ({ ...f, outcomeId: e.target.value }))}
+                    onClick={e => e.stopPropagation()}
+                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5 bg-white
+                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                  >
+                    <option value="">Select outcome…</option>
+                    {outcomes.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                  disabled={saving}
+                  className="flex-1 h-9 rounded-lg bg-indigo-600 text-white text-xs font-semibold
+                    hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setEditing(false); }}
+                  className="h-9 px-4 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── Details mode ── */
+            <div className="space-y-2">
+              {/* Info chips */}
+              {(call.lead_status || call.lead_category || call.next_action) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {call.lead_status && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_status)}`}>{call.lead_status}</span>}
+                  {call.lead_category && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_category)}`}>{call.lead_category}</span>}
+                  {call.next_action && call.next_action !== 'NONE' && (
+                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">→ {call.next_action.replace('_', ' ')}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Notes */}
+              {call.customer_notes && (
+                <p className="text-[11px] text-slate-600 leading-relaxed bg-white rounded-lg border border-slate-100 px-2.5 py-2">
+                  {call.customer_notes}
+                </p>
+              )}
+
+              {/* Actions — 4 compact icon buttons in a row */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onCall(phone, { name, leadId: call.lead_id }); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold
+                    shadow-sm shadow-emerald-500/20 active:scale-[0.96] transition-all"
+                >
+                  <PhoneCall className="h-3.5 w-3.5" /> Call
+                </button>
+                {waLink && (
+                  <a
+                    href={waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-green-50 text-green-700 text-[11px] font-semibold
+                      border border-green-200 active:scale-[0.96] transition-all"
+                  >
+                    <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); startEdit(); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold
+                    border border-slate-200 active:scale-[0.96] transition-all"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });
 HistoryRow.displayName = 'HistoryRow';
 
-/* ── Skeleton rows ────────────────────────────────────────────────────────── */
-const SkeletonRows = ({ count = 5 }) => (
-  <div className="divide-y divide-slate-100/80">
-    {[...Array(count)].map((_, i) => (
-      <div key={i} className="flex items-center gap-3 px-4 py-3">
-        <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-        <div className="flex-1 space-y-1.5">
-          <Skeleton className="h-3.5 w-28" />
-          <Skeleton className="h-3 w-20" />
-        </div>
-        <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-      </div>
+/* ── Loading dots (no skeleton) ───────────────────────────────────────── */
+const LoadingDots = () => (
+  <div className="flex items-center justify-center py-10 gap-1">
+    {[0, 1, 2].map(i => (
+      <div key={i} className="h-2 w-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
     ))}
   </div>
 );
@@ -185,14 +349,20 @@ const DialerPage = () => {
   const [historyCursor, setHistoryCursor]   = useState(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [historyFilter, setHistoryFilter]   = useState('ALL');
-
   /* ── Recents search state ── */
   const [recentsSearch, setRecentsSearch]   = useState('');
+
+  /* ── Call outcomes (for edit dropdown) ── */
+  const [outcomes, setOutcomes]             = useState([]);
 
   const timerRef          = useRef(null);
   const autoCallTriggered = useRef(false);
   const callIdRef         = useRef(null);
   const historyEndRef     = useRef(null);
+  const numberInputRef    = useRef(null);
+
+  /* ── Contact index for instant keypad suggestions ── */
+  const [contactIndex, setContactIndex] = useState([]);
 
   const activeName = useMemo(
     () => activeCall?.name || searchParams.get('name') || 'Unknown',
@@ -211,9 +381,11 @@ const DialerPage = () => {
     try {
       const params = new URLSearchParams({ limit: HISTORY_LIMIT });
       if (!reset && historyCursor) params.set('cursor', historyCursor);
-      if (historyFilter !== 'ALL') params.set('call_type', historyFilter);
 
-      const { data } = await api.get(`/calls/dialer-history?${params}`);
+      // Use cache for initial load; raw fetch for paginated load-more
+      const data = reset
+        ? await cachedGet(`/calls/dialer-history?${params}`, { staleTime: 30_000, cacheTime: 180_000 })
+        : await api.get(`/calls/dialer-history?${params}`).then(r => r.data);
       if (data.success) {
         setHistory(prev => reset ? data.calls : [...prev, ...data.calls]);
         setHistoryCursor(data.nextCursor);
@@ -224,23 +396,18 @@ const DialerPage = () => {
       setHistoryLoading(false);
       setHistoryLoadingMore(false);
     }
-  }, [historyCursor, historyFilter]);
+  }, [historyCursor]);
 
-  /* ── Filtered history (local search + exclude missed from ALL) ── */
+  /* ── Filtered history (local search only) ── */
   const filteredHistory = useMemo(() => {
-    let result = history;
-    // When filter is ALL, hide MISSED calls from recents
-    if (historyFilter === 'ALL') {
-      result = result.filter(c => String(c.call_type).toUpperCase() !== 'MISSED');
-    }
-    if (!recentsSearch.trim()) return result;
+    if (!recentsSearch.trim()) return history;
     const q = recentsSearch.toLowerCase().trim();
-    return result.filter((c) => {
+    return history.filter((c) => {
       const name = (c.lead_name || '').toLowerCase();
       const phone = c.phone_number_dialed || c.lead_phone || '';
       return name.includes(q) || phone.includes(q);
     });
-  }, [history, recentsSearch, historyFilter]);
+  }, [history, recentsSearch]);
 
   /* ── Filtered device contacts (shown when synced & searching) ── */
   const filteredDeviceContacts = useMemo(() => {
@@ -256,6 +423,27 @@ const DialerPage = () => {
       .filter(c => !historyPhones.has(cleanNumber(c.phoneNumber || c.number || '')))
       .slice(0, 15);
   }, [syncedContacts, contactsSynced, recentsSearch, history]);
+
+  /* ── Keypad suggestions: instant lookup from history + pre-loaded contacts index ── */
+  const suggestions = useMemo(() => {
+    const q = cleanNumber(number);
+    if (q.length < 3) return [];
+    const matches = new Map();
+    // From call history (already in memory)
+    for (const c of history) {
+      const phone = cleanNumber(c.phone_number_dialed || c.lead_phone || '');
+      if (phone && phone.includes(q) && !matches.has(phone)) {
+        matches.set(phone, { name: c.lead_name || 'Unknown', phone, type: 'history', leadId: c.lead_id });
+      }
+    }
+    // From pre-loaded contact index (leads + contacts)
+    for (const c of contactIndex) {
+      if (c.phone && c.phone.includes(q) && !matches.has(c.phone)) {
+        matches.set(c.phone, c);
+      }
+    }
+    return Array.from(matches.values()).slice(0, 6);
+  }, [number, history, contactIndex]);
 
   /* ── Search debounced (removed — now uses local filteredHistory) ── */
 
@@ -331,13 +519,14 @@ const DialerPage = () => {
     } catch { /* silent background sync */ }
   }, [getRecentCalls]);
 
-  /* ── Load history on tab switch or filter change ── */
+  /* ── Load history on tab switch ── */
   useEffect(() => {
     if (tab === 'recents') {
-      // Auto-sync device call log first, then load history
-      autoSyncDeviceCalls().finally(() => loadHistory(true));
+      // Load history immediately, sync device calls in background
+      loadHistory(true);
+      autoSyncDeviceCalls();
     }
-  }, [tab, historyFilter]);
+  }, [tab]);
 
   /* ── Infinite scroll for history ── */
   useEffect(() => {
@@ -363,7 +552,7 @@ const DialerPage = () => {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [tab, autoSyncDeviceCalls]);
 
-  /* ── Init: permissions, SIMs ── */
+  /* ── Init: permissions, SIMs, outcomes ── */
   useEffect(() => {
     (async () => {
       try { await requestPermissions(); } catch {}
@@ -372,7 +561,47 @@ const DialerPage = () => {
         setSims(simList || []);
         if (simList?.length) setSelectedSim(String(simList[0].slotIndex));
       } catch { setSims([]); }
+      // Fetch outcomes (cached)
+      try {
+        const data = await cachedGet('/calls/outcomes', { staleTime: 600_000, cacheTime: 1800_000 });
+        if (data?.outcomes) setOutcomes(data.outcomes);
+      } catch {}
     })();
+  }, []);
+
+  /* ── Pre-load leads + contacts for instant keypad suggestions ── */
+  useEffect(() => {
+    const buildIndex = (data, type) => {
+      const items = data?.leads || data?.contacts || (Array.isArray(data) ? data : []);
+      return items.map(item => ({
+        name: item.name || item.contact_name || item.lead_name || '',
+        phone: cleanNumber(item.phone || item.phone_number || ''),
+        type,
+        id: item.id,
+      })).filter(item => item.phone.length >= 5);
+    };
+    const dedup = (arr) => {
+      const seen = new Set();
+      return arr.filter(i => { if (seen.has(i.phone)) return false; seen.add(i.phone); return true; });
+    };
+    // Apply cached data instantly (no wait)
+    const cachedL = getCachedSync('/leads?limit=500');
+    const cachedC = getCachedSync('/contacts?limit=500');
+    if (cachedL || cachedC) {
+      setContactIndex(dedup([...buildIndex(cachedL, 'lead'), ...buildIndex(cachedC, 'contact')]));
+    }
+    // Background refresh
+    Promise.all([
+      cachedGet('/leads?limit=500', { staleTime: 300_000, cacheTime: 900_000 }),
+      cachedGet('/contacts?limit=500', { staleTime: 300_000, cacheTime: 900_000 }),
+    ]).then(([l, c]) => {
+      setContactIndex(dedup([...buildIndex(l, 'lead'), ...buildIndex(c, 'contact')]));
+    }).catch(() => {});
+  }, []);
+
+  /* ── Update a call record in local history ── */
+  const handleCallUpdate = useCallback((callId, updatedCall) => {
+    setHistory(prev => prev.map(c => c.id === callId ? { ...c, ...updatedCall } : c));
   }, []);
 
   /* ── Call events ── */
@@ -427,6 +656,13 @@ const DialerPage = () => {
     });
 
     const isApp = window.Capacitor?.isNativePlatform?.() || false;
+    try {
+      localStorage.setItem('rg:lastDialedCall', JSON.stringify({
+        phone, name: opts.name || 'Manual Call',
+        leadId: opts.leadId ? Number(opts.leadId) : null, timestamp: Date.now(),
+      }));
+    } catch {}
+
     api.post('/calls/quick-log', {
       lead_id: opts.leadId ? Number(opts.leadId) : null,
       phone_number: phone,
@@ -435,14 +671,14 @@ const DialerPage = () => {
       const cid = data?.call?.id || null;
       callIdRef.current = cid;
       setActiveCall((p) => p ? { ...p, callId: cid } : p);
+      if (cid) {
+        try {
+          const stored = JSON.parse(localStorage.getItem('rg:lastDialedCall') || '{}');
+          stored.callId = cid;
+          localStorage.setItem('rg:lastDialedCall', JSON.stringify(stored));
+        } catch {}
+      }
     }).catch(() => {});
-
-    try {
-      localStorage.setItem('rg:lastDialedCall', JSON.stringify({
-        phone, name: opts.name || 'Manual Call',
-        leadId: opts.leadId ? Number(opts.leadId) : null, timestamp: Date.now(),
-      }));
-    } catch {}
   }, [selectedSim, makeCall, openDialer]);
 
   const handleManualStop = useCallback(async () => {
@@ -460,8 +696,45 @@ const DialerPage = () => {
     if (tab === 'recents') loadHistory(true);
   }, [activeCall, timerSec, tab]);
 
-  const onPressKey  = useCallback((v) => setNumber((p) => cleanNumber(p + v)), []);
-  const onBackspace = useCallback(() => setNumber((p) => p.slice(0, -1)), []);
+  const onPressKey = useCallback((v) => {
+    const input = numberInputRef.current;
+    if (!input) { setNumber(p => cleanNumber(p + v)); return; }
+    const start = input.selectionStart ?? number.length;
+    const end   = input.selectionEnd   ?? number.length;
+    const newVal = cleanNumber(number.slice(0, start) + v + number.slice(end));
+    setNumber(newVal);
+    requestAnimationFrame(() => {
+      if (numberInputRef.current) {
+        numberInputRef.current.focus();
+        numberInputRef.current.setSelectionRange(start + 1, start + 1);
+      }
+    });
+  }, [number]);
+
+  const onBackspace = useCallback(() => {
+    const input = numberInputRef.current;
+    if (!input) { setNumber(p => p.slice(0, -1)); return; }
+    const start = input.selectionStart ?? number.length;
+    const end   = input.selectionEnd   ?? number.length;
+    let newVal, newPos;
+    if (start !== end) {
+      newVal = number.slice(0, start) + number.slice(end); newPos = start;
+    } else if (start > 0) {
+      newVal = number.slice(0, start - 1) + number.slice(start); newPos = start - 1;
+    } else return;
+    setNumber(newVal);
+    requestAnimationFrame(() => {
+      if (numberInputRef.current) {
+        numberInputRef.current.focus();
+        numberInputRef.current.setSelectionRange(newPos, newPos);
+      }
+    });
+  }, [number]);
+
+  const onClearNumber = useCallback(() => {
+    setNumber('');
+    requestAnimationFrame(() => numberInputRef.current?.focus());
+  }, []);
 
   /* ── Auto-call from query params ── */
   useEffect(() => {
@@ -481,115 +754,182 @@ const DialerPage = () => {
      RENDER
      ══════════════════════════════════════════════════════════════════════════ */
   return (
-    <div className="flex flex-col items-center pb-4 min-h-dvh">
+    <div className="flex flex-col h-[calc(100dvh-3.5rem)] -m-2 sm:-m-5 md:-m-8 -mb-[calc(4rem+env(safe-area-inset-bottom,0px))] overflow-hidden">
 
-      {/* ── Header row ── */}
-      <div className="w-full flex items-center justify-between px-1 mb-3">
-        <h1 className="text-lg font-bold text-slate-900">Dialer</h1>
-        <Select value={selectedSim} onValueChange={setSelectedSim}>
-          <SelectTrigger className="h-8 w-auto gap-1.5 rounded-full border-slate-200 px-3 text-xs font-medium">
-            <Smartphone className="h-3.5 w-3.5 text-slate-500" />
-            <SelectValue placeholder="SIM" />
-          </SelectTrigger>
-          <SelectContent align="end">
-            <SelectItem value="-1" className="text-xs">Default SIM</SelectItem>
-            {sims.map((sim) => (
-              <SelectItem key={String(sim.slotIndex)} value={String(sim.slotIndex)} className="text-xs">
-                {sim.displayName || sim.carrierName || `SIM ${Number(sim.slotIndex) + 1}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* ══ FIXED TOP: header + active call + tab switcher ══ */}
+      <div className="shrink-0 px-3 pt-3 pb-0">
 
-      {/* ── Active call banner ── */}
-      {activeCall && (
-        <div className="w-full max-w-sm mb-3 rounded-2xl bg-linear-to-br from-slate-800 to-slate-900 text-white px-5 py-3.5 shadow-xl
-                        animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
-                {activeCall.isConnected ? (
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Connected
-                  </span>
-                ) : '⟳ Dialing…'}
-              </p>
-              <p className="text-base font-bold mt-0.5 truncate">{activeName}</p>
-              <p className="text-sm font-mono text-slate-300">{activeCall.phone}</p>
-            </div>
-            <div className="flex flex-col items-end gap-2 shrink-0 ml-3">
-              <span className="text-2xl font-mono font-bold text-emerald-400 tabular-nums">
-                {fmtDuration(timerSec)}
-              </span>
-              <button
-                type="button"
-                onClick={handleManualStop}
-                className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold
-                           px-3.5 py-1.5 rounded-full transition-all duration-200 active:scale-95"
-              >
-                <PhoneOff className="h-3.5 w-3.5" /> End
-              </button>
+
+
+        {/* ── Active call banner ── */}
+        {activeCall && (
+          <div className="w-full max-w-sm mx-auto mb-3 rounded-2xl bg-linear-to-br from-slate-800 to-slate-900 text-white px-5 py-3.5 shadow-xl
+                          animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                  {activeCall.isConnected ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Connected
+                    </span>
+                  ) : '⟳ Dialing…'}
+                </p>
+                <p className="text-base font-bold mt-0.5 truncate">{activeName}</p>
+                <p className="text-sm font-mono text-slate-300">{activeCall.phone}</p>
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0 ml-3">
+                <span className="text-2xl font-mono font-bold text-emerald-400 tabular-nums">
+                  {fmtDuration(timerSec)}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleManualStop}
+                  className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold
+                             px-3.5 py-1.5 rounded-full transition-all duration-200 active:scale-95"
+                >
+                  <PhoneOff className="h-3.5 w-3.5" /> End
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* ── Tab switcher ── */}
+        <div className="flex items-center bg-slate-100 rounded-full p-1 gap-0.5 w-full max-w-sm mx-auto mb-2">
+          {TAB_CONFIG.map(({ key, label, Icon: TabIcon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
+                          transition-all duration-200 ${
+                tab === key
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <TabIcon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
         </div>
-      )}
-
-      {/* ── Tab switcher (3 tabs) ── */}
-      <div className="flex items-center bg-slate-100 rounded-full p-1 gap-0.5 mb-4 w-full max-w-sm">
-        {TAB_CONFIG.map(({ key, label, Icon: TabIcon }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
-                        transition-all duration-200 ${
-              tab === key
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <TabIcon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
       </div>
 
-      {/* ═══════════════════ KEYPAD TAB ═══════════════════ */}
+      {/* ══ SCROLLABLE CONTENT AREA ══ */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col items-center px-3 pb-4">
       {tab === 'keypad' && (
-        <div className="w-full max-w-xs flex flex-col items-center gap-4 animate-in fade-in duration-200">
-          {/* Number display */}
-          <div className="w-full flex mt-10 items-center gap-2 px-1 min-h-12">
-            <div className="flex-1 text-center text-2xl font-mono font-semibold text-slate-900 tracking-wider truncate">
-              {number || <span className="text-slate-300 text-lg font-normal">Enter number</span>}
-            </div>
-            {number.length > 0 && (
-              <button
-                type="button"
-                onClick={onBackspace}
-                className="h-9 w-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400
-                           transition-all duration-150 active:scale-90 shrink-0"
-              >
-                <Delete className="h-5 w-5" />
-              </button>
-            )}
+        <div className="w-full max-w-xs flex flex-col items-center animate-in fade-in duration-200">
+
+          {/* ── Number input row ── */}
+          <div className="w-full flex items-center gap-1.5 px-1 mt-4 mb-1">
+            {/* X — clear entire number */}
+            <button
+              type="button"
+              onClick={onClearNumber}
+              className={`h-10 w-10 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0
+                          ${number.length > 0
+                            ? 'text-slate-400 hover:bg-rose-50 hover:text-rose-500 opacity-100'
+                            : 'opacity-0 pointer-events-none'}`}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Editable number — tap anywhere to place cursor */}
+            <input
+              ref={numberInputRef}
+              type="tel"
+              inputMode="none"
+              value={number}
+              onChange={e => setNumber(cleanNumber(e.target.value))}
+              placeholder="Enter number"
+              className="flex-1 min-w-0 text-center text-2xl font-mono font-semibold text-slate-900 tracking-wider
+                         bg-transparent border-none outline-none caret-green-500
+                         placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal placeholder:tracking-normal"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck="false"
+            />
+
+            {/* Backspace — delete at cursor */}
+            <button
+              type="button"
+              onPointerDown={e => { e.preventDefault(); onBackspace(); }}
+              className={`h-10 w-10 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0
+                          ${number.length > 0
+                            ? 'text-slate-400 hover:bg-slate-100 opacity-100'
+                            : 'opacity-0 pointer-events-none'}`}
+            >
+              <Delete className="h-5 w-5" />
+            </button>
           </div>
 
-          {/* Keypad grid */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* ── Keypad grid ── */}
+          <div className="grid grid-cols-3 gap-3 mt-1">
             {KEYS.map(([d, l]) => <KeyBtn key={d} digit={d} letters={l} onPress={onPressKey} />)}
           </div>
 
-          {/* Call button */}
+          {/* ── Call button ── */}
           <button
             type="button"
             onClick={() => startCall(number, {})}
+            disabled={!number}
             className="h-16 w-16 rounded-full bg-green-500 hover:bg-green-600 active:scale-[0.85]
                        shadow-lg shadow-green-500/25 flex items-center justify-center text-white
-                       transition-all duration-200 mt-1"
+                       transition-all duration-200 mt-3 disabled:opacity-40 disabled:shadow-none disabled:pointer-events-none"
           >
             <PhoneCall className="h-7 w-7" />
           </button>
+
+          {/* ── Suggestions — below keypad, scrollable ── */}
+          {suggestions.length > 0 && (
+            <div className="w-full mt-3 bg-white rounded-2xl border border-slate-100 shadow-lg shadow-slate-200/50 overflow-hidden animate-in fade-in duration-150">
+              {suggestions.map((s, i) => (
+                <div
+                  key={`${s.phone}-${i}`}
+                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-green-50/60 active:bg-green-100/40
+                             transition-colors border-b border-slate-50 last:border-0"
+                >
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white
+                      ${s.type === 'history' ? 'bg-linear-to-br from-slate-400 to-slate-600'
+                        : s.type === 'lead'  ? 'bg-linear-to-br from-emerald-400 to-green-600'
+                        : 'bg-linear-to-br from-blue-400 to-indigo-600'}`}>
+                    {s.name?.charAt(0)?.toUpperCase() || '#'}
+                  </div>
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 text-left"
+                    onPointerDown={e => {
+                      e.preventDefault();
+                      setNumber(s.phone);
+                      requestAnimationFrame(() => numberInputRef.current?.focus());
+                    }}
+                  >
+                    <p className="text-[13px] font-semibold text-slate-800 truncate leading-tight">{s.name}</p>
+                    <p className="text-[11px] text-slate-400 font-mono leading-tight">{s.phone}</p>
+                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full
+                        ${s.type === 'history' ? 'bg-slate-100 text-slate-500'
+                          : s.type === 'lead'  ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-blue-100 text-blue-700'}`}>
+                      {s.type === 'history' ? 'Recent' : s.type === 'lead' ? 'Lead' : 'Contact'}
+                    </span>
+                    <button
+                      type="button"
+                      onPointerDown={e => {
+                        e.preventDefault();
+                        startCall(s.phone, { name: s.name, leadId: s.leadId || s.id });
+                      }}
+                      className="h-7 w-7 rounded-full bg-green-500 flex items-center justify-center text-white
+                                 hover:bg-green-600 active:scale-90 transition-all"
+                    >
+                      <PhoneCall className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -642,29 +982,10 @@ const DialerPage = () => {
             </button>
           </div>
 
-          {/* Filter chips */}
-          <div className="flex items-center gap-1.5 mb-3 px-0.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {['ALL', 'OUTGOING', 'INCOMING', 'MISSED'].map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setHistoryFilter(f)}
-                className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap
-                           transition-all duration-200 ${
-                  historyFilter === f
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {f === 'ALL' ? 'All' : f.charAt(0) + f.slice(1).toLowerCase()}
-              </button>
-            ))}
-          </div>
-
           {/* History list */}
           <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
             {historyLoading ? (
-              <SkeletonRows count={6} />
+              <LoadingDots />
             ) : filteredHistory.length === 0 && filteredDeviceContacts.length === 0 ? (
               <div className="py-12 text-center">
                 <Clock className="h-8 w-8 text-slate-200 mx-auto mb-2" />
@@ -675,7 +996,7 @@ const DialerPage = () => {
             ) : (
               <>
                 {filteredHistory.map((call, i) => (
-                  <HistoryRow key={call.id || i} call={call} onCall={startCall} />
+                  <HistoryRow key={call.id || i} call={call} onCall={startCall} outcomes={outcomes} onUpdate={handleCallUpdate} />
                 ))}
 
                 {/* Device contacts matches */}
@@ -739,6 +1060,7 @@ const DialerPage = () => {
           </div>
         </div>
       )}
+      </div>{/* end scrollable content */}
     </div>
   );
 };

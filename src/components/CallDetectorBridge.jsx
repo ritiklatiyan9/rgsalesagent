@@ -36,6 +36,7 @@ const getDialerFallback = () => {
       phoneNumber: sanitizePhone(parsed?.phone),
       contactName: parsed?.name || '',
       leadId: parsed?.leadId || null,
+      callId: parsed?.callId || null,
     };
   } catch {
     return null;
@@ -253,21 +254,37 @@ function Inner() {
 
     // Auto-log to backend immediately.
     let savedCall = null;
-    try {
-      savedCall = await logCallNow(quickLogPayload);
-    } catch (err) {
-      console.error('[CallDetectorBridge] Auto-log failed:', err);
-      queuePendingCallLog({
-        payload: quickLogPayload,
-        meta: {
-          id: String(data.id || `${phoneNumber}-${data.timestamp || Date.now()}`),
-          isMissed,
-          phoneNumber,
-          contactName: contactName || '',
-          callStart: callStartIso,
-        },
-        queuedAt: Date.now(),
-      });
+
+    if (isAppInitiated && appFallback?.callId) {
+      // App already created the call record at dial-time — just UPDATE it
+      try {
+        const { data: response } = await api.put(`/calls/${appFallback.callId}/end`, {
+          duration_seconds: durationSeconds || 0,
+          call_status: isMissed ? 'MISSED' : 'COMPLETED',
+          customer_notes: null,
+        });
+        savedCall = response?.call || { id: appFallback.callId };
+      } catch (err) {
+        console.error('[CallDetectorBridge] Update call failed:', err);
+      }
+    } else {
+      // External/incoming call — create a new record
+      try {
+        savedCall = await logCallNow(quickLogPayload);
+      } catch (err) {
+        console.error('[CallDetectorBridge] Auto-log failed:', err);
+        queuePendingCallLog({
+          payload: quickLogPayload,
+          meta: {
+            id: String(data.id || `${phoneNumber}-${data.timestamp || Date.now()}`),
+            isMissed,
+            phoneNumber,
+            contactName: contactName || '',
+            callStart: callStartIso,
+          },
+          queuedAt: Date.now(),
+        });
+      }
     }
 
     if (isMissed && savedCall) {
@@ -289,10 +306,51 @@ function Inner() {
     // Background / external calls are auto-logged above but don't pop the UI.
     if (!isAppInitiated) return;
 
+    enrichedData.callId = savedCall?.id || appFallback?.callId || null;
     openDrawer(enrichedData);
   }, [getRecentCalls, logCallNow, openDrawer]);
 
   useCallListener({ onCallEnded: handleCallEnded });
+
+  // ── Web / PC fallback ─────────────────────────────────────────────────────
+  // On non-native (browser/PC), the native call detector never fires.
+  // When the tab regains focus after a tel: link was opened we check
+  // rg:lastDialedCall and open the remark drawer if a callId was saved.
+  useEffect(() => {
+    let isNative = false;
+    try { isNative = !!(window.Capacitor?.isNativePlatform?.()); } catch {}
+    if (isNative) return; // native path is handled by useCallListener above
+
+    const onVisibility = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const fallback = getDialerFallback();
+      if (!fallback?.callId || !fallback?.phoneNumber) return;
+
+      consumeDialerFallback();
+
+      // Finalize the call record (was created as ACTIVE at dial time)
+      try {
+        await api.put(`/calls/${fallback.callId}/end`, {
+          duration_seconds: 0,
+          call_status: 'COMPLETED',
+          customer_notes: null,
+        });
+      } catch { /* silent */ }
+
+      openDrawer({
+        phoneNumber: fallback.phoneNumber,
+        contactName: fallback.contactName || '',
+        callType: 'OUTGOING',
+        duration: 0,
+        timestamp: new Date().toISOString(),
+        callId: fallback.callId,
+        leadId: fallback.leadId || null,
+      });
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [openDrawer]);
 
   return null;
 }

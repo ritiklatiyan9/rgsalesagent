@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import api, { getAccessToken } from '@/lib/axios';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
 import { io } from 'socket.io-client';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://rivergreenbackend.onrender.com';
@@ -22,12 +23,27 @@ const toLastMessagePreview = (msg) => ({
   is_deleted: !!msg?.is_deleted,
 });
 
-export function useChat(currentUser) {
-  const [conversations, setConversations] = useState([]);
-  const [activeConversation, setActiveConversation] = useState(null);
+export function useChat(currentUser, { initialConversationId } = {}) {
+  // ── Instant local-first hydration from queryCache ──
+  const [conversations, setConversations] = useState(() => {
+    const cached = getCachedSync('/chat/conversations');
+    return cached?.conversations || cached || [];
+  });
+  const [activeConversation, setActiveConversation] = useState(() => {
+    if (!initialConversationId) return null;
+    const cached = getCachedSync('/chat/conversations');
+    const convos = cached?.conversations || cached || [];
+    return convos.find(c => String(c.id) === String(initialConversationId)) || null;
+  });
   const [messages, setMessages] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [permissions, setPermissions] = useState({ can_edit_message: false, can_delete_message: false });
+  const [users, setUsers] = useState(() => {
+    const cached = getCachedSync('/chat/users');
+    return cached?.users || cached || [];
+  });
+  const [permissions, setPermissions] = useState(() => {
+    const cached = getCachedSync('/chat/my-permissions');
+    return cached?.permission || { can_edit_message: false, can_delete_message: false };
+  });
   const [loading, setLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -44,12 +60,13 @@ export function useChat(currentUser) {
 
   const refreshConversations = useCallback(async () => {
     try {
-      const { data } = await api.get('/chat/conversations');
-      if (data.success) {
-        setConversations(data.conversations);
+      const data = await cachedGet('/chat/conversations', { staleTime: 0, force: true });
+      const convos = data?.conversations || data || [];
+      if (convos.length || !conversations.length) {
+        setConversations(convos);
         setUnreadCounts((prev) => {
           const next = { ...prev };
-          for (const conv of data.conversations || []) {
+          for (const conv of convos) {
             const convId = normalizeConversationId(conv?.id);
             if (!convId || next[convId]) continue;
             const initialUnread = extractUnreadCount(conv);
@@ -183,30 +200,42 @@ export function useChat(currentUser) {
     markConversationAsRead(activeConversation.id);
   }, [activeConversation?.id, markConversationAsRead]);
 
-  // Load initial data
+  // Load initial data — local-first, bg sync
   useEffect(() => {
     if (!currentUser) return;
-    setLoading(true);
+    // Only show loading spinner if we have zero cached data
+    const hasCachedConvos = conversations.length > 0;
+    if (!hasCachedConvos) setLoading(true);
+
+    const applyUnreads = (convos) => {
+      setUnreadCounts((prev) => {
+        const next = { ...prev };
+        for (const conv of convos || []) {
+          const convId = normalizeConversationId(conv?.id);
+          if (!convId || next[convId]) continue;
+          const initialUnread = extractUnreadCount(conv);
+          if (initialUnread > 0) next[convId] = initialUnread;
+        }
+        return next;
+      });
+    };
+
+    // Apply unread counts from already-cached convos
+    if (hasCachedConvos) applyUnreads(conversations);
+
+    // Background fetch with cache
     Promise.all([
-      api.get('/chat/conversations'),
-      api.get('/chat/users'),
-      api.get('/chat/my-permissions'),
-    ]).then(([convRes, usersRes, permRes]) => {
-      if (convRes.data.success) {
-        setConversations(convRes.data.conversations);
-        setUnreadCounts((prev) => {
-          const next = { ...prev };
-          for (const conv of convRes.data.conversations || []) {
-            const convId = normalizeConversationId(conv?.id);
-            if (!convId || next[convId]) continue;
-            const initialUnread = extractUnreadCount(conv);
-            if (initialUnread > 0) next[convId] = initialUnread;
-          }
-          return next;
-        });
-      }
-      if (usersRes.data.success) setUsers(usersRes.data.users);
-      if (permRes.data.success && permRes.data.permission) setPermissions(permRes.data.permission);
+      cachedGet('/chat/conversations', { staleTime: 15_000, cacheTime: 300_000 }),
+      cachedGet('/chat/users', { staleTime: 120_000, cacheTime: 600_000 }),
+      cachedGet('/chat/my-permissions', { staleTime: 300_000, cacheTime: 600_000 }),
+    ]).then(([convData, usersData, permData]) => {
+      const convos = convData?.conversations || convData || [];
+      setConversations(convos);
+      applyUnreads(convos);
+      const usersList = usersData?.users || usersData || [];
+      if (usersList.length) setUsers(usersList);
+      const perm = permData?.permission || permData;
+      if (perm) setPermissions(p => ({ ...p, ...perm }));
     }).catch(console.error)
       .finally(() => setLoading(false));
   }, [currentUser?.id]);

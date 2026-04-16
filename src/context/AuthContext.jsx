@@ -12,6 +12,7 @@ import api, {
   dispatchLogout,
 } from '@/lib/axios';
 import { warmCache, invalidateCache } from '@/lib/queryCache';
+import { clearQueue } from '@/lib/storage/syncQueue';
 
 const WARM_URLS = [
     '/leads?page=1&limit=15',
@@ -224,6 +225,7 @@ export const AuthProvider = ({ children }) => {
       await syncSiteState(null);
       await clearAuthData();
       invalidateCache();
+      clearQueue().catch(() => {});
     }
   };
 

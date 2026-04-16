@@ -145,6 +145,8 @@ export default function CallDrawer() {
 
   // ── form state ──
   const [leadForm, setLeadForm]       = useState(getDefaultLeadForm(callData));
+  const [callRemark, setCallRemark]   = useState('');
+  const [savingRemark, setSavingRemark] = useState(false);
   const [isExistingLead, setIsExistingLead] = useState(false);
   const [isEditingLead, setIsEditingLead]   = useState(false);
   const [leadCallHistory, setLeadCallHistory] = useState([]);
@@ -267,6 +269,7 @@ export default function CallDrawer() {
 
   useEffect(() => {
     setErrors({});
+    setCallRemark('');
     fetchLeadContext();
   }, [fetchLeadContext]);
 
@@ -312,6 +315,15 @@ export default function CallDrawer() {
         toast.success(isExistingLead ? 'Client updated' : 'Client saved');
         setIsExistingLead(true);
         setIsEditingLead(false);
+
+        // Save call remark to the call record
+        const cid = callData?.callId;
+        if (cid && callRemark.trim()) {
+          try {
+            await api.put(`/calls/${cid}`, { customer_notes: callRemark.trim() });
+          } catch { /* silent */ }
+        }
+
         await fetchLeadContext();
       } else {
         toast.error(result?.message || 'Failed to save client');
@@ -427,6 +439,41 @@ export default function CallDrawer() {
             </p>
           </div>
         )}
+
+        {/* ── Call Remark / Notes ── */}
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-amber-100 flex items-center justify-center">
+              <Edit3 className="h-3.5 w-3.5 text-amber-700" />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Call Remark</p>
+          </div>
+          <Textarea
+            value={callRemark}
+            onChange={(e) => setCallRemark(e.target.value)}
+            placeholder="What was discussed? Any key points or follow-up needed…"
+            className="min-h-20 text-sm font-medium resize-none rounded-xl bg-white border-amber-200 p-3 shadow-sm placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-amber-400/30 transition-all"
+          />
+          {callData?.callId && callRemark.trim() && (
+            <button
+              type="button"
+              onClick={async () => {
+                setSavingRemark(true);
+                try {
+                  await api.put(`/calls/${callData.callId}`, { customer_notes: callRemark.trim() });
+                  toast.success('Remark saved');
+                } catch { toast.error('Failed to save remark'); }
+                finally { setSavingRemark(false); }
+              }}
+              disabled={savingRemark}
+              className="h-8 px-3 rounded-lg bg-amber-600 text-white text-[11px] font-bold
+                hover:bg-amber-700 active:scale-[0.97] transition-all disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {savingRemark ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Save Remark
+            </button>
+          )}
+        </div>
 
         {/* ── Core Action Fields ── */}
         <div className="space-y-3 pt-2">
@@ -651,6 +698,12 @@ export default function CallDrawer() {
                             <span className="text-[10px] text-slate-500 font-medium">Duration: <span className="font-mono text-slate-800">{formatCallDuration(call.duration_seconds)}</span></span>
                             {call.outcome_label && <span className="text-[9px] uppercase tracking-wider bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold">{call.outcome_label}</span>}
                           </div>
+                          {call.customer_notes && (
+                            <p className="text-[10px] text-indigo-600 mt-1.5 leading-relaxed line-clamp-2 flex items-start gap-1">
+                              <Edit3 className="h-2.5 w-2.5 shrink-0 mt-0.5 text-indigo-400" />
+                              {call.customer_notes}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

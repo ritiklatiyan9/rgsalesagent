@@ -1,4 +1,5 @@
 import api, { getActiveSiteId } from './axios';
+import { persistGet, persistSet, persistDeleteByPrefix, persistClear, persistLoadAll, persistEvict } from './storage/persistCache';
 
 const cache    = new Map();
 const inflight = new Map();
@@ -8,7 +9,45 @@ const DEFAULT_CACHE_TIME  = 600_000;
 const ERROR_RETRY_DELAY   = 10_000;
 const MAX_CACHE_SIZE      = 300;
 
+// Persistence write is debounced to avoid IDB thrashing
+let _persistQueue = [];
+let _persistTimer = null;
+
+function _schedulePersist(key, data, ts) {
+    _persistQueue.push({ key, data, ts });
+    if (!_persistTimer) {
+        _persistTimer = setTimeout(_flushPersistQueue, 300);
+    }
+}
+
+function _flushPersistQueue() {
+    _persistTimer = null;
+    const batch = _persistQueue.splice(0);
+    batch.forEach(({ key, data, ts }) => {
+        persistSet(key, data, ts).catch(() => {});
+    });
+    // Periodic eviction
+    if (batch.length > 10) persistEvict().catch(() => {});
+}
+
 const toCacheKey = (url) => `${getActiveSiteId() || 'no-site'}::${url}`;
+
+/**
+ * Hydrate memory cache from IndexedDB on cold start.
+ * Call once before React renders.
+ */
+export async function hydrateCache() {
+    try {
+        const persisted = await persistLoadAll();
+        for (const [key, entry] of persisted) {
+            if (!cache.has(key)) {
+                cache.set(key, { data: entry.data, ts: entry.ts });
+            }
+        }
+    } catch (e) {
+        console.warn('[queryCache] hydrate failed:', e.message);
+    }
+}
 
 export async function cachedGet(
     url,
@@ -27,9 +66,23 @@ export async function cachedGet(
             const age = now - entry.ts;
             if (age < staleTime) return entry.data;
             if (age < cacheTime) { _revalidate(url); return entry.data; }
+            // Data is beyond cacheTime but still have it — return stale, revalidate
             _revalidate(url);
             return entry.data;
         }
+    }
+
+    // Try loading from IndexedDB persistence if memory miss
+    if (!force && !cache.has(key)) {
+        try {
+            const persisted = await persistGet(key);
+            if (persisted) {
+                cache.set(key, { data: persisted.data, ts: persisted.ts });
+                // Return persisted data immediately, revalidate in background
+                _revalidate(url);
+                return persisted.data;
+            }
+        } catch {}
     }
 
     if (inflight.has(key)) return inflight.get(key);
@@ -57,10 +110,15 @@ export function warmCache(urls = []) {
 }
 
 export function invalidateCache(prefix = '') {
-    if (!prefix) { cache.clear(); return; }
-    for (const key of cache.keys()) {
-        if (key.startsWith(prefix)) cache.delete(key);
+    if (!prefix) {
+        cache.clear();
+        persistClear().catch(() => {});
+        return;
     }
+    for (const key of cache.keys()) {
+        if (key.includes(prefix)) cache.delete(key);
+    }
+    persistDeleteByPrefix(prefix).catch(() => {});
 }
 
 export function getCachedSync(url) {
@@ -88,7 +146,11 @@ async function _fetchAndCache(url) {
                 message: err.response?.data?.message,
             });
         }
-        _setCache(key, { _error: err, ts: Date.now() });
+        // Don't persist errors
+        if (cache.size >= MAX_CACHE_SIZE) {
+            cache.delete(cache.keys().next().value);
+        }
+        cache.set(key, { _error: err, ts: Date.now() });
         throw err;
     } finally {
         inflight.delete(key);
@@ -107,4 +169,9 @@ function _setCache(key, entry) {
         cache.delete(cache.keys().next().value);
     }
     cache.set(key, entry);
+
+    // Persist successful responses to IndexedDB (non-blocking)
+    if (!entry._error) {
+        _schedulePersist(key, entry.data, entry.ts);
+    }
 }

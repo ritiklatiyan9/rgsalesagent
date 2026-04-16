@@ -21,6 +21,7 @@ import {
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/axios';
+import { cachedGet } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay } from 'date-fns';
 import {
@@ -126,7 +127,7 @@ const CallHistory = () => {
       if (range.from) params.set('date_from', range.from);
       if (range.to) params.set('date_to', range.to);
 
-      const { data } = await api.get(`/calls?${params}`);
+      const data = await cachedGet(`/calls?${params}`, { staleTime: 120_000, cacheTime: 300_000 });
       if (data.success) {
         setCalls(data.calls || []);
         setPagination(data.pagination || { page, totalPages: 1, total: data.calls?.length || 0 });

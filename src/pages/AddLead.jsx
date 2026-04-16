@@ -22,6 +22,9 @@ const STATUS_OPTIONS = [
   { value: 'CONTACTED', label: 'Contacted' },
   { value: 'INTERESTED', label: 'Interested' },
   { value: 'SITE_VISIT', label: 'Site Visit' },
+  { value: 'NOT_ANSWERING', label: 'Not Answering' },
+  { value: 'SWITCH_OFF', label: 'Switch Off' },
+  { value: 'INCOMING_OFF', label: 'Incoming Off' },
   { value: 'NEGOTIATION', label: 'Negotiation' },
   { value: 'BOOKED', label: 'Booked' },
   { value: 'LOST', label: 'Lost' },
@@ -31,8 +34,6 @@ const LEAD_SOURCE_OPTIONS = [
   { value: 'Direct', label: 'Direct' },
   { value: 'Referral', label: 'Referral' },
   { value: 'Website', label: 'Website' },
-  { value: 'Advertisement', label: 'Advertisement' },
-  { value: 'Event', label: 'Event' },
   { value: 'Other', label: 'Other' },
 ];
 

@@ -1,17 +1,13 @@
 import { useEffect, useState, useCallback, useMemo, memo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+
 import {
     Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -23,11 +19,13 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import api from '@/lib/axios';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
 import { toast } from 'sonner';
 import {
     Search, Users, UserPlus, ChevronLeft, ChevronRight, Trash2,
     Plus, Loader2, X, PhoneOutgoing, Pencil, Smartphone, Eye,
 } from 'lucide-react';
+import CallTimeline from '@/components/CallTimeline';
 import { useDeviceContacts } from '@/hooks/useDeviceContacts';
 
 const STATUS_OPTIONS = [
@@ -63,80 +61,108 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
     </svg>
 );
 
-// Memoized row — only re-renders when its own data or selection state changes
-const ContactRow = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp, onView, onEdit, onDelete }) => (
-    <TableRow className="hover:bg-slate-50/50 transition-colors">
-        <TableCell className="w-8 pl-3 py-3">
-            <input type="checkbox" checked={selected} onChange={() => onSelect(c.id)}
-                className="h-4 w-4 rounded border-slate-300" aria-label={`Select ${c.name}`} />
-        </TableCell>
-        <TableCell className="pl-2 py-3">
-            <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-semibold text-indigo-600">{c.name?.charAt(0)?.toUpperCase()}</span>
+// Memoised mobile card — only re-renders when its own data or selection changes
+const ContactCard = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp, onView, onEdit, onDelete }) => {
+    const statusColor = STATUS_COLOR_MAP[c.status] || 'bg-slate-100 text-slate-600';
+    const statusLabel = STATUS_OPTIONS.find(s => s.value === c.status)?.label;
+    return (
+        <div className={`relative bg-white rounded-2xl border transition-all duration-150 shadow-sm ${
+            selected ? 'border-indigo-300 bg-indigo-50/20 shadow-indigo-100' : 'border-slate-100 hover:border-slate-200'
+        }`}>
+            {/* Top: avatar + info + checkbox */}
+            <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
+                <div className="h-12 w-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                    <span className="text-base font-bold text-indigo-500">{c.name?.charAt(0)?.toUpperCase()}</span>
                 </div>
-                <div>
-                    <p className="font-medium text-slate-900 text-sm leading-tight">{c.name}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
+                <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-900 text-sm leading-snug truncate">{c.name}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {c.status && (
-                            <span className={`text-[10px] px-1.5 py-0 rounded font-medium ${STATUS_COLOR_MAP[c.status] || 'bg-slate-100 text-slate-600'}`}>
-                                {STATUS_OPTIONS.find(s => s.value === c.status)?.label || c.status}
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusColor}`}>
+                                {statusLabel || c.status}
                             </span>
                         )}
                         {c.lead_category && (
-                            <span className="text-[10px] text-slate-400 font-medium">{c.lead_category}</span>
+                            <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded-full">{c.lead_category}</span>
                         )}
-                        {c.is_converted && !c.status && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 border-0 font-medium">Converted</Badge>
+                        {c.is_converted && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700">Converted</span>
                         )}
                     </div>
+                    {c.phone && (
+                        <p className="text-xs text-slate-500 mt-1 font-medium">{c.phone}</p>
+                    )}
+                </div>
+                {/* Checkbox far right */}
+                <div className="shrink-0 pt-0.5">
+                    <input
+                        type="checkbox" checked={selected} onChange={() => onSelect(c.id)}
+                        className="h-5 w-5 rounded-md border-slate-300 accent-indigo-600 cursor-pointer"
+                        aria-label={`Select ${c.name}`}
+                    />
                 </div>
             </div>
-        </TableCell>
-        <TableCell className="py-3">
-            <span className="text-sm text-slate-600">{c.phone || '—'}</span>
-        </TableCell>
-        <TableCell className="text-right pr-3 py-3">
-            <div className="flex items-center justify-end gap-0.5">
-                <Button size="sm" className="h-8 gap-1 text-xs bg-green-600 hover:bg-green-700 rounded-lg px-2.5"
+            {/* Action row */}
+            <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-slate-50">
+                <Button
+                    size="sm"
+                    className="flex-1 h-9 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5"
                     onClick={() => onCall(c)} disabled={isCalling}>
-                    {isCalling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PhoneOutgoing className="h-3.5 w-3.5" />}
+                    {isCalling
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <PhoneOutgoing className="h-3.5 w-3.5" />}
                     Call
                 </Button>
-                <Button variant="ghost" size="icon" title="WhatsApp"
-                    className="h-8 w-8 text-green-600 hover:bg-green-50" onClick={() => onWhatsApp(c.phone)}>
-                    <WhatsAppIcon className="h-4 w-4" />
+                <Button
+                    variant="ghost" size="sm"
+                    className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 rounded-xl gap-1.5"
+                    onClick={() => onWhatsApp(c.phone)}>
+                    <WhatsAppIcon className="h-3.5 w-3.5" /> WA
                 </Button>
-                <Button variant="ghost" size="icon" title="View Details"
-                    className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" onClick={() => onView(c)}>
-                    <Eye className="h-4 w-4" />
+                <Button
+                    variant="ghost" size="sm"
+                    className="flex-1 h-9 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 rounded-xl gap-1.5"
+                    onClick={() => onView(c)}>
+                    <Eye className="h-3.5 w-3.5" /> View
                 </Button>
-                <Button variant="ghost" size="icon" title="Edit"
-                    className="h-8 w-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50" onClick={() => onEdit(c)}>
-                    <Pencil className="h-4 w-4" />
+                <Button
+                    variant="ghost" size="sm"
+                    className="flex-1 h-9 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 rounded-xl gap-1.5"
+                    onClick={() => onEdit(c)}>
+                    <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
-                <Button variant="ghost" size="icon" title="Delete"
-                    className="h-8 w-8 text-slate-500 hover:text-red-600 hover:bg-red-50" onClick={() => onDelete(c)}>
-                    <Trash2 className="h-4 w-4" />
+                <Button
+                    variant="ghost" size="sm"
+                    className="flex-1 h-9 text-[11px] font-semibold text-red-600 hover:bg-red-50 rounded-xl"
+                    onClick={() => onDelete(c)}>
+                    <Trash2 className="h-3.5 w-3.5" />
                 </Button>
             </div>
-        </TableCell>
-    </TableRow>
-));
-ContactRow.displayName = 'ContactRow';
+        </div>
+    );
+});
+ContactCard.displayName = 'ContactCard';
 
 const AllContacts = () => {
     const navigate = useNavigate();
     const { synced, syncing, syncContacts, searchDeviceContacts, clearCache, count: deviceCount } = useDeviceContacts();
-    const [contacts, setContacts] = useState([]);
-    const [loading, setLoading] = useState(true);
+
+    // Probe memory cache synchronously to skip skeleton on navigation back
+    const _initCached = getCachedSync('/contacts?page=1&limit=25');
+
+    const [contacts, setContacts] = useState(() => _initCached?.contacts ?? []);
+    const [loading, setLoading] = useState(() => !_initCached);
+    const [refreshing, setRefreshing] = useState(false); // silent background sync dot
     const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const [totalCount, setTotalCount] = useState(0);
+    const [totalPages, setTotalPages] = useState(() => _initCached?.pagination?.totalPages ?? 1);
+    const [totalCount, setTotalCount] = useState(() => _initCached?.pagination?.total ?? 0);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [categoryFilter, setCategoryFilter] = useState('ALL');
+
+    // Track whether we already have data
+    const hasDataRef = useRef(Boolean(_initCached));
 
     // Add contact modal
     const [addOpen, setAddOpen] = useState(false);
@@ -159,6 +185,8 @@ const AllContacts = () => {
     // View details
     const [viewOpen, setViewOpen] = useState(false);
     const [viewTarget, setViewTarget] = useState(null);
+    const [viewCallHistory, setViewCallHistory] = useState([]);
+    const [viewCallLoading, setViewCallLoading] = useState(false);
 
     const openEdit = useCallback((contact) => {
         setEditTarget(contact);
@@ -167,9 +195,18 @@ const AllContacts = () => {
         setEditOpen(true);
     }, []);
 
-    const openView = useCallback((contact) => {
+    const openView = useCallback(async (contact) => {
         setViewTarget(contact);
+        setViewCallHistory([]);
         setViewOpen(true);
+        if (contact.id) {
+            setViewCallLoading(true);
+            try {
+                const { data } = await api.get(`/calls/lead/${contact.id}`);
+                if (data?.success && data?.calls) setViewCallHistory(Array.isArray(data.calls) ? data.calls : []);
+            } catch { setViewCallHistory([]); }
+            finally { setViewCallLoading(false); }
+        }
     }, []);
 
     const handleEditContact = async () => {
@@ -204,23 +241,27 @@ const AllContacts = () => {
     const [shiftLoading, setShiftLoading] = useState(false);
 
     const fetchContacts = useCallback(async (page, search, status, category) => {
+        const hasData = hasDataRef.current;
+        if (!hasData) setLoading(true);
+        else setRefreshing(true);
+        if (search) setIsSearching(true);
         try {
-            setLoading(true);
-            if (search) setIsSearching(true);
             let url = `/contacts?page=${page}&limit=25`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
             if (status && status !== 'ALL') url += `&status=${encodeURIComponent(status)}`;
             if (category && category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
-            const { data } = await api.get(url);
+            const data = await cachedGet(url, { staleTime: 600_000, cacheTime: 900_000 });
             if (data.success) {
                 setContacts(data.contacts);
                 setTotalPages(data.pagination.totalPages);
                 setTotalCount(data.pagination.total);
+                hasDataRef.current = true;
             }
         } catch {
-            toast.error('Failed to load contacts');
+            if (!hasDataRef.current) toast.error('Failed to load contacts');
         } finally {
             setLoading(false);
+            setRefreshing(false);
             setIsSearching(false);
         }
     }, []);
@@ -412,7 +453,10 @@ const AllContacts = () => {
                             className="pl-8 pr-8 h-9 text-xs rounded-xl"
                             autoComplete="off"
                         />
-                        {isSearching && (
+                        {(isSearching || refreshing) && !searchQuery && (
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
+                        )}
+                        {isSearching && searchQuery && (
                             <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
                                 <div className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                             </div>
@@ -475,131 +519,133 @@ const AllContacts = () => {
                 </div>
             </div>
 
-            {/* Contacts Table */}
-            <Card className="card-elevated border-0 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-slate-50/80 hover:bg-slate-50/80">
-                                <TableHead className="w-8 pl-3">
-                                    <input type="checkbox" checked={allSelectedOnPage} onChange={toggleSelectAllOnPage} className="h-4 w-4 rounded border-slate-300" aria-label="Select all" />
-                                </TableHead>
-                                <TableHead className="pl-2 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Name / Status</TableHead>
-                                <TableHead className="font-semibold text-[10px] uppercase tracking-wider text-slate-500">Phone</TableHead>
-                                <TableHead className="text-right pr-3 font-semibold text-[10px] uppercase tracking-wider text-slate-500">Actions</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                [...Array(6)].map((_, i) => (
-                                    <TableRow key={i}>
-                                        <TableCell className="w-8 pl-3 py-3"><Skeleton className="h-4 w-4 rounded" /></TableCell>
-                                        <TableCell className="pl-2 py-3"><Skeleton className="h-5 w-28" /></TableCell>
-                                        <TableCell className="py-3"><Skeleton className="h-5 w-24" /></TableCell>
-                                        <TableCell className="pr-3 py-3 text-right"><Skeleton className="h-8 w-28 ml-auto" /></TableCell>
-                                    </TableRow>
-                                ))
-                            ) : contacts.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={4} className="py-12 text-center">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
-                                                <Users className="h-5 w-5 text-slate-300" />
-                                            </div>
-                                            <p className="text-xs text-slate-500">No contacts found.</p>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                contacts.map((c) => (
-                                    <ContactRow
-                                        key={c.id}
-                                        c={c}
-                                        selected={selectedSet.has(c.id)}
-                                        isCalling={callingId === c.id}
-                                        onSelect={toggleSelect}
-                                        onCall={handleCallAndConvert}
-                                        onWhatsApp={handleOpenWhatsApp}
-                                        onView={openView}
-                                        onEdit={openEdit}
-                                        onDelete={openDelete}
-                                    />
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+            {/* Count + Select All row */}
+            {!loading && contacts.length > 0 && (
+                <div className="flex items-center justify-between px-0.5">
+                    <span className="text-xs text-slate-500 font-medium">
+                        {totalCount} contact{totalCount !== 1 ? 's' : ''}
+                        {selectedContactIds.length > 0 && (
+                            <span className="ml-1 text-indigo-600">· {selectedContactIds.length} selected</span>
+                        )}
+                    </span>
+                    <button
+                        className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+                        onClick={toggleSelectAllOnPage}
+                    >
+                        {allSelectedOnPage ? 'Deselect All' : 'Select All'}
+                    </button>
                 </div>
+            )}
 
-                {/* Device contacts matching search - shown inline */}
-                {deviceContactMatches.length > 0 && (
-                        <>
-                            <TableRow className="bg-amber-50/60 hover:bg-amber-50/60">
-                                <TableCell colSpan={4} className="py-1.5 px-3">
-                                    <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
-                                        <Smartphone className="h-3 w-3" /> Device Contacts ({deviceContactMatches.length})
+            {/* Contact Cards */}
+            <div className="space-y-2">
+                {loading ? (
+                    [...Array(5)].map((_, i) => (
+                        <div key={i} className="bg-white rounded-2xl border border-slate-100 p-3.5 shadow-sm space-y-2.5">
+                            <div className="flex items-start gap-3">
+                                <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
+                                <div className="flex-1 space-y-2">
+                                    <Skeleton className="h-4 w-36" />
+                                    <Skeleton className="h-3 w-20 rounded-full" />
+                                    <Skeleton className="h-3 w-28" />
+                                </div>
+                                <Skeleton className="h-5 w-5 rounded-md shrink-0" />
+                            </div>
+                            <Skeleton className="h-9 w-full rounded-xl" />
+                        </div>
+                    ))
+                ) : contacts.length === 0 && deviceContactMatches.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-16">
+                        <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center shadow-sm">
+                            <Users className="h-7 w-7 text-slate-300" />
+                        </div>
+                        <div className="text-center">
+                            <p className="text-sm font-semibold text-slate-600">No contacts found</p>
+                            <p className="text-xs text-slate-400 mt-0.5">Try adjusting your filters</p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {contacts.map((c) => (
+                            <ContactCard
+                                key={c.id}
+                                c={c}
+                                selected={selectedSet.has(c.id)}
+                                isCalling={callingId === c.id}
+                                onSelect={toggleSelect}
+                                onCall={handleCallAndConvert}
+                                onWhatsApp={handleOpenWhatsApp}
+                                onView={openView}
+                                onEdit={openEdit}
+                                onDelete={openDelete}
+                            />
+                        ))}
+
+                        {/* Device contacts matching search */}
+                        {deviceContactMatches.length > 0 && (
+                            <>
+                                <div className="flex items-center gap-2 pt-2 pb-1">
+                                    <div className="flex-1 h-px bg-amber-200/60" />
+                                    <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider flex items-center gap-1">
+                                        <Smartphone className="h-3 w-3" /> Device ({deviceContactMatches.length})
                                     </span>
-                                </TableCell>
-                            </TableRow>
-                            {deviceContactMatches.map((dc) => (
-                                <TableRow key={`dev-${dc.phone}`} className="hover:bg-amber-50/30 transition-colors">
-                                    <TableCell className="w-8 pl-3 py-2.5" />
-                                    <TableCell className="pl-2 py-2.5">
-                                        <div className="flex items-center gap-2.5">
-                                            <div className="h-9 w-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
-                                                <span className="text-xs font-semibold text-amber-600">{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                    <div className="flex-1 h-px bg-amber-200/60" />
+                                </div>
+                                {deviceContactMatches.map((dc) => (
+                                    <div key={`dev-${dc.phone}`} className="bg-amber-50/60 rounded-2xl border border-amber-100 shadow-sm">
+                                        <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
+                                            <div className="h-12 w-12 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center shrink-0">
+                                                <span className="text-base font-bold text-amber-600">{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
                                             </div>
-                                            <div>
-                                                <p className="font-medium text-slate-900 text-sm leading-tight">{dc.name || 'Unknown'}</p>
-                                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 border-0 font-medium">
-                                                    Device
-                                                </Badge>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-semibold text-slate-900 text-sm leading-snug">{dc.name || 'Unknown'}</p>
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700 inline-block mt-1">Device</span>
+                                                {dc.phone && <p className="text-xs text-slate-500 mt-1 font-medium">{dc.phone}</p>}
                                             </div>
                                         </div>
-                                    </TableCell>
-                                    <TableCell className="py-2.5">
-                                        <span className="text-sm text-slate-600">{dc.phone}</span>
-                                    </TableCell>
-                                    <TableCell className="text-right pr-3 py-2.5">
-                                        <div className="flex items-center justify-end gap-0.5">
-                                            <Button size="sm"
-                                                className="h-8 gap-1 text-xs bg-green-600 hover:bg-green-700 rounded-lg px-2.5"
+                                        <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-amber-100/60">
+                                            <Button
+                                                size="sm"
+                                                className="flex-1 h-9 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5"
                                                 onClick={() => {
                                                     const params = new URLSearchParams({ number: dc.phone, name: dc.name || 'Unknown', autoCall: 'true' });
                                                     navigate(`/calls/dialer?${params.toString()}`);
                                                 }}>
                                                 <PhoneOutgoing className="h-3.5 w-3.5" /> Call
                                             </Button>
-                                            <Button variant="ghost" size="icon" title="WhatsApp"
-                                                className="h-8 w-8 text-green-600 hover:bg-green-50"
+                                            <Button
+                                                variant="ghost" size="sm"
+                                                className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 rounded-xl gap-1.5"
                                                 onClick={() => handleOpenWhatsApp(dc.phone)}>
-                                                <WhatsAppIcon className="h-4 w-4" />
+                                                <WhatsAppIcon className="h-3.5 w-3.5" /> WA
                                             </Button>
                                         </div>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </>
+                                    </div>
+                                ))}
+                            </>
+                        )}
+                    </>
                 )}
+            </div>
 
-                {/* Pagination */}
-                {totalPages > 1 && (
-                    <div className="border-t border-border/40 bg-slate-50/50 px-3 py-2 flex items-center justify-between">
-                        <p className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</p>
-                        <div className="flex items-center gap-1.5">
-                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
-                                disabled={currentPage <= 1 || loading}
-                                onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
-                                <ChevronLeft className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs"
-                                disabled={currentPage >= totalPages || loading}
-                                onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
-                                <ChevronRight className="h-3.5 w-3.5" />
-                            </Button>
-                        </div>
+            {/* Pagination */}
+            {totalPages > 1 && !loading && (
+                <div className="flex items-center justify-between pt-1 pb-2">
+                    <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" className="h-9 px-3 text-xs rounded-xl font-semibold"
+                            disabled={currentPage <= 1}
+                            onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
+                            <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-9 px-3 text-xs rounded-xl font-semibold"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
+                            Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                        </Button>
                     </div>
-                )}
-            </Card>
+                </div>
+            )}
 
             {/* Edit Contact Drawer */}
             <Drawer open={editOpen} onOpenChange={setEditOpen}>
@@ -714,6 +760,8 @@ const AllContacts = () => {
                                     </p>
                                 </div>
                             </div>
+
+                            <CallTimeline calls={viewCallHistory} loading={viewCallLoading} />
                         </div>
                     )}
                     <DrawerFooter className="pt-4 border-t px-4">

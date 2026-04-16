@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/axios';
-import { invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
 import { useDialer } from '@/hooks/useDialer';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay } from 'date-fns';
@@ -115,11 +115,14 @@ const ScheduledCalls = () => {
     const isNativeApp = window.Capacitor?.isNativePlatform?.() || false;
 
     // ─── List state ───
-    const [followups, setFollowups] = useState([]);
+    const _initCached = getCachedSync('/followups/scheduled?page=1&limit=20');
+    const [followups, setFollowups] = useState(() => _initCached?.followups ?? []);
     const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
     const [counts, setCounts] = useState({ pending: 0, snoozed: 0, total: 0, done_today: 0 });
     const abortRef = useRef(null);
-    const [loading, setLoading] = useState(true);
+    const hasDataRef = useRef(Boolean(_initCached));
+    const [loading, setLoading] = useState(!_initCached);
+    const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
     const [datePreset, setDatePreset] = useState('all');
     const [customDateFrom, setCustomDateFrom] = useState(null);
@@ -169,7 +172,8 @@ const ScheduledCalls = () => {
         const controller = new AbortController();
         abortRef.current = controller;
 
-        setLoading(true);
+        if (!hasDataRef.current) setLoading(true);
+        else setRefreshing(true);
         try {
             const params = new URLSearchParams();
             params.set('page', page);
@@ -177,7 +181,7 @@ const ScheduledCalls = () => {
             const range = getDateRange();
             if (range.from) params.set('date_from', range.from);
             if (range.to) params.set('date_to', range.to);
-            const { data } = await api.get(`/followups/scheduled?${params}`, { signal: controller.signal });
+            const data = await cachedGet(`/followups/scheduled?${params}`, { staleTime: 120_000, cacheTime: 300_000 });
             if (data.success) {
                 setFollowups(data.followups);
                 setPagination(data.pagination || { page: 1, totalPages: 1, total: data.followups?.length || 0 });
@@ -185,9 +189,13 @@ const ScheduledCalls = () => {
                 if (data.counts) {
                     setCounts(data.counts);
                 }
+                hasDataRef.current = true;
             }
         } catch (err) { if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') { /* ignore */ } }
-        finally { setLoading(false); }
+        finally { 
+            setLoading(false);
+            setRefreshing(false);
+        }
     }, [getDateRange]);
 
     // ─── Fetch outcomes — once ───
@@ -282,7 +290,7 @@ const ScheduledCalls = () => {
                 setCapturedDurationSec(null);
                 setFollowups(prev => prev.map(f => f.id === followup.id ? { ...f, _calling: true } : f));
                 setActiveCall({ callId: data.call.id, followupId: followup.id, leadId: followup.lead_id, leadName: followup.lead_name, leadPhone: followup.lead_phone, connectedAt: null, isConnected: false });
-                try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: followup.lead_phone, name: followup.lead_name || '', leadId: followup.lead_id || null, timestamp: Date.now() })); } catch {}
+                try { localStorage.setItem('rg:lastDialedCall', JSON.stringify({ phone: followup.lead_phone, name: followup.lead_name || '', leadId: followup.lead_id || null, callId: data.call.id, timestamp: Date.now() })); } catch {}
                 if (isApp && window.Capacitor?.Plugins?.CallNumber) {
                     try { await window.Capacitor.Plugins.CallNumber.callNumber({ number: followup.lead_phone, bypassAppChooser: false }); }
                     catch { window.open(`tel:${followup.lead_phone}`, '_self'); }
@@ -429,10 +437,11 @@ const ScheduledCalls = () => {
 
                         {/* Search/Refresh */}
                         <Button size="sm" onClick={() => fetchData(1)} disabled={loading}
-                            className="h-8 px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-semibold shrink-0">
+                            className="h-8 px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-semibold shrink-0 flex items-center">
                             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                             Search
                         </Button>
+                        {refreshing && <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
                     </div>
                 </div>
             </div>
