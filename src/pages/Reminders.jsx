@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
 import { useCallAction } from '@/hooks/useCallAction';
-import { useCallAction } from '@/hooks/useCallAction';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +28,7 @@ import {
 
 /* ─── Flow Curve (same as Dashboard) ─── */
 const FlowCurve = ({ color = '#0ea5e9', opacity = 0.13 }) => (
-    <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="38" viewBox="0 0 400 38" preserveAspectRatio="none">
+    <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="34" viewBox="0 0 400 34" preserveAspectRatio="none">
         <path d="M0,22 C50,10 110,34 180,18 C250,2 320,30 400,14 L400,38 L0,38 Z" fill={color} opacity={opacity} />
         <path d="M0,28 C70,14 140,36 220,22 C300,8 360,30 400,20 L400,38 L0,38 Z" fill={color} opacity={opacity * 0.6} />
     </svg>
@@ -37,12 +36,12 @@ const FlowCurve = ({ color = '#0ea5e9', opacity = 0.13 }) => (
 
 /* ─── Design Tokens ─── */
 const TYPE_THEME = {
-    CALL:       { icon: Phone,       iconCls: 'bg-indigo-100 text-indigo-600', accent: '#6366f1', label: 'Call',       badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-    FOLLOWUP:   { icon: Clock,       iconCls: 'bg-sky-100 text-sky-600',       accent: '#0ea5e9', label: 'Follow-up', badgeCls: 'bg-sky-50 text-sky-700 border-sky-200'          },
-    SITE_VISIT: { icon: MapPin,      iconCls: 'bg-amber-100 text-amber-600',   accent: '#f59e0b', label: 'Site Visit',badgeCls: 'bg-amber-50 text-amber-700 border-amber-200'    },
-    MEETING:    { icon: Calendar,    iconCls: 'bg-emerald-100 text-emerald-600',accent: '#10b981', label: 'Meeting',   badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
-    OTHER:      { icon: AlertCircle, iconCls: 'bg-slate-100 text-slate-600',   accent: '#64748b', label: 'Other',     badgeCls: 'bg-slate-100 text-slate-600 border-slate-200'   },
-    NEW_LEAD:   { icon: Zap,         iconCls: 'bg-rose-100 text-rose-600',     accent: '#f43f5e', label: 'New Lead',  badgeCls: 'bg-rose-50 text-rose-700 border-rose-200'       },
+    CALL:       { icon: Phone,       iconCls: 'bg-indigo-100 text-indigo-600', accent: '#6366f1', ribbon: 'from-indigo-500 via-indigo-500 to-violet-500', label: 'Call',       badgeCls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+    FOLLOWUP:   { icon: Clock,       iconCls: 'bg-sky-100 text-sky-600',       accent: '#0ea5e9', ribbon: 'from-sky-500 via-sky-500 to-cyan-500',         label: 'Follow-up', badgeCls: 'bg-sky-50 text-sky-700 border-sky-200'          },
+    SITE_VISIT: { icon: MapPin,      iconCls: 'bg-amber-100 text-amber-600',   accent: '#f59e0b', ribbon: 'from-amber-500 via-amber-500 to-orange-500',   label: 'Site Visit',badgeCls: 'bg-amber-50 text-amber-700 border-amber-200'    },
+    MEETING:    { icon: Calendar,    iconCls: 'bg-emerald-100 text-emerald-600',accent: '#10b981', ribbon: 'from-emerald-500 via-emerald-500 to-teal-500',label: 'Meeting',   badgeCls: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
+    OTHER:      { icon: AlertCircle, iconCls: 'bg-slate-100 text-slate-600',   accent: '#64748b', ribbon: 'from-slate-500 via-slate-500 to-slate-600',   label: 'Other',     badgeCls: 'bg-slate-100 text-slate-600 border-slate-200'   },
+    NEW_LEAD:   { icon: Zap,         iconCls: 'bg-rose-100 text-rose-600',     accent: '#f43f5e', ribbon: 'from-rose-500 via-rose-500 to-red-500',       label: 'New Lead',  badgeCls: 'bg-rose-50 text-rose-700 border-rose-200'       },
 };
 
 const STATUS_BADGE = {
@@ -103,6 +102,10 @@ const fmtTime = (d) => {
     const t = new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
     return t === '12:00 am' ? '' : t;
 };
+
+const CardRibbon = ({ ribbon }) => (
+    <div className={`absolute top-0 left-2.5 right-2.5 h-1.5 rounded-b-lg bg-linear-to-r ${ribbon}`} />
+);
 
 /* ─── Schedule Dialog ─── */
 const ScheduleDialog = ({ lead, open, onClose, onScheduled }) => {
@@ -188,7 +191,7 @@ const ScheduleDialog = ({ lead, open, onClose, onScheduled }) => {
     );
 };
 
-/* ─── Reminder Card ─── */onCall, 
+/* ─── Reminder Card ─── */
 const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoading, navigate }) => {
     const theme = TYPE_THEME[r.type] || TYPE_THEME.OTHER;
     const TypeIcon = theme.icon;
@@ -202,14 +205,13 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
     const timeStr = fmtTime(r.due_date);
 
     return (
-        <div className={`relative overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm transition-all duration-200 hover:shadow-md hover:border-slate-200 ${isDone ? 'opacity-50' : ''}`}>
-            {/* Top accent bar (same as Dashboard stat cards) */}
-            <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ backgroundColor: theme.accent }} />
+        <div className={`relative overflow-hidden rounded-2xl bg-linear-to-br from-white via-white to-slate-50/40 border border-slate-200/80 ring-1 ring-slate-100/80 shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition-all duration-200 hover:shadow-[0_10px_24px_rgba(15,23,42,0.1)] hover:border-slate-300 ${isDone ? 'opacity-55' : ''}`}>
+            <CardRibbon ribbon={theme.ribbon} />
 
-            <div className="p-3.5 pt-4">
+            <div className="p-3.5 pt-4.5">
                 {/* ── Header: avatar + name/phone + time ── */}
                 <div className="flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${theme.iconCls}`}>
+                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ring-black/5 ${theme.iconCls}`}>
                         <span className="text-sm font-bold">{initials}</span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -230,7 +232,7 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
                 </div>
 
                 {/* ── Meta tags ── */}
-                <div className="flex items-center gap-1.5 mt-2.5 pl-[52px] flex-wrap">
+                <div className="flex items-center gap-1.5 mt-2.5 pl-13 flex-wrap">
                     <Badge variant="outline" className={`text-[9px] font-semibold px-1.5 py-0 rounded-md ${theme.badgeCls}`}>
                         <TypeIcon className="h-2.5 w-2.5 mr-0.5 inline" />
                         {theme.label}
@@ -246,7 +248,7 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
                 </div>
 
                 {/* ── Date + notes ── */}
-                <div className="pl-[52px] mt-2 space-y-1">
+                <div className="pl-13 mt-2 space-y-1">
                     {r.due_date && (
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
                             <Calendar className="h-3 w-3 text-slate-400" />
@@ -261,9 +263,9 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
 
                 {/* ── Actions ── */}
                 {!isDone && (
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 pl-[52px]">
+                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200/70 pl-13">
                         {isLead ? (
-                            <>onCall(r
+                            <>
                                 <Button size="sm" onClick={() => onCall(r)}
                                     className="flex-1 h-8 rounded-lg text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1">
                                     <PhoneCall className="h-3.5 w-3.5" /> Call Now
@@ -315,20 +317,20 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
             </div>
 
             {/* Flow curve */}
-            <FlowCurve color={theme.accent} opacity={0.08} />
+            <FlowCurve color={theme.accent} opacity={0.07} />
         </div>
     );
 };
 
 /* ─── Skeleton ─── */
 const CardSkeleton = () => (
-    <div className="rounded-xl bg-white border border-slate-100 p-3.5 pt-5 overflow-hidden">
+    <div className="rounded-2xl bg-white border border-slate-200/80 p-3.5 pt-5 overflow-hidden">
         <div className="flex items-center gap-3">
             <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
             <div className="flex-1 space-y-1.5"><Skeleton className="h-3.5 w-32 rounded" /><Skeleton className="h-3 w-20 rounded" /></div>
             <Skeleton className="h-5 w-16 rounded-md" />
         </div>
-        <div className="mt-3 pl-[52px] space-y-2">
+        <div className="mt-3 pl-13 space-y-2">
             <div className="flex gap-1.5"><Skeleton className="h-4 w-16 rounded-md" /><Skeleton className="h-4 w-20 rounded-md" /></div>
             <Skeleton className="h-3 w-28 rounded" />
             <div className="flex gap-2 pt-2"><Skeleton className="h-8 flex-1 rounded-lg" /><Skeleton className="h-8 w-8 rounded-lg" /></div>
@@ -339,10 +341,10 @@ const CardSkeleton = () => (
 /* ─── Stat Card (matches Dashboard) ─── */
 const StatTile = ({ label, value, icon: Icon, tone, hex, active, onClick }) => (
     <button onClick={onClick}
-        className={`relative overflow-hidden rounded-xl bg-white border p-3 pb-10 text-left transition-all duration-200 shadow-sm shrink-0 w-[100px] ${
+        className={`relative overflow-hidden rounded-2xl bg-white border p-3 pb-10 text-left transition-all duration-200 shadow-sm shrink-0 w-26.5 ${
             active ? 'border-slate-300 shadow-md ring-1 ring-slate-200' : 'border-slate-100 hover:shadow-md hover:border-slate-200'
         }`}>
-        <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${tone}`} />
+        <div className={`absolute top-0 left-2 right-2 h-1.5 rounded-b-md bg-linear-to-r ${tone}`} />
         <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${
             active ? 'scale-110' : ''
         } transition-transform`} style={{ backgroundColor: hex + '18', color: hex }}>
@@ -434,7 +436,7 @@ const Reminders = () => {
         <div className="space-y-4 pb-6">
 
             {/* ── Stat tiles (Dashboard-style with flow curves) ── */}
-            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8">
+            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="flex gap-2.5 w-max">
                     <StatTile label="Uncontacted" value={counts.uncontacted} icon={UserX}
                         tone="from-rose-400 to-rose-500" hex="#f43f5e"
@@ -459,7 +461,7 @@ const Reminders = () => {
             </div>
 
             {/* ── Sticky: Search + Filter chips ── */}
-            <div className="sticky top-0 z-10 -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8 bg-background space-y-2 pb-1">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm space-y-2 pb-1.5 pt-0.5">
                 {/* Search */}
                 <div className="relative overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm">
                     <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
@@ -502,7 +504,7 @@ const Reminders = () => {
                                     <FilterIcon className={`h-3 w-3 ${active ? 'text-white/70' : 'text-slate-400'}`} />
                                     {f.label}
                                     {cnt > 0 && (
-                                        <span className={`text-[10px] font-bold min-w-[18px] text-center px-1 rounded-full leading-4 ${
+                                        <span className={`text-[10px] font-bold min-w-4.5 text-center px-1 rounded-full leading-4 ${
                                             active ? 'bg-white/20' : 'bg-slate-100 text-slate-400'
                                         }`}>{cnt}</span>
                                     )}
@@ -515,7 +517,7 @@ const Reminders = () => {
 
             {/* ── Cards ── */}
             {loading ? (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                     {Array(5).fill(0).map((_, i) => <CardSkeleton key={i} />)}
                 </div>
             ) : reminders.length === 0 ? (
@@ -527,7 +529,7 @@ const Reminders = () => {
                     <p className="text-xs text-slate-400 mt-1">No reminders match this filter</p>
                 </div>
             ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                     {reminders.map(r => (
                         <ReminderCard
                             key={r.id}

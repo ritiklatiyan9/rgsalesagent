@@ -113,6 +113,26 @@ function Inner() {
   const { openDrawer } = useCallDrawer();
   const navigate       = useNavigate();
   const flushingRef    = useRef(false);
+  const recentEndEventsRef = useRef(new Map());
+
+  const isDuplicateEndEvent = useCallback((event) => {
+    const now = Date.now();
+    const phone = sanitizePhone(event?.phoneNumber || event?.number || '');
+    const type = normalizeCallType(event?.callType || event?.type, Number(event?.duration || 0));
+    const duration = Number(event?.duration || 0);
+    const rawTs = Number(event?.timestamp || now);
+    const bucketTs = Math.floor(rawTs / 5000); // 5s bucket to smooth noisy duplicate emits
+    const key = `${event?.id || ''}|${phone}|${type}|${duration}|${bucketTs}`;
+
+    const map = recentEndEventsRef.current;
+    for (const [k, ts] of map.entries()) {
+      if (now - ts > 120000) map.delete(k); // 2 min TTL
+    }
+
+    if (map.has(key)) return true;
+    map.set(key, now);
+    return false;
+  }, []);
 
   const logCallNow = useCallback(async (payload) => {
     const { data: response } = await api.post('/calls/quick-log', payload);
@@ -170,6 +190,8 @@ function Inner() {
 
   const handleCallEnded = useCallback(async (data) => {
     if (!data) return;
+    if (isDuplicateEndEvent(data)) return;
+
     let phoneNumber = sanitizePhone(data.phoneNumber || data.number || '');
     let contactName = String(data.contactName || data.leadName || data.name || '').trim();
     const durationSeconds = Number(data.duration || 0);
@@ -308,7 +330,7 @@ function Inner() {
 
     enrichedData.callId = savedCall?.id || appFallback?.callId || null;
     openDrawer(enrichedData);
-  }, [getRecentCalls, logCallNow, openDrawer]);
+  }, [getRecentCalls, isDuplicateEndEvent, logCallNow, openDrawer]);
 
   useCallListener({ onCallEnded: handleCallEnded });
 

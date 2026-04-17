@@ -47,12 +47,25 @@ const LEAD_CATEGORY_OPTIONS = [
 
 const FormField = ({ label, required, children }) => (
   <div className="space-y-1.5">
-    <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+    <Label className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.14em]">
       {label}{required && <span className="text-red-500 ml-0.5">*</span>}
     </Label>
     {children}
   </div>
 );
+
+const INPUT_CLASS = 'h-11 rounded-2xl border-slate-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)] focus-visible:ring-slate-200 focus-visible:border-slate-400';
+const SELECT_TRIGGER_CLASS = 'h-11 rounded-2xl border-slate-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)]';
+
+const CATEGORY_TONES = {
+  PRIME: 'bg-amber-100 text-amber-800 ring-amber-200',
+  HOT: 'bg-rose-100 text-rose-800 ring-rose-200',
+  NORMAL: 'bg-blue-100 text-blue-800 ring-blue-200',
+  COLD: 'bg-cyan-100 text-cyan-800 ring-cyan-200',
+  DEAD: 'bg-slate-200 text-slate-700 ring-slate-300',
+};
+
+const CATEGORY_IDLE = 'bg-white text-slate-600 ring-slate-200';
 
 const EMPTY = {
   name: '', phone: '', email: '', address: '', profession: '', status: 'NEW', lead_source: 'Other', lead_category: '', notes: '',
@@ -125,21 +138,26 @@ const AddLead = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4 max-w-3xl mx-auto pb-[calc(12rem+env(safe-area-inset-bottom,0px))] md:pb-4">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Card className="border-0 card-elevated">
-          <CardContent className="p-5 space-y-5">
-            <div className="flex items-center gap-3 pb-3 border-b border-border/50">
-              <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <Users className="h-4 w-4 text-indigo-600" />
+     
+
+        <Card className="rounded-3xl border border-slate-200/80 bg-white shadow-sm ring-1 ring-slate-100/80">
+          <CardContent className="p-4 sm:p-5 space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="h-9 w-9 rounded-2xl bg-slate-100 flex items-center justify-center shadow-sm">
+                <Users className="h-4.5 w-4.5 text-slate-700" />
               </div>
-              <h3 className="text-sm font-semibold">Lead Information</h3>
+              <div>
+                <h3 className="text-[14px] font-bold text-slate-800">Lead Details</h3>
+                <p className="text-[10px] text-slate-400 font-medium">Everything your team needs before first contact</p>
+              </div>
             </div>
 
             {/* Lead Photo */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
               <div className="relative">
-                <div className="h-16 w-16 rounded-xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden">
+                <div className="h-16 w-16 rounded-2xl bg-white border-2 border-dashed border-slate-300 flex items-center justify-center overflow-hidden shadow-sm">
                   {photoPreview ? (
                     <img src={photoPreview} alt="Lead" className="w-full h-full object-cover" />
                   ) : (
@@ -150,24 +168,24 @@ const AddLead = () => {
                   <button
                     type="button"
                     onClick={() => { setPhotoFile(null); setPhotoPreview(null); }}
-                    className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 ring-2 ring-white"
                   >
                     <X className="h-3 w-3" />
                   </button>
                 )}
               </div>
-              <div>
+              <div className="min-w-0">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-xl text-xs"
+                  className="rounded-xl text-xs border-slate-300 text-slate-700 hover:bg-slate-100"
                   onClick={() => document.getElementById('lead-photo-input').click()}
                 >
                   <Camera className="h-3.5 w-3.5 mr-1.5" />
                   {photoPreview ? 'Change Photo' : 'Upload Photo'}
                 </Button>
-                <p className="text-[10px] text-muted-foreground mt-1">JPG, PNG up to 5MB</p>
+                <p className="text-[10px] text-slate-500 mt-1">JPG, PNG up to 5MB</p>
                 <input
                   id="lead-photo-input"
                   type="file"
@@ -186,11 +204,35 @@ const AddLead = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Full Name" required>
-                <Input placeholder="e.g. Ravi Sharma" value={form.name} onChange={(e) => set('name', e.target.value)} className="rounded-xl" />
+                <Input placeholder="e.g. Ravi Sharma" value={form.name} onChange={(e) => set('name', e.target.value)} className={INPUT_CLASS} />
               </FormField>
-              <FormField label="Status">
+              <FormField label="Phone Number" required>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Input placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} className={`pl-9 ${INPUT_CLASS}`} />
+                </div>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Email Address">
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Input type="email" placeholder="email@example.com" value={form.email} onChange={(e) => set('email', e.target.value)} className={`pl-9 ${INPUT_CLASS}`} />
+                </div>
+              </FormField>
+              <FormField label="Profession / Occupation">
+                <div className="relative">
+                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Input placeholder="e.g. Software Engineer" value={form.profession} onChange={(e) => set('profession', e.target.value)} className={`pl-9 ${INPUT_CLASS}`} />
+                </div>
+              </FormField>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Lead Status">
                 <Select value={form.status} onValueChange={(v) => set('status', v)}>
-                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={SELECT_TRIGGER_CLASS}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {STATUS_OPTIONS.map((s) => (
                       <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
@@ -198,33 +240,9 @@ const AddLead = () => {
                   </SelectContent>
                 </Select>
               </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Phone Number" required>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} className="pl-9 rounded-xl" />
-                </div>
-              </FormField>
-              <FormField label="Email Address">
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input type="email" placeholder="email@example.com" value={form.email} onChange={(e) => set('email', e.target.value)} className="pl-9 rounded-xl" />
-                </div>
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Profession / Occupation">
-                <div className="relative">
-                  <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input placeholder="e.g. Software Engineer" value={form.profession} onChange={(e) => set('profession', e.target.value)} className="pl-9 rounded-xl" />
-                </div>
-              </FormField>
               <FormField label="Lead Source">
                 <Select value={form.lead_source} onValueChange={(v) => set('lead_source', v)}>
-                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className={SELECT_TRIGGER_CLASS}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {LEAD_SOURCE_OPTIONS.map((s) => (
                       <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
@@ -234,47 +252,51 @@ const AddLead = () => {
               </FormField>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Lead Status">
-                <Select value={form.status} onValueChange={(v) => set('status', v)}>
-                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Lead Category">
-                <Select value={form.lead_category} onValueChange={(v) => set('lead_category', v)}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {LEAD_CATEGORY_OPTIONS.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-            </div>
+            <FormField label="Lead Category">
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {LEAD_CATEGORY_OPTIONS.map((c) => {
+                  const active = form.lead_category === c.value;
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => set('lead_category', active ? '' : c.value)}
+                      className={`shrink-0 h-8 px-3.5 rounded-full text-[11px] font-bold ring-1 ring-inset active:scale-95 transition-all ${active ? CATEGORY_TONES[c.value] : CATEGORY_IDLE}`}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+                {form.lead_category && (
+                  <button
+                    type="button"
+                    onClick={() => set('lead_category', '')}
+                    className="shrink-0 h-8 px-3 rounded-full text-[11px] font-semibold bg-white text-slate-500 ring-1 ring-slate-200 active:scale-95"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Address">
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input placeholder="City, State" value={form.address} onChange={(e) => set('address', e.target.value)} className="pl-9 rounded-xl" />
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                  <Input placeholder="City, State" value={form.address} onChange={(e) => set('address', e.target.value)} className={`pl-9 ${INPUT_CLASS}`} />
                 </div>
               </FormField>
             </div>
 
             <FormField label="Notes">
-              <Textarea placeholder="Any remarks, source of lead, etc." value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className="rounded-xl resize-none" />
+              <Textarea placeholder="Any remarks, source of lead, budget or timeline notes..." value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={3} className="rounded-2xl border-slate-200/90 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)] resize-none focus-visible:ring-slate-200 focus-visible:border-slate-400" />
             </FormField>
 
-            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Make Schedule</p>
-                  <p className="text-[11px] text-violet-600/90 mt-0.5">Create a follow-up reminder while adding this lead</p>
+                  <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Make Schedule</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Create a follow-up reminder while adding this lead</p>
                 </div>
                 <Button
                   type="button"
@@ -284,7 +306,7 @@ const AddLead = () => {
                     setShowScheduleForm((v) => !v);
                     setFormError('');
                   }}
-                  className="gap-1.5 text-xs text-violet-600 border-violet-200 hover:bg-violet-100 h-8"
+                  className="gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-100 h-8"
                 >
                   <CalendarDays className="h-3.5 w-3.5" />
                   {showScheduleForm ? 'Cancel' : 'Schedule Call'}
@@ -292,7 +314,7 @@ const AddLead = () => {
               </div>
 
               {showScheduleForm && (
-                <div className="space-y-3">
+                <div className="space-y-3 rounded-xl bg-white border border-slate-200 p-3.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs text-slate-600 mb-1 block">Select Date</Label>
@@ -301,7 +323,7 @@ const AddLead = () => {
                         min={new Date().toISOString().slice(0, 10)}
                         value={scheduleForm.date}
                         onChange={(e) => setScheduleForm((f) => ({ ...f, date: e.target.value }))}
-                        className="h-9 text-sm"
+                        className="h-10 text-sm rounded-xl border-slate-300"
                       />
                     </div>
                     <div>
@@ -310,7 +332,7 @@ const AddLead = () => {
                         type="time"
                         value={scheduleForm.time}
                         onChange={(e) => setScheduleForm((f) => ({ ...f, time: e.target.value }))}
-                        className="h-9 text-sm"
+                        className="h-10 text-sm rounded-xl border-slate-300"
                       />
                     </div>
                   </div>
@@ -321,7 +343,7 @@ const AddLead = () => {
                       value={scheduleForm.notes}
                       onChange={(e) => setScheduleForm((f) => ({ ...f, notes: e.target.value }))}
                       rows={2}
-                      className="text-sm resize-none"
+                      className="text-sm resize-none rounded-xl border-slate-300"
                     />
                   </div>
                 </div>
@@ -337,9 +359,15 @@ const AddLead = () => {
           </Alert>
         )}
 
-        <div className="flex gap-3 justify-end">
-          <Button type="button" variant="outline" onClick={() => navigate('/leads')} className="rounded-xl px-6">Cancel</Button>
-          <Button type="submit" disabled={loading} className="rounded-xl px-6 gap-2 bg-indigo-600 hover:bg-indigo-700">
+        <div className="fixed md:static inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom,0px)+8px)] md:bottom-auto z-20 px-3 pt-2 md:p-0">
+          <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-2.5 shadow-lg shadow-slate-200/60 md:rounded-none md:border-0 md:bg-transparent md:shadow-none md:p-0">
+            <div className="flex items-center justify-between gap-2 px-1 pb-2 md:hidden">
+              <p className="text-[11px] text-slate-500 font-medium">Ready to save this lead?</p>
+              <span className="text-[10px] rounded-full bg-slate-100 text-slate-600 px-2 py-1 font-semibold">Quick Add</span>
+            </div>
+            <div className="flex gap-2.5 justify-end">
+              <Button type="button" variant="outline" onClick={() => navigate('/leads')} className="h-11 rounded-xl px-5 flex-1 md:flex-none">Cancel</Button>
+              <Button type="submit" disabled={loading} className="h-11 rounded-xl px-5 gap-2 bg-slate-900 hover:bg-slate-800 flex-[1.35] md:flex-none">
             {loading ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -351,7 +379,9 @@ const AddLead = () => {
                 Add Lead
               </>
             )}
-          </Button>
+              </Button>
+            </div>
+          </div>
         </div>
       </form>
     </div>

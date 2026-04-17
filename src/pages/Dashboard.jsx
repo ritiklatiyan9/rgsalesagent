@@ -12,11 +12,18 @@ import {
   Check, AlarmClock, Phone,
   MessageSquare, UsersRound, Sparkles, Star,
   Search, ChevronRight, Calendar, TrendingUp,
-  Clock1,
+  Clock1, RefreshCw,
 } from 'lucide-react';
 
 const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
 const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'BOOKED', 'LOST'];
+
+const FlowCurve = ({ color = '#0ea5e9', opacity = 0.1 }) => (
+  <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="34" viewBox="0 0 400 34" preserveAspectRatio="none">
+    <path d="M0,22 C50,10 110,34 180,18 C250,2 320,30 400,14 L400,38 L0,38 Z" fill={color} opacity={opacity} />
+    <path d="M0,28 C70,14 140,36 220,22 C300,8 360,30 400,20 L400,38 L0,38 Z" fill={color} opacity={opacity * 0.6} />
+  </svg>
+);
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -37,6 +44,7 @@ const Dashboard = () => {
   const [fupActionLoading, setFupActionLoading] = useState(null);
   const [loading, setLoading] = useState(true);
   const [browseCat, setBrowseCat] = useState('ALL');
+  const [refreshing, setRefreshing] = useState(false);
 
   const CATS = [
    
@@ -47,9 +55,9 @@ const Dashboard = () => {
     { key: 'DEAD',   label: 'Dead',   bg: 'from-slate-400 to-slate-500',       active: 'text-white',    inactive: 'bg-slate-100 text-slate-500 ring-slate-200' },
   ];
 
-  const loadFollowupsSections = async () => {
+  const loadFollowupsSections = async ({ force = false } = {}) => {
     try {
-      const res = await cachedGet('/followups?limit=200', { ttl: 30_000 });
+      const res = await cachedGet('/followups?limit=200', { staleTime: 30_000, cacheTime: 120_000, force });
       if (res?.success) {
         const allFups = res.followups || res.data || [];
         setAllFollowups(allFups);
@@ -65,12 +73,13 @@ const Dashboard = () => {
     } catch {}
   };
 
-  useEffect(() => {
-    const load = async () => {
+  const loadDashboardStats = async ({ force = false, showLoading = false } = {}) => {
+    if (showLoading) setLoading(true);
+    try {
       const [calls, counts, pipelineRes] = await Promise.allSettled([
-        cachedGet('/calls/analytics', { ttl: 60_000 }),
-        cachedGet('/followups/counts', { ttl: 30_000 }),
-        cachedGet('/leads/counts', { staleTime: 60_000, cacheTime: 180_000 }),
+        cachedGet('/calls/analytics', { staleTime: 60_000, cacheTime: 180_000, force }),
+        cachedGet('/followups/counts', { staleTime: 30_000, cacheTime: 120_000, force }),
+        cachedGet('/leads/counts', { staleTime: 60_000, cacheTime: 180_000, force }),
       ]);
       if (calls.status === 'fulfilled' && calls.value?.success) setCallAnalytics(calls.value);
       if (counts.status === 'fulfilled' && counts.value?.success) {
@@ -86,22 +95,43 @@ const Dashboard = () => {
         if (pipelineRes.value.total != null) setLeadTotal(pipelineRes.value.total);
         if (pipelineRes.value.matterCount != null) setMatterLeadsTotal(pipelineRes.value.matterCount);
       }
-      setLoading(false);
-    };
+    } catch {}
+    setLoading(false);
+  };
 
-    const loadFreshLeads = async () => {
-      try {
-        const data = await cachedGet('/leads?status=NEW&page=1&limit=20', { staleTime: 60_000, cacheTime: 180_000 });
-        if (data?.success) {
-          setFreshLeads(data.leads ?? []);
-          setFreshLeadsTotal(data.pagination?.total ?? data.leads?.length ?? 0);
-        }
-      } catch {} finally { setFreshLoading(false); }
-    };
+  const loadFreshLeads = async ({ force = false, showLoading = false } = {}) => {
+    if (showLoading) setFreshLoading(true);
+    try {
+      const data = await cachedGet('/leads?status=NEW&page=1&limit=20', { staleTime: 60_000, cacheTime: 180_000, force });
+      if (data?.success) {
+        setFreshLeads(data.leads ?? []);
+        setFreshLeadsTotal(data.pagination?.total ?? data.leads?.length ?? 0);
+      }
+    } catch {} finally {
+      if (showLoading || freshLoading) setFreshLoading(false);
+    }
+  };
 
-    load();
+  const refreshDashboard = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    invalidateCache('/calls/analytics');
+    invalidateCache('/followups/counts');
+    invalidateCache('/leads/counts');
+    invalidateCache('/followups?limit=200');
+    invalidateCache('/leads?status=NEW&page=1&limit=20');
+    await Promise.allSettled([
+      loadDashboardStats({ force: true }),
+      loadFollowupsSections({ force: true }),
+      loadFreshLeads({ force: true }),
+    ]);
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadDashboardStats({ showLoading: true });
     loadFollowupsSections();
-    loadFreshLeads();
+    loadFreshLeads({ showLoading: true });
   }, []);
 
   const completeFollowup = async (id) => {
@@ -151,6 +181,8 @@ const Dashboard = () => {
       iconBg: 'bg-blue-100',
       iconColor: 'text-blue-600',
       ring: 'ring-blue-100',
+      ribbon: 'from-blue-500 via-indigo-500 to-violet-500',
+      flow: '#4f46e5',
     },
     {
       label: 'Today Calls',
@@ -162,6 +194,8 @@ const Dashboard = () => {
       iconBg: 'bg-orange-100',
       iconColor: 'text-orange-600',
       ring: 'ring-orange-100',
+      ribbon: 'from-orange-500 via-amber-500 to-yellow-500',
+      flow: '#f59e0b',
     },
     {
       label: 'Reminders',
@@ -173,6 +207,8 @@ const Dashboard = () => {
       iconBg: 'bg-emerald-100',
       iconColor: 'text-emerald-600',
       ring: 'ring-emerald-100',
+      ribbon: 'from-emerald-500 via-teal-500 to-cyan-500',
+      flow: '#10b981',
     },
     {
       label: 'Fresh Leads',
@@ -184,6 +220,8 @@ const Dashboard = () => {
       iconBg: 'bg-violet-100',
       iconColor: 'text-violet-600',
       ring: 'ring-violet-100',
+      ribbon: 'from-violet-500 via-purple-500 to-fuchsia-500',
+      flow: '#8b5cf6',
     },
     {
       label: 'Matter Leads',
@@ -195,6 +233,8 @@ const Dashboard = () => {
       iconBg: 'bg-rose-100',
       iconColor: 'text-rose-600',
       ring: 'ring-rose-100',
+      ribbon: 'from-rose-500 via-pink-500 to-fuchsia-500',
+      flow: '#e11d48',
     },
   ];
 
@@ -204,6 +244,7 @@ const Dashboard = () => {
      { icon: Clock1, label: 'Reminder',      nav: '/reminders',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
     { icon: MessageSquare, label: 'Chat',      nav: '/chat',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
     { icon: Calendar,      label: 'Scheduled', nav: '/calls/scheduled', gradient: 'from-amber-50 to-orange-50',    text: 'text-amber-700' },
+    { icon: RefreshCw,     label: refreshing ? 'Syncing' : 'Refresh', action: refreshDashboard, gradient: 'from-emerald-50 to-teal-50', text: 'text-emerald-700', spin: refreshing },
     { icon: UsersRound,    label: 'Team',      nav: '/team',            gradient: 'from-violet-50 to-purple-50',   text: 'text-violet-700' },
    
   ];
@@ -222,7 +263,7 @@ const Dashboard = () => {
     <div className="space-y-5 pb-6">
 
       {/* ══════ GREETING HEADER ══════ */}
-      <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-indigo-500 via-violet-500 to-purple-600 p-5 text-white shadow-lg shadow-indigo-200/50">
+      <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-indigo-900 via-blue-500/80 to-blue-600 p-5 text-white shadow-lg shadow-indigo-200/50">
         {/* Decorative circles */}
         <div className="absolute -top-6 -right-6 h-24 w-24 rounded-full bg-white/10 blur-sm" />
         <div className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/10 blur-sm" />
@@ -247,14 +288,14 @@ const Dashboard = () => {
       {/* ══════ QUICK FIND ══════ */}
       <div className="rounded-3xl bg-linear-to-br from-slate-50 via-white to-indigo-50/40 border border-slate-100 shadow-sm ring-1 ring-slate-100 p-3.5">
         {/* Category pills */}
-        <div className="flex gap-3 mb-2 overflow-x-auto pb-1[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-2.5 mb-2.5 overflow-x-auto pt-0.5 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {CATS.map((cat) => {
             const isActive = browseCat === cat.key;
             return (
               <button
                 key={cat.key}
                 onClick={() => setBrowseCat(cat.key)}
-                className={`shrink-0 h-7 px-3 rounded-full text-[11px] font-bold ring-1 active:scale-95 transition-all duration-150 ${
+                className={`shrink-0 h-7 px-3 rounded-full text-[11px] font-bold leading-none whitespace-nowrap ring-1 ring-inset active:scale-95 transition-all duration-150 ${
                   isActive
                     ? `bg-linear-to-r ${cat.bg} ${cat.active} shadow-sm ring-transparent`
                     : cat.inactive
@@ -278,11 +319,17 @@ const Dashboard = () => {
         {quickNav.map((item) => (
           <button
             key={item.label}
-            onClick={() => navigate(item.nav)}
+            onClick={() => {
+              if (item.action) {
+                item.action();
+              } else if (item.nav) {
+                navigate(item.nav);
+              }
+            }}
             className="flex flex-col items-center gap-1.5 shrink-0 active:scale-95 transition-transform"
           >
             <div className={`h-13 w-13 rounded-2xl bg-linear-to-br ${item.gradient} flex items-center justify-center shadow-sm`}>
-              <item.icon className={`h-5.5 w-5.5 ${item.text}`} strokeWidth={1.8} />
+              <item.icon className={`h-5.5 w-5.5 ${item.text} ${item.spin ? 'animate-spin' : ''}`} strokeWidth={1.8} />
             </div>
             <span className="text-[10px] font-semibold text-slate-500">{item.label}</span>
           </button>
@@ -299,6 +346,7 @@ const Dashboard = () => {
               onClick={() => navigate(card.nav)}
               className={`relative overflow-hidden rounded-3xl bg-linear-to-br ${card.gradient} p-4 text-left active:scale-[0.97] transition-all duration-200 shadow-sm ring-1 ${card.ring}`}
             >
+              <div className={`absolute top-0 left-2.5 right-2.5 h-1.5 rounded-b-md bg-linear-to-r ${card.ribbon}`} />
               {/* Soft decorative blob */}
               <div className="absolute -top-3 -right-3 h-14 w-14 rounded-full bg-white/40 blur-md" />
 
@@ -312,6 +360,7 @@ const Dashboard = () => {
                 <p className="text-[12px] font-semibold text-slate-600 mt-1">{card.label}</p>
                 <p className="text-[10px] text-slate-400 font-medium mt-0.5">{card.hint}</p>
               </div>
+              <FlowCurve color={card.flow} opacity={0.09} />
             </button>
           );
         })}
@@ -326,6 +375,7 @@ const Dashboard = () => {
             onClick={() => navigate(card.nav)}
             className={`relative w-full overflow-hidden rounded-3xl bg-linear-to-r ${card.gradient} p-4 text-left active:scale-[0.98] transition-all duration-200 shadow-sm ring-1 ${card.ring} flex items-center gap-4`}
           >
+            <div className={`absolute top-0 left-2.5 right-2.5 h-1.5 rounded-b-md bg-linear-to-r ${card.ribbon}`} />
             <div className="absolute -top-4 -right-4 h-20 w-20 rounded-full bg-white/40 blur-md" />
             <div className={`relative h-12 w-12 rounded-2xl ${card.iconBg} flex items-center justify-center shadow-sm shrink-0`}>
               <Icon className={`h-6 w-6 ${card.iconColor}`} strokeWidth={1.8} fill="currentColor" />
@@ -337,6 +387,7 @@ const Dashboard = () => {
               <p className="text-[12px] font-semibold text-slate-600 mt-0.5">{card.label}</p>
             </div>
             <ChevronRight className="h-5 w-5 text-slate-400 relative shrink-0" />
+            <FlowCurve color={card.flow} opacity={0.09} />
           </button>
         );
       })()}
@@ -345,7 +396,7 @@ const Dashboard = () => {
      
 
       {/* ══════ TODAY'S AGENDA ══════ */}
-      <section className="rounded-3xl bg-linear-to-br from-white via-white to-amber-50/30 border border-slate-100 shadow-sm ring-1 ring-slate-100 overflow-hidden">
+      <section className="relative rounded-3xl bg-linear-to-br from-white via-white to-amber-50/30 border border-slate-100 shadow-sm ring-1 ring-slate-100 overflow-hidden">
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-2xl bg-linear-to-br from-amber-100 to-orange-100 flex items-center justify-center shadow-sm">
@@ -456,10 +507,11 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+        <FlowCurve color="#f59e0b" opacity={0.08} />
       </section>
 
       {/* ══════ FRESH LEADS CAROUSEL ══════ */}
-      <section className="rounded-3xl bg-linear-to-br from-white via-white to-violet-50/40 border border-slate-100 shadow-sm ring-1 ring-slate-100 overflow-hidden">
+      <section className="relative rounded-3xl bg-linear-to-br from-white via-white to-violet-50/40 border border-slate-100 shadow-sm ring-1 ring-slate-100 overflow-hidden">
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-2xl bg-linear-to-br from-violet-100 to-purple-100 flex items-center justify-center shadow-sm">
@@ -547,10 +599,11 @@ const Dashboard = () => {
             })}
           </div>
         )}
+        <FlowCurve color="#8b5cf6" opacity={0.08} />
       </section>
 
       {/* ══════ PIPELINE ══════ */}
-      <section className="rounded-3xl bg-linear-to-br from-white via-white to-emerald-50/30 border border-slate-100 shadow-sm ring-1 ring-slate-100 p-4 overflow-hidden">
+      <section className="relative rounded-3xl bg-linear-to-br from-white via-white to-emerald-50/30 border border-slate-100 shadow-sm ring-1 ring-slate-100 p-4 overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-2xl bg-linear-to-br from-emerald-100 to-teal-100 flex items-center justify-center shadow-sm">
@@ -599,6 +652,7 @@ const Dashboard = () => {
             })}
           </div>
         )}
+        <FlowCurve color="#10b981" opacity={0.08} />
       </section>
     </div>
   );
