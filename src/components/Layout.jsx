@@ -11,6 +11,7 @@ import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
 import { startBackgroundTracking, stopBackgroundTracking } from '@/services/BackgroundLocationService';
+import homeLogo from '@/assets/home.png';
 
 const routeNames = {
   '/dashboard': 'Dashboard',
@@ -236,7 +237,15 @@ const LayoutBody = () => {
         <header className="bg-white/80 backdrop-blur-xl shrink-0 z-20 border-b border-slate-200/60 sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 md:px-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <h2 className="text-[15px] sm:text-[17px] font-bold text-slate-800 tracking-tight truncate">{pageTitle}</h2>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 active:scale-95 transition-transform duration-150"
+                title="Home"
+              >
+                <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center shadow-sm shadow-indigo-100/50">
+                  <img src={homeLogo} alt="RiverGreen" className="h-6 w-6 sm:h-7 sm:w-7 object-contain" />
+                </div>
+              </button>
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">

@@ -42,17 +42,32 @@ const STATUS_OPTIONS = [
 ];
 const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
 
+const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
+
 const STATUS_COLOR_MAP = {
-    NEW: 'bg-blue-100 text-blue-700',
-    CONTACTED: 'bg-amber-100 text-amber-700',
-    INTERESTED: 'bg-indigo-100 text-indigo-700',
-    SITE_VISIT: 'bg-violet-100 text-violet-700',
-    NEGOTIATION: 'bg-purple-100 text-purple-700',
-    BOOKED: 'bg-emerald-100 text-emerald-700',
-    LOST: 'bg-slate-100 text-slate-600',
-    INCOMING_OFF: 'bg-orange-100 text-orange-700',
-    SWITCH_OFF: 'bg-red-100 text-red-700',
-    NOT_ANSWERING: 'bg-yellow-100 text-yellow-700',
+    NEW: 'bg-blue-50 text-blue-700 ring-blue-200',
+    CONTACTED: 'bg-amber-50 text-amber-700 ring-amber-200',
+    INTERESTED: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+    SITE_VISIT: 'bg-violet-50 text-violet-700 ring-violet-200',
+    NEGOTIATION: 'bg-purple-50 text-purple-700 ring-purple-200',
+    BOOKED: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    LOST: 'bg-slate-50 text-slate-600 ring-slate-200',
+    INCOMING_OFF: 'bg-orange-50 text-orange-700 ring-orange-200',
+    SWITCH_OFF: 'bg-red-50 text-red-700 ring-red-200',
+    NOT_ANSWERING: 'bg-yellow-50 text-yellow-700 ring-yellow-200',
+};
+
+const STATUS_ACCENT_MAP = {
+    NEW: '#3b82f6',
+    CONTACTED: '#f59e0b',
+    INTERESTED: '#6366f1',
+    SITE_VISIT: '#8b5cf6',
+    NEGOTIATION: '#a855f7',
+    BOOKED: '#10b981',
+    LOST: '#64748b',
+    INCOMING_OFF: '#f97316',
+    SWITCH_OFF: '#ef4444',
+    NOT_ANSWERING: '#eab308',
 };
 
 const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
@@ -63,34 +78,40 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
 
 // Memoised mobile card — only re-renders when its own data or selection changes
 const ContactCard = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp, onView, onEdit, onDelete }) => {
-    const statusColor = STATUS_COLOR_MAP[c.status] || 'bg-slate-100 text-slate-600';
+    const statusCls = STATUS_COLOR_MAP[c.status] || 'bg-slate-50 text-slate-600 ring-slate-200';
     const statusLabel = STATUS_OPTIONS.find(s => s.value === c.status)?.label;
+    const accent = STATUS_ACCENT_MAP[c.status] || '#6366f1';
     return (
-        <div className={`relative bg-white rounded-2xl border transition-all duration-150 shadow-sm ${
-            selected ? 'border-indigo-300 bg-indigo-50/20 shadow-indigo-100' : 'border-slate-100 hover:border-slate-200'
+        <div className={`relative overflow-hidden rounded-[22px] bg-white transition-all duration-150 ${
+            selected
+                ? 'ring-2 ring-indigo-300 shadow-[0_10px_26px_-12px_rgba(99,102,241,0.35)]'
+                : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
         }`}>
+            {/* Top accent strip */}
+            <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: accent }} />
+
             {/* Top: avatar + info + checkbox */}
-            <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
-                <div className="h-12 w-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-                    <span className="text-base font-bold text-indigo-500">{c.name?.charAt(0)?.toUpperCase()}</span>
+            <div className="flex items-start gap-3 px-3.5 pt-4 pb-2.5">
+                <div className="h-12 w-12 rounded-2xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-indigo-100 flex items-center justify-center shrink-0">
+                    <span className="text-base font-bold text-indigo-600" style={serif}>{c.name?.charAt(0)?.toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-slate-900 text-sm leading-snug truncate">{c.name}</p>
+                    <p className="font-bold text-slate-900 text-[14px] leading-snug truncate" style={serif}>{c.name}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {c.status && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${statusColor}`}>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide ring-1 ring-inset ${statusCls}`}>
                                 {statusLabel || c.status}
                             </span>
                         )}
                         {c.lead_category && (
-                            <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded-full">{c.lead_category}</span>
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50 ring-1 ring-inset ring-slate-200 px-1.5 py-0.5 rounded-full">{c.lead_category}</span>
                         )}
                         {c.is_converted && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700">Converted</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200">Converted</span>
                         )}
                     </div>
                     {c.phone && (
-                        <p className="text-xs text-slate-500 mt-1 font-medium">{c.phone}</p>
+                        <p className="text-[11px] text-slate-500 mt-1 font-mono">{c.phone}</p>
                     )}
                 </div>
                 {/* Checkbox far right */}
@@ -103,10 +124,10 @@ const ContactCard = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp
                 </div>
             </div>
             {/* Action row */}
-            <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-slate-50">
+            <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1 border-t border-slate-100">
                 <Button
                     size="sm"
-                    className="flex-1 h-9 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5"
+                    className="flex-1 h-9 text-[11px] font-bold bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl gap-1.5 shadow-sm shadow-emerald-200/40"
                     onClick={() => onCall(c)} disabled={isCalling}>
                     {isCalling
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -115,27 +136,27 @@ const ContactCard = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp
                 </Button>
                 <Button
                     variant="ghost" size="sm"
-                    className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 rounded-xl gap-1.5"
+                    className="h-9 w-9 p-0 text-[11px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl"
                     onClick={() => onWhatsApp(c.phone)}>
-                    <WhatsAppIcon className="h-3.5 w-3.5" /> WA
+                    <WhatsAppIcon className="h-4 w-4" />
                 </Button>
                 <Button
                     variant="ghost" size="sm"
-                    className="flex-1 h-9 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 rounded-xl gap-1.5"
+                    className="h-9 w-9 p-0 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl"
                     onClick={() => onView(c)}>
-                    <Eye className="h-3.5 w-3.5" /> View
+                    <Eye className="h-4 w-4" />
                 </Button>
                 <Button
                     variant="ghost" size="sm"
-                    className="flex-1 h-9 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 rounded-xl gap-1.5"
+                    className="h-9 w-9 p-0 text-[11px] font-bold text-blue-600 hover:bg-blue-50 rounded-xl"
                     onClick={() => onEdit(c)}>
-                    <Pencil className="h-3.5 w-3.5" /> Edit
+                    <Pencil className="h-4 w-4" />
                 </Button>
                 <Button
                     variant="ghost" size="sm"
-                    className="flex-1 h-9 text-[11px] font-semibold text-red-600 hover:bg-red-50 rounded-xl"
+                    className="h-9 w-9 p-0 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-xl"
                     onClick={() => onDelete(c)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                 </Button>
             </div>
         </div>
@@ -417,22 +438,21 @@ const AllContacts = () => {
 
     return (
         <>
-            {/* Selection action bar */}
+            {/* ══════ Selection action bar — editorial pill ══════ */}
             {selectedContactIds.length > 0 && (
-                <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5">
-                    <span className="text-xs text-indigo-700 font-medium">{selectedContactIds.length} selected</span>
+                <div className="flex items-center justify-between rounded-[20px] bg-linear-to-r from-indigo-600 to-violet-600 px-3.5 py-2.5 shadow-md shadow-indigo-300/40">
+                    <span className="text-[12px] text-white font-bold tabular-nums">{selectedContactIds.length} selected</span>
                     <div className="flex items-center gap-1">
                         <Button size="sm" variant="ghost"
-                            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+                            className="h-8 text-[11px] font-bold text-white bg-white/15 hover:bg-white/25 rounded-lg px-2.5"
                             disabled={shiftLoading} onClick={() => handleShiftToCall()}>
                             {shiftLoading
-                                ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mr-1" />
-                                : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />
-                            }
+                                ? <span className="h-3 w-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
+                                : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />}
                             Shift to Queue
                         </Button>
                         <Button size="sm" variant="ghost"
-                            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+                            className="h-8 text-[11px] font-bold text-white bg-white/15 hover:bg-white/25 rounded-lg px-2.5"
                             disabled={shiftLoading || totalCount === 0}
                             onClick={() => handleShiftToCall({ selectAllFiltered: true })}>
                             Shift All
@@ -441,61 +461,60 @@ const AllContacts = () => {
                 </div>
             )}
 
-            {/* Search + Sync/Unsync + Add — sticky below tabs */}
-            <div className="sticky top-13 z-10 bg-background pb-2 pt-0.5 -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8">
+            {/* ══════ Sticky: Search + actions + filters ══════ */}
+            <div className="sticky top-22 z-10 bg-background pb-2 pt-0.5 -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8 space-y-2">
                 <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <div className="relative flex-1 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
                         <Input
-                            placeholder={synced ? `Search DB + ${deviceCount} device contacts...` : 'Search by name or phone...'}
+                            placeholder={synced ? `Search DB + ${deviceCount} device…` : 'Search name or phone…'}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-8 pr-8 h-9 text-xs rounded-xl"
+                            className="pl-8 pr-8 h-10 text-xs border-0 shadow-none focus-visible:ring-0 placeholder:text-slate-300"
                             autoComplete="off"
                         />
                         {(isSearching || refreshing) && !searchQuery && (
-                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
                         )}
                         {isSearching && searchQuery && (
-                            <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                                <div className="h-3 w-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                <div className="h-3 w-3 rounded-full border-2 border-indigo-300 border-t-indigo-600 animate-spin" />
                             </div>
                         )}
                         {!isSearching && searchQuery && (
                             <button onClick={() => setSearchQuery('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" tabIndex={-1}>
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
                                 <X className="h-3.5 w-3.5" />
                             </button>
                         )}
                     </div>
                     {synced ? (
                         <Button size="sm" variant="outline"
-                            className="h-9 text-xs gap-1 rounded-xl px-2.5 shrink-0 text-red-600 border-red-200 bg-red-50 hover:bg-red-100"
+                            className="h-10 text-[11px] font-bold gap-1 rounded-xl px-2.5 shrink-0 text-rose-600 border-rose-200 bg-rose-50 hover:bg-rose-100"
                             onClick={() => { clearCache(); toast.info('Device contacts unsynced'); }}
                             disabled={syncing}>
                             <X className="h-3.5 w-3.5" />
                             Unsync
                         </Button>
                     ) : (
-                        <Button size="sm" variant="secondary"
-                            className="h-9 text-xs gap-1 rounded-xl px-2.5 shrink-0"
+                        <Button size="sm"
+                            className="h-10 text-[11px] font-bold gap-1 rounded-xl px-2.5 shrink-0 bg-white ring-1 ring-slate-200 text-slate-700 hover:bg-slate-50 shadow-none"
                             onClick={syncContacts} disabled={syncing}>
                             {syncing
                                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <Smartphone className="h-3.5 w-3.5" />
-                            }
+                                : <Smartphone className="h-3.5 w-3.5 text-indigo-500" />}
                             Sync
                         </Button>
                     )}
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 h-9 text-xs gap-1 rounded-xl px-3 shrink-0"
+                    <Button size="sm" className="h-10 text-[11px] font-bold gap-1 rounded-xl px-3 shrink-0 bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md shadow-indigo-200/50"
                         onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
                         <Plus className="h-3.5 w-3.5" />Add
                     </Button>
                 </div>
                 {/* Status + Category filters */}
-                <div className="flex items-center gap-2 mt-1.5">
+                <div className="flex items-center gap-2">
                     <Select value={statusFilter} onValueChange={setStatusFilter}>
-                        <SelectTrigger className="flex-1 h-8 text-xs rounded-xl font-medium">
+                        <SelectTrigger className="flex-1 h-9 text-[11px] rounded-xl font-bold bg-white ring-1 ring-slate-200 border-0 shadow-[0_1px_4px_-1px_rgba(15,23,42,0.04)]">
                             <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
@@ -506,7 +525,7 @@ const AllContacts = () => {
                         </SelectContent>
                     </Select>
                     <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger className="flex-1 h-8 text-xs rounded-xl font-medium">
+                        <SelectTrigger className="flex-1 h-9 text-[11px] rounded-xl font-bold bg-white ring-1 ring-slate-200 border-0 shadow-[0_1px_4px_-1px_rgba(15,23,42,0.04)]">
                             <SelectValue placeholder="Category" />
                         </SelectTrigger>
                         <SelectContent>
@@ -519,17 +538,20 @@ const AllContacts = () => {
                 </div>
             </div>
 
-            {/* Count + Select All row */}
+            {/* ══════ Count + Select All row ══════ */}
             {!loading && contacts.length > 0 && (
-                <div className="flex items-center justify-between px-0.5">
-                    <span className="text-xs text-slate-500 font-medium">
-                        {totalCount} contact{totalCount !== 1 ? 's' : ''}
-                        {selectedContactIds.length > 0 && (
-                            <span className="ml-1 text-indigo-600">· {selectedContactIds.length} selected</span>
-                        )}
-                    </span>
+                <div className="flex items-end justify-between px-0.5 pt-1">
+                    <div>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Results</p>
+                        <p className="text-[13px] font-bold text-slate-800 tabular-nums" style={serif}>
+                            {totalCount.toLocaleString('en-IN')} <span className="italic font-normal text-slate-500">contact{totalCount !== 1 ? 's' : ''}</span>
+                            {selectedContactIds.length > 0 && (
+                                <span className="ml-1.5 text-indigo-600 font-bold text-[11px] not-italic">· {selectedContactIds.length} selected</span>
+                            )}
+                        </p>
+                    </div>
                     <button
-                        className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+                        className="text-[11px] text-indigo-600 font-bold hover:text-indigo-800 transition-colors pb-0.5"
                         onClick={toggleSelectAllOnPage}
                     >
                         {allSelectedOnPage ? 'Deselect All' : 'Select All'}
@@ -537,13 +559,13 @@ const AllContacts = () => {
                 </div>
             )}
 
-            {/* Contact Cards */}
-            <div className="space-y-2">
+            {/* ══════ Contact Cards ══════ */}
+            <div className="space-y-2.5">
                 {loading ? (
                     [...Array(5)].map((_, i) => (
-                        <div key={i} className="bg-white rounded-2xl border border-slate-100 p-3.5 shadow-sm space-y-2.5">
+                        <div key={i} className="bg-white rounded-[22px] ring-1 ring-slate-100 p-3.5 pt-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] space-y-2.5">
                             <div className="flex items-start gap-3">
-                                <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
+                                <Skeleton className="h-12 w-12 rounded-2xl shrink-0" />
                                 <div className="flex-1 space-y-2">
                                     <Skeleton className="h-4 w-36" />
                                     <Skeleton className="h-3 w-20 rounded-full" />
@@ -555,14 +577,12 @@ const AllContacts = () => {
                         </div>
                     ))
                 ) : contacts.length === 0 && deviceContactMatches.length === 0 ? (
-                    <div className="flex flex-col items-center gap-3 py-16">
-                        <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center shadow-sm">
-                            <Users className="h-7 w-7 text-slate-300" />
+                    <div className="rounded-[22px] bg-linear-to-br from-indigo-50/60 to-violet-50/40 py-14 flex flex-col items-center ring-1 ring-indigo-100/60">
+                        <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
+                            <Users className="h-6 w-6 text-indigo-400" strokeWidth={2} />
                         </div>
-                        <div className="text-center">
-                            <p className="text-sm font-semibold text-slate-600">No contacts found</p>
-                            <p className="text-xs text-slate-400 mt-0.5">Try adjusting your filters</p>
-                        </div>
+                        <p className="text-sm font-bold text-slate-800" style={serif}>No contacts found</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Try adjusting your filters.</p>
                     </div>
                 ) : (
                     <>
@@ -584,29 +604,30 @@ const AllContacts = () => {
                         {/* Device contacts matching search */}
                         {deviceContactMatches.length > 0 && (
                             <>
-                                <div className="flex items-center gap-2 pt-2 pb-1">
-                                    <div className="flex-1 h-px bg-amber-200/60" />
-                                    <span className="text-[10px] font-semibold text-amber-600 uppercase tracking-wider flex items-center gap-1">
-                                        <Smartphone className="h-3 w-3" /> Device ({deviceContactMatches.length})
+                                <div className="flex items-center gap-3 pt-3 pb-1">
+                                    <div className="flex-1 h-px bg-amber-200/70" />
+                                    <span className="text-[9px] font-bold text-amber-700 uppercase tracking-[0.22em] flex items-center gap-1.5">
+                                        <Smartphone className="h-3 w-3" /> Device · {deviceContactMatches.length}
                                     </span>
-                                    <div className="flex-1 h-px bg-amber-200/60" />
+                                    <div className="flex-1 h-px bg-amber-200/70" />
                                 </div>
                                 {deviceContactMatches.map((dc) => (
-                                    <div key={`dev-${dc.phone}`} className="bg-amber-50/60 rounded-2xl border border-amber-100 shadow-sm">
-                                        <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
-                                            <div className="h-12 w-12 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center shrink-0">
-                                                <span className="text-base font-bold text-amber-600">{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
+                                    <div key={`dev-${dc.phone}`} className="relative overflow-hidden rounded-[22px] bg-linear-to-br from-amber-50/80 to-orange-50/50 ring-1 ring-amber-100 shadow-[0_2px_10px_-2px_rgba(245,158,11,0.15)]">
+                                        <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-amber-500 to-orange-500" />
+                                        <div className="flex items-start gap-3 px-3.5 pt-4 pb-2.5">
+                                            <div className="h-12 w-12 rounded-2xl bg-white ring-1 ring-amber-200 flex items-center justify-center shrink-0">
+                                                <span className="text-base font-bold text-amber-600" style={serif}>{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-semibold text-slate-900 text-sm leading-snug">{dc.name || 'Unknown'}</p>
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700 inline-block mt-1">Device</span>
-                                                {dc.phone && <p className="text-xs text-slate-500 mt-1 font-medium">{dc.phone}</p>}
+                                                <p className="font-bold text-slate-900 text-[14px] leading-snug" style={serif}>{dc.name || 'Unknown'}</p>
+                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide bg-white ring-1 ring-inset ring-amber-200 text-amber-700 inline-block mt-1">Device</span>
+                                                {dc.phone && <p className="text-[11px] text-slate-500 mt-1 font-mono">{dc.phone}</p>}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-amber-100/60">
+                                        <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1 border-t border-amber-100/80">
                                             <Button
                                                 size="sm"
-                                                className="flex-1 h-9 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5"
+                                                className="flex-1 h-9 text-[11px] font-bold bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl gap-1.5 shadow-sm shadow-emerald-200/40"
                                                 onClick={() => {
                                                     const params = new URLSearchParams({ number: dc.phone, name: dc.name || 'Unknown', autoCall: 'true' });
                                                     navigate(`/calls/dialer?${params.toString()}`);
@@ -615,9 +636,9 @@ const AllContacts = () => {
                                             </Button>
                                             <Button
                                                 variant="ghost" size="sm"
-                                                className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 rounded-xl gap-1.5"
+                                                className="h-9 w-9 p-0 text-emerald-600 hover:bg-emerald-50 rounded-xl"
                                                 onClick={() => handleOpenWhatsApp(dc.phone)}>
-                                                <WhatsAppIcon className="h-3.5 w-3.5" /> WA
+                                                <WhatsAppIcon className="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </div>

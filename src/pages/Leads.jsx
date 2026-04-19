@@ -149,18 +149,33 @@ const ScheduleFollowupDialog = ({ lead, open, onClose }) => {
   );
 };
 
+const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
+
 const STATUS_OPTIONS = [
-  { value: 'NEW', label: 'New Lead', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200' },
-  { value: 'CONTACTED', label: 'Contacted', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
-  { value: 'INTERESTED', label: 'Interested', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' },
-  { value: 'SITE_VISIT', label: 'Site Visit', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200' },
-  { value: 'NEGOTIATION', label: 'Negotiation', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
-  { value: 'BOOKED', label: 'Booked', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' },
-  { value: 'LOST', label: 'Lost', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
-  { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
-  { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-100 text-red-700 hover:bg-red-200' },
-  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200' },
+  { value: 'NEW', label: 'New Lead', color: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  { value: 'CONTACTED', label: 'Contacted', color: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  { value: 'INTERESTED', label: 'Interested', color: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
+  { value: 'SITE_VISIT', label: 'Site Visit', color: 'bg-violet-50 text-violet-700 ring-violet-200' },
+  { value: 'NEGOTIATION', label: 'Negotiation', color: 'bg-purple-50 text-purple-700 ring-purple-200' },
+  { value: 'BOOKED', label: 'Booked', color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  { value: 'LOST', label: 'Lost', color: 'bg-slate-50 text-slate-700 ring-slate-200' },
+  { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-50 text-orange-700 ring-orange-200' },
+  { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-50 text-red-700 ring-red-200' },
+  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-50 text-rose-700 ring-rose-200' },
 ];
+
+const STATUS_ACCENT_MAP = {
+  NEW: '#3b82f6',
+  CONTACTED: '#f59e0b',
+  INTERESTED: '#6366f1',
+  SITE_VISIT: '#8b5cf6',
+  NEGOTIATION: '#a855f7',
+  BOOKED: '#10b981',
+  LOST: '#94a3b8',
+  INCOMING_OFF: '#f97316',
+  SWITCH_OFF: '#ef4444',
+  NOT_ANSWERING: '#f43f5e',
+};
 
 const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
 const LEAD_SOURCE_OPTIONS = ['Direct', 'Referral', 'Website', 'Advertisement', 'Event', 'Direct Visit', 'Calling Visit', 'Site Visit', 'Other'];
@@ -185,38 +200,44 @@ function buildLeadsUrl(page, search, status, category) {
 // Memoised card — only re-renders when its own data or selection changes
 const LeadCard = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule }) => {
   const statusObj = STATUS_MAP[lead.status] || STATUS_OPTIONS[0];
+  const accent = STATUS_ACCENT_MAP[lead.status] || '#94a3b8';
   return (
     <div
-      className={`relative bg-white rounded-2xl border transition-all duration-150 shadow-sm ${
-        selected ? 'border-indigo-300 bg-indigo-50/20 shadow-indigo-100' : 'border-slate-100 hover:border-slate-200'
+      className={`relative bg-white rounded-[22px] overflow-hidden transition-all duration-200 ring-1 ${
+        selected
+          ? 'ring-indigo-300 shadow-[0_4px_18px_-4px_rgba(99,102,241,0.25)]'
+          : 'ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]'
       }`}
     >
+      {/* Top accent bar */}
+      <div className="h-[2px] w-full" style={{ backgroundColor: accent }} />
+
       {/* Top section: avatar + details + checkbox */}
-      <div className="flex items-start gap-3 px-3.5 pt-3.5 pb-2">
+      <div className="flex items-start gap-3 px-4 pt-3.5 pb-2.5">
         {/* Avatar */}
-        <div className="h-12 w-12 rounded-xl bg-linear-to-br from-slate-100 to-slate-200 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+        <div className="h-12 w-12 rounded-2xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
           {lead.photo_url ? (
             <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
           ) : (
-            <span className="text-base font-bold text-slate-500">{lead.name?.charAt(0)?.toUpperCase()}</span>
+            <span className="text-lg font-bold text-indigo-700" style={serif}>{lead.name?.charAt(0)?.toUpperCase()}</span>
           )}
         </div>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-900 text-sm leading-snug truncate pr-1">{lead.name}</p>
+          <p className="text-[14px] font-bold text-slate-900 leading-snug truncate pr-1" style={serif}>{lead.name}</p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className={`inline-flex items-center text-[10px] px-2 py-0.5 rounded-full font-semibold border-0 ${statusObj.color}`}>
+            <span className={`inline-flex items-center text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full font-bold ring-1 ring-inset ${statusObj.color}`}>
               {statusObj.label}
             </span>
             {lead.lead_category && (
-              <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-1.5 py-0.5 rounded-full">
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold bg-slate-50 ring-1 ring-inset ring-slate-200 px-1.5 py-0.5 rounded-full">
                 {lead.lead_category}
               </span>
             )}
           </div>
           {lead.phone && (
-            <p className="text-xs text-slate-500 mt-1 font-medium">{lead.phone}</p>
+            <p className="text-[11px] text-slate-500 mt-1 font-mono tracking-tight">{lead.phone}</p>
           )}
         </div>
 
@@ -231,42 +252,42 @@ const LeadCard = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, o
       </div>
 
       {/* Action row */}
-      <div className="flex items-center gap-0.5 px-2.5 pb-2.5 pt-1 border-t border-slate-50">
+      <div className="flex items-center gap-1.5 px-3 pb-3 pt-1">
         <Button
-          variant="ghost" size="sm"
-          className="flex-1 h-9 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 rounded-xl gap-1.5"
+          size="sm"
+          className="flex-1 h-8 text-[11px] font-bold text-white bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl gap-1.5 shadow-sm shadow-emerald-200/50"
           onClick={() => onCall(lead)}
         >
           <PhoneOutgoing className="h-3.5 w-3.5" /> Call
         </Button>
-        <Button
-          variant="ghost" size="sm"
-          className="flex-1 h-9 text-[11px] font-semibold text-green-700 hover:bg-green-50 hover:text-green-800 rounded-xl gap-1.5"
+        <button
           onClick={() => onWhatsApp(lead.phone)}
+          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-green-600 hover:bg-green-50 hover:text-green-700 flex items-center justify-center active:scale-95 transition-all duration-150"
+          title="WhatsApp"
         >
-          <WhatsAppIcon className="h-3.5 w-3.5" /> WA
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          className="flex-1 h-9 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 rounded-xl gap-1.5"
+          <WhatsAppIcon className="h-3.5 w-3.5" />
+        </button>
+        <button
           onClick={() => onView(lead)}
+          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 flex items-center justify-center active:scale-95 transition-all duration-150"
+          title="View"
         >
-          <Eye className="h-3.5 w-3.5" /> View
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          className="flex-1 h-9 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800 rounded-xl gap-1.5"
+          <Eye className="h-3.5 w-3.5" />
+        </button>
+        <button
           onClick={() => onEdit(lead)}
+          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-center active:scale-95 transition-all duration-150"
+          title="Edit"
         >
-          <Pencil className="h-3.5 w-3.5" /> Edit
-        </Button>
-        <Button
-          variant="ghost" size="sm"
-          className="flex-1 h-9 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 hover:text-amber-800 rounded-xl gap-1.5"
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
           onClick={() => onSchedule(lead)}
+          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700 flex items-center justify-center active:scale-95 transition-all duration-150"
+          title="Schedule"
         >
           <BellPlus className="h-3.5 w-3.5" />
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -546,38 +567,40 @@ const Leads = () => {
     <>
       {/* Shift action bar — shows when leads are selected */}
       {selectedLeadIds.length > 0 && (
-        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-1.5">
-          <span className="text-xs text-indigo-700 font-medium">{selectedLeadIds.length} selected</span>
-          <Button size="sm" variant="ghost"
-            className="h-7 text-xs text-indigo-700 hover:bg-indigo-100 rounded-md px-2.5"
+        <div className="flex items-center justify-between gap-2 bg-linear-to-r from-indigo-600 to-violet-600 rounded-[18px] px-3.5 py-2 shadow-sm shadow-indigo-300/40">
+          <span className="text-[11px] text-white font-bold uppercase tracking-wider">
+            {selectedLeadIds.length} <span className="text-white/70 font-normal italic normal-case" style={serif}>selected</span>
+          </span>
+          <button
             disabled={shiftLoading}
             onClick={() => handleShiftToCall()}
+            className="h-7 px-2.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 rounded-full flex items-center gap-1.5 active:scale-95 transition-all duration-150 disabled:opacity-60"
           >
             {shiftLoading
-              ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin mr-1" />
-              : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />
+              ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+              : <PhoneOutgoing className="h-3.5 w-3.5" />
             }
             Shift to Queue
-          </Button>
+          </button>
         </div>
       )}
 
       {/* Filters */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <Input
             placeholder="Search name, phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8 h-9 text-sm rounded-xl border-slate-200"
+            className="pl-9 h-10 text-[13px] rounded-2xl bg-white border-0 ring-1 ring-inset ring-slate-200 focus-visible:ring-indigo-300"
           />
           {refreshing && (
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
           )}
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-28 h-9 text-xs rounded-xl font-medium shrink-0 border-slate-200">
+          <SelectTrigger className="w-[104px] h-10 text-[11px] font-bold uppercase tracking-wider rounded-2xl shrink-0 bg-white border-0 ring-1 ring-inset ring-slate-200">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -589,7 +612,7 @@ const Leads = () => {
           </SelectContent>
         </Select>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-24 h-9 text-xs rounded-xl font-medium shrink-0 border-slate-200">
+          <SelectTrigger className="w-[88px] h-10 text-[11px] font-bold uppercase tracking-wider rounded-2xl shrink-0 bg-white border-0 ring-1 ring-inset ring-slate-200">
             <SelectValue placeholder="Cat" />
           </SelectTrigger>
           <SelectContent>
@@ -603,15 +626,21 @@ const Leads = () => {
 
       {/* Count + Select All row */}
       {!loading && leads.length > 0 && (
-        <div className="flex items-center justify-between px-0.5">
-          <span className="text-xs text-slate-500 font-medium">
-            {leads.length} lead{leads.length !== 1 ? 's' : ''}
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Results</p>
+            <span className="text-[15px] font-bold text-slate-900" style={serif}>{leads.length}</span>
+            <span className="text-[11px] italic text-slate-500" style={serif}>
+              lead{leads.length !== 1 ? 's' : ''}
+            </span>
             {selectedLeadIds.length > 0 && (
-              <span className="ml-1 text-indigo-600">· {selectedLeadIds.length} selected</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 ml-1">
+                · {selectedLeadIds.length} selected
+              </span>
             )}
-          </span>
+          </div>
           <button
-            className="text-xs text-indigo-600 font-semibold hover:text-indigo-800 transition-colors"
+            className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold hover:text-indigo-800 transition-colors"
             onClick={toggleSelectAllOnPage}
           >
             {allSelected ? 'Deselect All' : 'Select All'}
@@ -620,35 +649,38 @@ const Leads = () => {
       )}
 
       {/* Lead Cards */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {loading ? (
           [...Array(5)].map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-100 p-3.5 shadow-sm space-y-2.5">
-              <div className="flex items-start gap-3">
-                <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-36" />
-                  <Skeleton className="h-3 w-20 rounded-full" />
-                  <Skeleton className="h-3 w-28" />
+            <div key={i} className="bg-white rounded-[22px] ring-1 ring-slate-100 overflow-hidden shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]">
+              <Skeleton className="h-[2px] w-full" />
+              <div className="p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <Skeleton className="h-12 w-12 rounded-2xl shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-3 w-20 rounded-full" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                  <Skeleton className="h-5 w-5 rounded-md shrink-0" />
                 </div>
-                <Skeleton className="h-5 w-5 rounded-md shrink-0" />
+                <Skeleton className="h-8 w-full rounded-xl" />
               </div>
-              <Skeleton className="h-9 w-full rounded-xl" />
             </div>
           ))
         ) : leads.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16">
-            <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center shadow-sm">
-              <Users className="h-7 w-7 text-slate-300" />
+          <div className="relative overflow-hidden rounded-[22px] bg-linear-to-br from-indigo-50 via-white to-violet-50 ring-1 ring-indigo-100 px-6 py-12 text-center">
+            <div className="mx-auto h-14 w-14 rounded-2xl bg-white ring-1 ring-indigo-100 flex items-center justify-center shadow-sm">
+              <Users className="h-7 w-7 text-indigo-400" />
             </div>
-            <div className="text-center">
-              <p className="text-sm font-semibold text-slate-600">No leads found</p>
-              <p className="text-xs text-slate-400 mt-0.5">Try adjusting your filters</p>
-            </div>
-            <Link to="/leads/add">
-              <Button variant="outline" size="sm" className="mt-1 text-xs h-8 rounded-xl">
-                <Plus className="h-3.5 w-3.5 mr-1.5" /> Add Lead
-              </Button>
+            <p className="mt-4 text-[18px] font-bold text-slate-900" style={serif}>
+              No leads <span className="italic text-indigo-600">yet.</span>
+            </p>
+            <p className="mt-1 text-[12px] text-slate-500 italic" style={serif}>
+              Try adjusting your filters or add a new lead.
+            </p>
+            <Link to="/leads/add" className="inline-flex mt-4 h-9 px-4 rounded-full text-[11px] font-bold bg-linear-to-r from-indigo-600 to-violet-600 text-white items-center gap-1.5 shadow-sm shadow-indigo-300/40 active:scale-95 transition-all duration-150">
+              <Plus className="h-3.5 w-3.5" /> Add Lead
             </Link>
           </div>
         ) : (
@@ -670,25 +702,25 @@ const Leads = () => {
 
       {/* Pagination */}
       {totalPages > 1 && !loading && (
-        <div className="flex items-center justify-between pt-1 pb-2">
-          <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline" size="sm"
-              className="h-9 px-3 text-xs rounded-xl font-semibold"
+        <div className="flex items-center justify-between pt-1 pb-2 px-1">
+          <p className="text-[11px] text-slate-500 italic" style={serif}>
+            Page <span className="font-bold text-slate-800 not-italic">{currentPage}</span> of <span className="font-bold text-slate-800 not-italic">{totalPages}</span>
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
               onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
               disabled={currentPage === 1}
+              className="h-9 px-3 rounded-full bg-white ring-1 ring-inset ring-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 flex items-center gap-1 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
-            </Button>
-            <Button
-              variant="outline" size="sm"
-              className="h-9 px-3 text-xs rounded-xl font-semibold"
+              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+            </button>
+            <button
               onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
               disabled={currentPage === totalPages}
+              className="h-9 px-3 rounded-full bg-white ring-1 ring-inset ring-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 flex items-center gap-1 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
-            </Button>
+              Next <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           </div>
         </div>
       )}
