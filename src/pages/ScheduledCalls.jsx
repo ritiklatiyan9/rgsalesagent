@@ -33,13 +33,45 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
     </svg>
 );
 
-/* ─── FlowCurve (same as Dashboard + Reminders) ─── */
-const FlowCurve = ({ color = '#0ea5e9', opacity = 0.1 }) => (
-    <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="38" viewBox="0 0 400 38" preserveAspectRatio="none">
-        <path d="M0,22 C50,10 110,34 180,18 C250,2 320,30 400,14 L400,38 L0,38 Z" fill={color} opacity={opacity} />
-        <path d="M0,28 C70,14 140,36 220,22 C300,8 360,30 400,20 L400,38 L0,38 Z" fill={color} opacity={opacity * 0.6} />
-    </svg>
-);
+/* ─── Editorial serif ─── */
+const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
+
+/* ─── Mini sparkline (editorial stat cards) ─── */
+const SPARK_PATTERNS = {
+    line: [3, 5, 4, 6, 5, 8, 7, 9],
+    bars: [3, 6, 4, 7, 5, 8, 6, 9],
+    down: [9, 7, 8, 5, 6, 3, 4, 2],
+    rise: [2, 4, 3, 5, 6, 7, 8, 9],
+};
+const MiniSpark = ({ color = '#6366f1', pattern = 'line', variant = 'line', uid = 'x' }) => {
+    const data = SPARK_PATTERNS[pattern] || SPARK_PATTERNS.line;
+    const w = 56, h = 24, max = 10, step = w / (data.length - 1);
+    if (variant === 'bars') {
+        const bw = (w - (data.length * 2)) / data.length;
+        return (
+            <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0 opacity-85" preserveAspectRatio="none">
+                {data.map((v, i) => {
+                    const bh = (v / max) * h;
+                    return <rect key={i} x={i * (bw + 2)} y={h - bh} width={bw} height={bh} rx="1" fill={color} opacity={0.55 + (v / max) * 0.45} />;
+                })}
+            </svg>
+        );
+    }
+    const pts = data.map((v, i) => `${i * step},${h - (v / max) * h}`).join(' ');
+    const area = `0,${h} ${pts} ${w},${h}`;
+    return (
+        <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0" preserveAspectRatio="none">
+            <defs>
+                <linearGradient id={`sc-${uid}`} x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+            </defs>
+            <polyline points={area} fill={`url(#sc-${uid})`} stroke="none" />
+            <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+};
 
 /* ─── Design tokens ─── */
 const TYPE_THEME = {
@@ -80,16 +112,21 @@ const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('en-IN', { hour: '2-di
 
 const isOverdue = (dateStr) => dateStr && new Date(dateStr) < new Date();
 
-/* ─── Stat Tile (Dashboard pattern) ─── */
-const StatTile = ({ label, value, icon: Icon, tone, hex }) => (
-    <div className="relative overflow-hidden rounded-xl bg-white border border-slate-100 p-3 pb-10 shadow-sm shrink-0 w-25">
+/* ─── Stat Tile — editorial ─── */
+const StatTile = ({ label, short, value, icon: Icon, tone, hex, spark = 'line', variant = 'line', uid = 'x' }) => (
+    <div className="group relative overflow-hidden rounded-[22px] bg-white ring-1 ring-slate-100 p-3.5 pt-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)] transition-all duration-150">
         <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${tone}`} />
-        <div className="h-7 w-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: hex + '18', color: hex }}>
-            <Icon className="h-3.5 w-3.5" />
+        <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: hex }}>{short}</p>
+            <div className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: hex + '1a', color: hex }}>
+                <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </div>
         </div>
-        <p className="text-xl font-bold text-slate-900 mt-2 leading-none">{value}</p>
-        <p className="text-[10px] font-semibold text-slate-500 mt-1">{label}</p>
-        <FlowCurve color={hex} opacity={0.1} />
+        <div className="mt-3 flex items-end justify-between gap-2">
+            <p className="text-[30px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>{value}</p>
+            <MiniSpark color={hex} pattern={spark} variant={variant} uid={uid} />
+        </div>
+        <p className="text-[12px] font-semibold text-slate-800 mt-2.5">{label}</p>
     </div>
 );
 
@@ -361,121 +398,154 @@ const ScheduledCalls = () => {
     };
 
     /* ═══════════════════════════ JSX ═══════════════════════════ */
+    const descriptiveLine = (() => {
+        const parts = [];
+        if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+        if (counts.snoozed > 0) parts.push(`${counts.snoozed} snoozed`);
+        if (counts.done_today > 0) parts.push(`${counts.done_today} done today`);
+        if (parts.length === 0) return 'No follow-ups in this range.';
+        return parts.slice(0, 2).join(' · ') + '.';
+    })();
+
     return (
-        <div className="space-y-4 pb-6">
+        <div className="space-y-5 pb-6">
 
-            {/* ── Stat tiles ── */}
-            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8">
-                <div className="flex gap-2.5 w-max">
-                    <StatTile label="Total" value={counts.total} icon={CalendarClock} tone="from-indigo-400 to-indigo-500" hex="#6366f1" />
-                    <StatTile label="Pending" value={counts.pending} icon={Clock} tone="from-amber-400 to-amber-500" hex="#f59e0b" />
-                    <StatTile label="Snoozed" value={counts.snoozed} icon={AlarmClock} tone="from-sky-400 to-sky-500" hex="#0ea5e9" />
-                    <StatTile label="Done Today" value={counts.done_today} icon={CheckCircle2} tone="from-emerald-400 to-emerald-500" hex="#10b981" />
-                </div>
+            {/* ══════ HEADER — editorial ══════ */}
+            <header className="space-y-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Follow-ups</p>
+                <h1 className="leading-[1.05] tracking-tight flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[28px] font-bold text-slate-900">Scheduled</span>
+                    <span className="text-[28px] font-normal italic text-indigo-600" style={serif}>calls.</span>
+                </h1>
+                <p className="text-[13px] text-slate-500 italic leading-snug max-w-70" style={serif}>
+                    {descriptiveLine}
+                </p>
+            </header>
+
+            {/* ══════ STAT TILES — editorial 2x2 ══════ */}
+            <div className="grid grid-cols-2 gap-3">
+                <StatTile label="Total" short="ALL · RANGE" value={counts.total} icon={CalendarClock} tone="from-blue-500 via-indigo-500 to-violet-500" hex="#6366f1" spark="rise" variant="line" uid="t1" />
+                <StatTile label="Pending" short="OPEN" value={counts.pending} icon={Clock} tone="from-orange-500 via-amber-500 to-yellow-500" hex="#f59e0b" spark="bars" variant="bars" uid="t2" />
+                <StatTile label="Snoozed" short="LATER" value={counts.snoozed} icon={AlarmClock} tone="from-sky-500 via-cyan-500 to-blue-500" hex="#0ea5e9" spark="line" variant="line" uid="t3" />
+                <StatTile label="Done Today" short="COMPLETED" value={counts.done_today} icon={CheckCircle2} tone="from-emerald-500 via-teal-500 to-cyan-500" hex="#10b981" spark="rise" variant="line" uid="t4" />
             </div>
 
-            {/* ── Sticky: filter bar ── */}
-            <div className="sticky top-0 z-10 -mx-2 px-2 sm:-mx-5 sm:px-5 md:-mx-8 md:px-8 bg-background space-y-2 pb-1">
-                {/* Date filter chips */}
-                <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <div className="flex gap-1.5 w-max items-center">
-                        {DATE_PRESETS.map(p => {
-                            const PresetIcon = p.icon;
-                            const active = datePreset === p.value;
-                            return (
-                                <button key={p.value} onClick={() => setDatePreset(p.value)}
-                                    className={`flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${
-                                        active
-                                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
-                                    }`}>
-                                    <PresetIcon className={`h-3 w-3 ${active ? 'text-white/70' : 'text-slate-400'}`} />
-                                    {p.label}
+            {/* ══════ FILTERS — editorial pills ══════ */}
+            <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Filter range</p>
+                    {refreshing && (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Syncing
+                        </span>
+                    )}
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                    {DATE_PRESETS.map(p => {
+                        const PresetIcon = p.icon;
+                        const active = datePreset === p.value;
+                        return (
+                            <button key={p.value} onClick={() => setDatePreset(p.value)}
+                                className={`shrink-0 h-9 pl-2.5 pr-3.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
+                                    active
+                                        ? 'bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-sm shadow-indigo-300/40 ring-transparent'
+                                        : 'bg-white text-slate-600 ring-slate-200'
+                                }`}>
+                                <PresetIcon className={`h-3 w-3 ${active ? 'text-white/80' : 'text-slate-400'}`} />
+                                {p.label}
+                            </button>
+                        );
+                    })}
+                    <button onClick={() => setDatePreset('custom')}
+                        className={`shrink-0 h-9 pl-2.5 pr-3.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
+                            datePreset === 'custom'
+                                ? 'bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-sm shadow-indigo-300/40 ring-transparent'
+                                : 'bg-white text-slate-600 ring-slate-200'
+                        }`}>
+                        <CalendarDays className={`h-3 w-3 ${datePreset === 'custom' ? 'text-white/80' : 'text-slate-400'}`} />
+                        Custom
+                    </button>
+                </div>
+
+                {/* Custom from/to pickers */}
+                {datePreset === 'custom' && (
+                    <div className="flex items-center gap-2">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <button className="flex-1 h-10 px-3 rounded-xl text-[12px] font-semibold ring-1 ring-slate-200 bg-white text-slate-700 flex items-center gap-2">
+                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                                    {customDateFrom ? format(customDateFrom, 'dd MMM yyyy') : 'From date'}
                                 </button>
-                            );
-                        })}
-
-                        {/* Custom from/to pickers */}
-                        {datePreset === 'custom' && (
-                            <>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
-                                            <CalendarDays className="h-3 w-3 text-slate-400" />
-                                            {customDateFrom ? format(customDateFrom, 'dd MMM') : 'From'}
-                                        </button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} />
-                                    </PopoverContent>
-                                </Popover>
-                                <span className="text-slate-300 text-xs">→</span>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <button className="flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
-                                            <CalendarDays className="h-3 w-3 text-slate-400" />
-                                            {customDateTo ? format(customDateTo, 'dd MMM') : 'To'}
-                                        </button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar mode="single" selected={customDateTo} onSelect={setCustomDateTo} />
-                                    </PopoverContent>
-                                </Popover>
-                            </>
-                        )}
-
-                        {/* Add custom option */}
-                        <button onClick={() => setDatePreset('custom')}
-                            className={`flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${
-                                datePreset === 'custom'
-                                    ? 'bg-slate-900 text-white border-slate-900'
-                                    : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                            }`}>
-                            <CalendarDays className={`h-3 w-3 ${datePreset === 'custom' ? 'text-white/70' : 'text-slate-400'}`} />
-                            Custom
-                        </button>
-
-                        {/* Search/Refresh */}
-                        <Button size="sm" onClick={() => fetchData(1)} disabled={loading}
-                            className="h-8 px-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-semibold shrink-0 flex items-center">
-                            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                            Search
-                        </Button>
-                        {refreshing && <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} />
+                            </PopoverContent>
+                        </Popover>
+                        <span className="text-slate-300 text-xs">→</span>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <button className="flex-1 h-10 px-3 rounded-xl text-[12px] font-semibold ring-1 ring-slate-200 bg-white text-slate-700 flex items-center gap-2">
+                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                                    {customDateTo ? format(customDateTo, 'dd MMM yyyy') : 'To date'}
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="end">
+                                <Calendar mode="single" selected={customDateTo} onSelect={setCustomDateTo} />
+                            </PopoverContent>
+                        </Popover>
                     </div>
-                </div>
+                )}
+
+                <Button onClick={() => fetchData(1)} disabled={loading}
+                    className="w-full h-10 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-[12px] font-bold ring-1 ring-indigo-100 shadow-none">
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Refresh results
+                </Button>
             </div>
 
-            {/* ── Active Call Banner ── */}
+            {/* ══════ Active Call Banner — editorial ══════ */}
             {activeCall && (
-                <div className="relative overflow-hidden rounded-xl bg-white border-2 border-emerald-400 shadow-md shadow-emerald-100 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-400 to-green-500" />
-                    <div className="p-4">
+                <div className="relative overflow-hidden rounded-[22px] bg-white ring-1 ring-emerald-200 shadow-[0_10px_26px_-12px_rgba(16,185,129,0.35)] animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-cyan-500" />
+                    <div className="p-4 pt-5">
                         <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 animate-pulse">
+                            <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0 ring-1 ring-emerald-100 animate-pulse">
                                 <PhoneCall className="h-5 w-5 text-emerald-600" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Active Call</p>
-                                <p className="text-sm font-bold text-slate-900 truncate">{activeCall.leadName}</p>
-                                <p className="text-xs text-slate-500 font-mono">{activeCall.leadPhone}</p>
+                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-[0.22em]">Active Call</p>
+                                <p className="text-[15px] font-bold text-slate-900 truncate leading-tight mt-0.5" style={serif}>{activeCall.leadName}</p>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{activeCall.leadPhone}</p>
                                 {isNativeApp && !activeCall.isConnected && (
-                                    <p className="text-[11px] text-amber-600 font-semibold mt-0.5">Ringing…</p>
+                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">Ringing…</p>
                                 )}
                             </div>
                             <div className="text-right shrink-0">
-                                <p className="text-[10px] text-emerald-600 font-semibold uppercase">Duration</p>
-                                <p className="text-2xl font-mono font-bold text-slate-900 tabular-nums">{formatDuration(callTimer)}</p>
+                                <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-[0.22em]">Duration</p>
+                                <p className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mt-1" style={serif}>{formatDuration(callTimer)}</p>
                             </div>
                         </div>
                         <Button onClick={handleEndCallClick}
-                            className="w-full h-10 mt-3 bg-red-500 hover:bg-red-600 text-white rounded-xl shadow-sm gap-2 font-semibold text-sm">
+                            className="w-full h-11 mt-4 bg-linear-to-r from-rose-500 to-red-500 hover:from-rose-600 hover:to-red-600 text-white rounded-xl shadow-md shadow-rose-200/50 gap-2 font-bold text-sm">
                             <PhoneOff className="h-4 w-4" /> End Call
                         </Button>
                     </div>
-                    <FlowCurve color="#10b981" opacity={0.08} />
                 </div>
             )}
+
+            {/* ══════ List header ══════ */}
+            <div className="flex items-end justify-between pt-2">
+                <h2 className="text-[18px] font-bold text-slate-900 tracking-tight" style={serif}>
+                    Follow-up
+                    <span className="italic text-slate-500 ml-1.5 font-normal">queue</span>
+                </h2>
+                {!loading && followups.length > 0 && (
+                    <span className="text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase tabular-nums pb-1">
+                        {pagination.total} total
+                    </span>
+                )}
+            </div>
 
             {/* ── Follow-up Cards ── */}
             {loading ? (
@@ -483,12 +553,12 @@ const ScheduledCalls = () => {
                     {Array(5).fill(0).map((_, i) => <CardSkeleton key={i} />)}
                 </div>
             ) : followups.length === 0 ? (
-                <div className="text-center py-16 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                    <div className="h-14 w-14 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-3">
-                        <CalendarClock className="h-7 w-7 text-indigo-400" />
+                <div className="rounded-[22px] bg-linear-to-br from-indigo-50/60 to-violet-50/40 py-14 flex flex-col items-center ring-1 ring-indigo-100/60">
+                    <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
+                        <CalendarClock className="h-6 w-6 text-indigo-400" strokeWidth={2} />
                     </div>
-                    <p className="text-sm font-semibold text-slate-800">No follow-ups found</p>
-                    <p className="text-xs text-slate-400 mt-1">Try a different date range</p>
+                    <p className="text-sm font-bold text-slate-800" style={serif}>No follow-ups found</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Try a different date range.</p>
                 </div>
             ) : (
                 <div className="space-y-2.5">
@@ -501,15 +571,15 @@ const ScheduledCalls = () => {
 
                         return (
                             <div key={f.id}
-                                className={`relative overflow-hidden rounded-xl bg-white shadow-sm transition-all duration-200 ${
+                                className={`relative overflow-hidden rounded-[22px] bg-white transition-all duration-200 ${
                                     isCalling
-                                        ? 'border-2 border-emerald-400 shadow-emerald-100 shadow-md'
+                                        ? 'ring-1 ring-emerald-300 shadow-[0_10px_26px_-12px_rgba(16,185,129,0.35)]'
                                         : overdue
-                                        ? 'border border-rose-200 shadow-rose-100'
-                                        : 'border border-slate-100 hover:shadow-md hover:border-slate-200'
+                                        ? 'ring-1 ring-rose-200 shadow-[0_6px_20px_-12px_rgba(244,63,94,0.25)]'
+                                        : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
                                 }`}>
                                 {/* Top accent bar */}
-                                <div className="absolute top-0 left-0 right-0 h-0.75"
+                                <div className="absolute top-0 left-0 right-0 h-1"
                                     style={{ backgroundColor: isCalling ? '#10b981' : overdue ? '#f43f5e' : theme.accent }} />
 
                                 <div className="p-3.5 pt-4">
@@ -620,8 +690,6 @@ const ScheduledCalls = () => {
                                         )}
                                     </div>
                                 </div>
-
-                                <FlowCurve color={isCalling ? '#10b981' : overdue ? '#f43f5e' : theme.accent} opacity={0.07} />
                             </div>
                         );
                     })}

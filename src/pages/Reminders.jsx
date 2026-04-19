@@ -26,13 +26,45 @@ import {
     Timer, Zap, AlarmClock, CircleDot,
 } from 'lucide-react';
 
-/* ─── Flow Curve (same as Dashboard) ─── */
-const FlowCurve = ({ color = '#0ea5e9', opacity = 0.13 }) => (
-    <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="34" viewBox="0 0 400 34" preserveAspectRatio="none">
-        <path d="M0,22 C50,10 110,34 180,18 C250,2 320,30 400,14 L400,38 L0,38 Z" fill={color} opacity={opacity} />
-        <path d="M0,28 C70,14 140,36 220,22 C300,8 360,30 400,20 L400,38 L0,38 Z" fill={color} opacity={opacity * 0.6} />
-    </svg>
-);
+/* ─── Editorial serif ─── */
+const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
+
+/* ─── Mini sparkline (editorial stat cards) ─── */
+const SPARK_PATTERNS = {
+    line: [3, 5, 4, 6, 5, 8, 7, 9],
+    bars: [3, 6, 4, 7, 5, 8, 6, 9],
+    down: [9, 7, 8, 5, 6, 3, 4, 2],
+    rise: [2, 4, 3, 5, 6, 7, 8, 9],
+};
+const MiniSpark = ({ color = '#6366f1', pattern = 'line', variant = 'line', uid = 'x' }) => {
+    const data = SPARK_PATTERNS[pattern] || SPARK_PATTERNS.line;
+    const w = 56, h = 24, max = 10, step = w / (data.length - 1);
+    if (variant === 'bars') {
+        const bw = (w - (data.length * 2)) / data.length;
+        return (
+            <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0 opacity-85" preserveAspectRatio="none">
+                {data.map((v, i) => {
+                    const bh = (v / max) * h;
+                    return <rect key={i} x={i * (bw + 2)} y={h - bh} width={bw} height={bh} rx="1" fill={color} opacity={0.55 + (v / max) * 0.45} />;
+                })}
+            </svg>
+        );
+    }
+    const pts = data.map((v, i) => `${i * step},${h - (v / max) * h}`).join(' ');
+    const area = `0,${h} ${pts} ${w},${h}`;
+    return (
+        <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0" preserveAspectRatio="none">
+            <defs>
+                <linearGradient id={`rm-${uid}`} x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                </linearGradient>
+            </defs>
+            <polyline points={area} fill={`url(#rm-${uid})`} stroke="none" />
+            <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+};
 
 /* ─── Design Tokens ─── */
 const TYPE_THEME = {
@@ -104,7 +136,7 @@ const fmtTime = (d) => {
 };
 
 const CardRibbon = ({ ribbon }) => (
-    <div className={`absolute top-0 left-2.5 right-2.5 h-1.5 rounded-b-lg bg-linear-to-r ${ribbon}`} />
+    <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${ribbon}`} />
 );
 
 /* ─── Schedule Dialog ─── */
@@ -205,10 +237,10 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
     const timeStr = fmtTime(r.due_date);
 
     return (
-        <div className={`relative overflow-hidden rounded-2xl bg-linear-to-br from-white via-white to-slate-50/40 border border-slate-200/80 ring-1 ring-slate-100/80 shadow-[0_8px_20px_rgba(15,23,42,0.06)] transition-all duration-200 hover:shadow-[0_10px_24px_rgba(15,23,42,0.1)] hover:border-slate-300 ${isDone ? 'opacity-55' : ''}`}>
+        <div className={`relative overflow-hidden rounded-[22px] bg-white ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)] transition-all duration-200 ${isDone ? 'opacity-55' : ''}`}>
             <CardRibbon ribbon={theme.ribbon} />
 
-            <div className="p-3.5 pt-4.5">
+            <div className="p-3.5 pt-4">
                 {/* ── Header: avatar + name/phone + time ── */}
                 <div className="flex items-center gap-3">
                     <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ring-1 ring-black/5 ${theme.iconCls}`}>
@@ -315,16 +347,13 @@ const ReminderCard = ({ r, onComplete, onSnooze, onSchedule, onCall, actionLoadi
                     </div>
                 )}
             </div>
-
-            {/* Flow curve */}
-            <FlowCurve color={theme.accent} opacity={0.07} />
         </div>
     );
 };
 
 /* ─── Skeleton ─── */
 const CardSkeleton = () => (
-    <div className="rounded-2xl bg-white border border-slate-200/80 p-3.5 pt-5 overflow-hidden">
+    <div className="rounded-[22px] bg-white ring-1 ring-slate-100 p-3.5 pt-4 overflow-hidden">
         <div className="flex items-center gap-3">
             <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
             <div className="flex-1 space-y-1.5"><Skeleton className="h-3.5 w-32 rounded" /><Skeleton className="h-3 w-20 rounded" /></div>
@@ -338,21 +367,50 @@ const CardSkeleton = () => (
     </div>
 );
 
-/* ─── Stat Card (matches Dashboard) ─── */
-const StatTile = ({ label, value, icon: Icon, tone, hex, active, onClick }) => (
+/* ─── Stat Tile — editorial ─── */
+const StatTile = ({ label, short, value, icon: Icon, tone, hex, spark = 'line', variant = 'line', uid = 'x', active, onClick }) => (
     <button onClick={onClick}
-        className={`relative overflow-hidden rounded-2xl bg-white border p-3 pb-10 text-left transition-all duration-200 shadow-sm shrink-0 w-26.5 ${
-            active ? 'border-slate-300 shadow-md ring-1 ring-slate-200' : 'border-slate-100 hover:shadow-md hover:border-slate-200'
-        }`}>
-        <div className={`absolute top-0 left-2 right-2 h-1.5 rounded-b-md bg-linear-to-r ${tone}`} />
-        <div className={`h-7 w-7 rounded-lg flex items-center justify-center ${
-            active ? 'scale-110' : ''
-        } transition-transform`} style={{ backgroundColor: hex + '18', color: hex }}>
-            <Icon className="h-3.5 w-3.5" />
+        className={`group relative overflow-hidden rounded-[22px] bg-white p-3.5 pt-4 text-left transition-all duration-150 active:scale-[0.97] ${
+            active
+                ? 'ring-2 ring-offset-0 shadow-[0_10px_26px_-12px_rgba(15,23,42,0.2)]'
+                : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
+        }`}
+        style={active ? { '--tw-ring-color': hex + '4d' } : undefined}>
+        <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${tone}`} />
+        <div className="flex items-center justify-between">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: hex }}>{short}</p>
+            <div className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: hex + '1a', color: hex }}>
+                <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+            </div>
         </div>
-        <p className="text-xl font-bold text-slate-900 mt-2 leading-none">{value}</p>
-        <p className="text-[10px] font-semibold text-slate-500 mt-1">{label}</p>
-        <FlowCurve color={hex} opacity={0.1} />
+        <div className="mt-3 flex items-end justify-between gap-2">
+            <p className="text-[30px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>{value ?? 0}</p>
+            <MiniSpark color={hex} pattern={spark} variant={variant} uid={uid} />
+        </div>
+        <p className="text-[12px] font-semibold text-slate-800 mt-2.5">{label}</p>
+    </button>
+);
+
+/* ─── Wide Stat Tile — editorial (Matter Leads pattern) ─── */
+const WideStatTile = ({ label, short, hint, value, icon: Icon, tone, hex, spark = 'rise', variant = 'line', uid = 'w', active, onClick }) => (
+    <button onClick={onClick}
+        className={`relative w-full overflow-hidden rounded-[22px] bg-white p-4 pt-5 text-left transition-all duration-150 active:scale-[0.98] flex items-center gap-3.5 ${
+            active
+                ? 'ring-2 shadow-[0_10px_26px_-12px_rgba(15,23,42,0.2)]'
+                : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
+        }`}
+        style={active ? { '--tw-ring-color': hex + '4d' } : undefined}>
+        <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${tone}`} />
+        <div className="h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ring-1 ring-slate-100" style={{ backgroundColor: hex + '1a', color: hex }}>
+            <Icon className="h-5.5 w-5.5" strokeWidth={2} />
+        </div>
+        <div className="flex-1 min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: hex }}>{short}</p>
+            <p className="text-[28px] font-bold text-slate-900 leading-none tabular-nums tracking-tight mt-1" style={serif}>{value ?? 0}</p>
+            <p className="text-[11px] font-semibold text-slate-700 mt-1">{label} <span className="font-medium text-slate-400">· {hint}</span></p>
+        </div>
+        <MiniSpark color={hex} pattern={spark} variant={variant} uid={uid} />
+        <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
     </button>
 );
 
@@ -432,87 +490,121 @@ const Reminders = () => {
 
     const filterCountMap = { all: pagination.total, uncontacted: counts.uncontacted, pending: counts.pending, snoozed: counts.snoozed, completed: counts.completed };
 
-    return (
-        <div className="space-y-4 pb-6">
+    const descriptiveLine = (() => {
+        const parts = [];
+        if (counts.uncontacted > 0) parts.push(`${counts.uncontacted} uncontacted`);
+        if (counts.pending > 0) parts.push(`${counts.pending} pending`);
+        if (counts.dueToday > 0) parts.push(`${counts.dueToday} due today`);
+        if (parts.length === 0) return 'Inbox zero — everything handled.';
+        return parts.slice(0, 2).join(' · ') + '.';
+    })();
 
-            {/* ── Stat tiles (Dashboard-style with flow curves) ── */}
-            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex gap-2.5 w-max">
-                    <StatTile label="Uncontacted" value={counts.uncontacted} icon={UserX}
-                        tone="from-rose-400 to-rose-500" hex="#f43f5e"
-                        active={filter === 'uncontacted'}
-                        onClick={() => setFilter(f => f === 'uncontacted' ? 'all' : 'uncontacted')} />
-                    <StatTile label="Pending" value={counts.pending} icon={Clock}
-                        tone="from-amber-400 to-amber-500" hex="#f59e0b"
-                        active={filter === 'pending'}
-                        onClick={() => setFilter(f => f === 'pending' ? 'all' : 'pending')} />
-                    <StatTile label="Due Today" value={counts.dueToday} icon={Timer}
-                        tone="from-red-400 to-red-500" hex="#ef4444"
-                        active={false} onClick={() => {}} />
-                    <StatTile label="Done" value={counts.completed} icon={CheckCircle2}
-                        tone="from-emerald-400 to-emerald-500" hex="#10b981"
-                        active={filter === 'completed'}
-                        onClick={() => setFilter(f => f === 'completed' ? 'all' : 'completed')} />
-                    <StatTile label="Snoozed" value={counts.snoozed} icon={AlarmClock}
-                        tone="from-slate-400 to-slate-500" hex="#64748b"
-                        active={filter === 'snoozed'}
-                        onClick={() => setFilter(f => f === 'snoozed' ? 'all' : 'snoozed')} />
-                </div>
+    return (
+        <div className="space-y-5 pb-6">
+
+            {/* ══════ HEADER — editorial ══════ */}
+            <header className="space-y-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Inbox</p>
+                <h1 className="leading-[1.05] tracking-tight flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[28px] font-bold text-slate-900">Your</span>
+                    <span className="text-[28px] font-normal italic text-indigo-600" style={serif}>reminders.</span>
+                </h1>
+                <p className="text-[13px] text-slate-500 italic leading-snug max-w-70" style={serif}>
+                    {descriptiveLine}
+                </p>
+            </header>
+
+            {/* ══════ STATS — editorial 2×2 + wide ══════ */}
+            <div className="grid grid-cols-2 gap-3">
+                <StatTile label="Uncontacted" short="NEW LEADS" value={counts.uncontacted} icon={UserX}
+                    tone="from-rose-500 via-pink-500 to-fuchsia-500" hex="#f43f5e"
+                    spark="rise" variant="line" uid="r1"
+                    active={filter === 'uncontacted'}
+                    onClick={() => setFilter(f => f === 'uncontacted' ? 'all' : 'uncontacted')} />
+                <StatTile label="Pending" short="OPEN" value={counts.pending} icon={Clock}
+                    tone="from-orange-500 via-amber-500 to-yellow-500" hex="#f59e0b"
+                    spark="bars" variant="bars" uid="r2"
+                    active={filter === 'pending'}
+                    onClick={() => setFilter(f => f === 'pending' ? 'all' : 'pending')} />
+                <StatTile label="Due Today" short="URGENT" value={counts.dueToday} icon={Timer}
+                    tone="from-red-500 via-rose-500 to-pink-500" hex="#ef4444"
+                    spark="rise" variant="line" uid="r3"
+                    active={false} onClick={() => {}} />
+                <StatTile label="Done" short="COMPLETED" value={counts.completed} icon={CheckCircle2}
+                    tone="from-emerald-500 via-teal-500 to-cyan-500" hex="#10b981"
+                    spark="rise" variant="line" uid="r4"
+                    active={filter === 'completed'}
+                    onClick={() => setFilter(f => f === 'completed' ? 'all' : 'completed')} />
             </div>
 
-            {/* ── Sticky: Search + Filter chips ── */}
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm space-y-2 pb-1.5 pt-0.5">
-                {/* Search */}
-                <div className="relative overflow-hidden rounded-xl bg-white border border-slate-100 shadow-sm">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                    <Input
-                        placeholder="Search name or phone…"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="pl-10 pr-10 h-11 border-0 shadow-none text-sm placeholder:text-slate-300 focus-visible:ring-0"
-                        autoComplete="off"
-                    />
-                    {search ? (
-                        <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
-                            <X className="h-4 w-4" />
-                        </button>
-                    ) : (
-                        <>
-                            <button onClick={() => fetchReminders(pagination.page, filter, search)} disabled={loading}
-                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 disabled:opacity-40" tabIndex={-1}>
-                                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                            </button>
-                            {refreshing && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />}
-                        </>
-                    )}
-                </div>
+            <WideStatTile label="Snoozed" short="PAUSED" hint="Resume later"
+                value={counts.snoozed} icon={AlarmClock}
+                tone="from-sky-500 via-cyan-500 to-blue-500" hex="#0ea5e9"
+                spark="line" variant="line" uid="r5"
+                active={filter === 'snoozed'}
+                onClick={() => setFilter(f => f === 'snoozed' ? 'all' : 'snoozed')} />
 
-                {/* Filter chips */}
-                <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <div className="flex gap-1.5 w-max">
-                        {FILTERS.map(f => {
-                            const active = filter === f.value;
-                            const cnt = filterCountMap[f.value];
-                            const FilterIcon = f.icon;
-                            return (
-                                <button key={f.value} onClick={() => setFilter(f.value)}
-                                    className={`flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border transition-all whitespace-nowrap ${
-                                        active
-                                            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                                            : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:text-slate-700'
-                                    }`}>
-                                    <FilterIcon className={`h-3 w-3 ${active ? 'text-white/70' : 'text-slate-400'}`} />
-                                    {f.label}
-                                    {cnt > 0 && (
-                                        <span className={`text-[10px] font-bold min-w-4.5 text-center px-1 rounded-full leading-4 ${
-                                            active ? 'bg-white/20' : 'bg-slate-100 text-slate-400'
-                                        }`}>{cnt}</span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
+            {/* ══════ SEARCH ══════ */}
+            <div className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <Input
+                    placeholder="Search name or phone…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-10 pr-10 h-11 border-0 shadow-none text-sm placeholder:text-slate-300 focus-visible:ring-0"
+                    autoComplete="off"
+                />
+                {search ? (
+                    <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
+                        <X className="h-4 w-4" />
+                    </button>
+                ) : (
+                    <>
+                        <button onClick={() => fetchReminders(pagination.page, filter, search)} disabled={loading}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 disabled:opacity-40" tabIndex={-1}>
+                            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                        </button>
+                        {refreshing && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" />}
+                    </>
+                )}
+            </div>
+
+            {/* ══════ FILTERS — editorial pills ══════ */}
+            <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {FILTERS.map(f => {
+                    const active = filter === f.value;
+                    const cnt = filterCountMap[f.value];
+                    const FilterIcon = f.icon;
+                    return (
+                        <button key={f.value} onClick={() => setFilter(f.value)}
+                            className={`shrink-0 h-9 pl-2.5 pr-3 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
+                                active
+                                    ? 'bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-sm shadow-indigo-300/40 ring-transparent'
+                                    : 'bg-white text-slate-600 ring-slate-200'
+                            }`}>
+                            <FilterIcon className={`h-3 w-3 ${active ? 'text-white/80' : 'text-slate-400'}`} />
+                            {f.label}
+                            {cnt > 0 && (
+                                <span className={`text-[10px] font-bold min-w-4.5 text-center px-1 rounded-full leading-4 ${
+                                    active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                                }`}>{cnt}</span>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* ══════ List header ══════ */}
+            <div className="flex items-end justify-between pt-1">
+                <h2 className="text-[18px] font-bold text-slate-900 tracking-tight" style={serif}>
+                    Reminder
+                    <span className="italic text-slate-500 ml-1.5 font-normal">queue</span>
+                </h2>
+                {!loading && reminders.length > 0 && (
+                    <span className="text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase tabular-nums pb-1">
+                        {pagination.total} total
+                    </span>
+                )}
             </div>
 
             {/* ── Cards ── */}
@@ -521,12 +613,12 @@ const Reminders = () => {
                     {Array(5).fill(0).map((_, i) => <CardSkeleton key={i} />)}
                 </div>
             ) : reminders.length === 0 ? (
-                <div className="text-center py-16 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                    <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-3">
-                        <CheckCircle2 className="h-7 w-7 text-emerald-500" />
+                <div className="rounded-[22px] bg-linear-to-br from-emerald-50/80 to-teal-50/60 py-14 flex flex-col items-center ring-1 ring-emerald-100/60">
+                    <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-emerald-100">
+                        <CheckCircle2 className="h-6 w-6 text-emerald-500" strokeWidth={2} />
                     </div>
-                    <p className="text-sm font-semibold text-slate-800">All caught up!</p>
-                    <p className="text-xs text-slate-400 mt-1">No reminders match this filter</p>
+                    <p className="text-sm font-bold text-slate-800" style={serif}>All caught up!</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">No reminders match this filter.</p>
                 </div>
             ) : (
                 <div className="space-y-3">
