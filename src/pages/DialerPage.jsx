@@ -102,11 +102,11 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
   </svg>
 );
 
-/* ── Keypad button with haptic-feel animation ─────────────────────────────── */
+/* ── Keypad button — professional phone dialer style ─────────────────────── */
 const KeyBtn = memo(({ digit, letters, onPress }) => {
   const [pressed, setPressed] = useState(false);
-  const handleDown = () => setPressed(true);
-  const handleUp = () => { setPressed(false); onPress(digit); };
+  const handleDown = (e) => { e.preventDefault(); setPressed(true); };
+  const handleUp = (e) => { e.preventDefault(); setPressed(false); onPress(digit); };
 
   return (
     <button
@@ -114,23 +114,85 @@ const KeyBtn = memo(({ digit, letters, onPress }) => {
       onPointerDown={handleDown}
       onPointerUp={handleUp}
       onPointerLeave={() => setPressed(false)}
-      className={`h-[4.2rem] w-[4.2rem] rounded-full bg-white border border-slate-200/80
-        flex flex-col items-center justify-center select-none
-        shadow-[0_2px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm
-        transition-all duration-100 ease-out
+      onPointerCancel={() => setPressed(false)}
+      className={`relative flex flex-col items-center justify-center select-none rounded-full
+        transition-all duration-75 ease-out touch-none
+        h-[4.6rem] w-[4.6rem]
         ${pressed
-          ? 'scale-[0.88] shadow-none bg-slate-100 border-slate-300'
-          : 'hover:bg-slate-50 active:scale-[0.88]'
+          ? 'scale-[0.86] bg-emerald-50 shadow-inner border border-emerald-200'
+          : 'bg-white border border-slate-200 shadow-[0_2px_10px_rgba(0,0,0,0.06)] hover:bg-slate-50 hover:border-slate-300 hover:shadow-[0_4px_12px_rgba(0,0,0,0.10)]'
         }`}
     >
-      <span className="text-[1.35rem] font-semibold text-slate-900 leading-none">{digit}</span>
+      <span className={`text-[1.45rem] font-light leading-none transition-colors duration-75
+        ${pressed ? 'text-emerald-700' : 'text-slate-800'}`}>
+        {digit}
+      </span>
       {letters && (
-        <span className="text-[8px] font-medium text-slate-400 leading-none mt-0.5 tracking-[0.18em]">{letters}</span>
+        <span className={`text-[8.5px] font-semibold leading-none mt-[3px] tracking-[0.2em] transition-colors duration-75
+          ${pressed ? 'text-emerald-500' : 'text-slate-400'}`}>
+          {letters}
+        </span>
       )}
     </button>
   );
 });
 KeyBtn.displayName = 'KeyBtn';
+
+/* ── Suggestion chip for horizontal ribbon ───────────────────────────────── */
+const SuggestionChip = memo(({ s, onSelect, onCall }) => {
+  const pointerStart = useRef(null);
+  const didScroll = useRef(false);
+
+  const handlePointerDown = (e) => {
+    pointerStart.current = { x: e.clientX, y: e.clientY };
+    didScroll.current = false;
+  };
+  const handlePointerMove = (e) => {
+    if (!pointerStart.current) return;
+    const dx = Math.abs(e.clientX - pointerStart.current.x);
+    const dy = Math.abs(e.clientY - pointerStart.current.y);
+    if (dx > 6 || dy > 6) didScroll.current = true;
+  };
+  const handlePointerUp = () => {
+    if (!didScroll.current) onSelect(s.phone);
+    pointerStart.current = null;
+  };
+
+  const avatarColor =
+    s.type === 'history' ? 'bg-gradient-to-br from-slate-400 to-slate-600'
+    : s.type === 'lead'  ? 'bg-gradient-to-br from-emerald-400 to-green-600'
+    :                      'bg-gradient-to-br from-blue-400 to-indigo-600';
+
+  return (
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3 py-2
+                 shadow-sm hover:border-emerald-300 hover:shadow-emerald-100/60 hover:shadow-md
+                 active:scale-[0.97] transition-all duration-150 cursor-pointer select-none touch-pan-x
+                 min-w-[9rem] max-w-[12rem]"
+    >
+      <div className={`h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white ${avatarColor}`}>
+        {s.name?.charAt(0)?.toUpperCase() || '#'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] font-semibold text-slate-800 truncate leading-tight">{s.name}</p>
+        <p className="text-[10px] text-slate-400 font-mono leading-tight truncate">{s.phone}</p>
+      </div>
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onCall(s.phone, { name: s.name, leadId: s.leadId || s.id }); }}
+        className="h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center
+                   shrink-0 hover:bg-emerald-600 active:scale-90 transition-all shadow-sm shadow-emerald-300/50"
+      >
+        <PhoneCall className="h-3 w-3" />
+      </button>
+    </div>
+  );
+});
+SuggestionChip.displayName = 'SuggestionChip';
 
 /* ── History row — expandable accordion ─────────────────────────────────── */
 const HistoryRow = memo(({ call, onCall, outcomes, onUpdate }) => {
@@ -997,39 +1059,37 @@ const DialerPage = () => {
       {/* ══ SCROLLABLE CONTENT AREA ══ */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col items-center px-3 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))]">
       {tab === 'keypad' && (
-        <div className="w-full max-w-xs flex flex-col items-center animate-in fade-in duration-200">
+        <div className="w-full max-w-sm flex flex-col items-center animate-in fade-in duration-200 pt-2">
 
-          {/* ── Number input row ── */}
-          <div className="w-full flex items-center gap-1.5 px-1 mt-4 mb-1">
+          {/* ── Number display — large, phone-style ── */}
+          <div className="w-full flex items-center justify-between px-2 mb-3 min-h-[3.75rem]">
             {/* X — clear entire number */}
             <button
               type="button"
               onClick={onClearNumber}
-              className={`h-10 w-10 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0
+              className={`h-11 w-11 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 shrink-0
                           ${number.length > 0
                             ? 'text-slate-400 hover:bg-rose-50 hover:text-rose-500 opacity-100'
                             : 'opacity-0 pointer-events-none'}`}
             >
-              <X className="h-5 w-5" />
+              <X className="h-[1.2rem] w-[1.2rem]" />
             </button>
 
-            {/* Editable number — tap anywhere to place cursor */}
+            {/* Editable number — centered, large */}
             <input
               ref={numberInputRef}
               type="tel"
               inputMode="none"
               value={number}
               onChange={e => setNumber(cleanNumber(e.target.value))}
-              onFocus={(e) => {
-                if (isNativeApp()) {
-                  e.target.blur();
-                }
-              }}
+              onFocus={(e) => { if (isNativeApp()) e.target.blur(); }}
               readOnly={isNativeApp()}
               placeholder="Enter number"
-              className="flex-1 min-w-0 text-center text-2xl font-mono font-semibold text-slate-900 tracking-wider
-                         bg-transparent border-none outline-none caret-green-500
-                         placeholder:text-slate-300 placeholder:text-lg placeholder:font-normal placeholder:tracking-normal"
+              className={`flex-1 min-w-0 text-center bg-transparent border-none outline-none caret-emerald-500
+                         font-light text-slate-900 tracking-[0.12em]
+                         placeholder:text-slate-300 placeholder:font-normal placeholder:tracking-normal
+                         transition-all duration-200
+                         ${number.length > 10 ? 'text-[1.65rem]' : number.length > 6 ? 'text-[2rem]' : 'text-[2.4rem]'}`}
               autoComplete="off"
               autoCorrect="off"
               spellCheck="false"
@@ -1039,66 +1099,48 @@ const DialerPage = () => {
             <button
               type="button"
               onPointerDown={e => { e.preventDefault(); onBackspace(); }}
-              className={`h-10 w-10 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0
+              className={`h-11 w-11 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90 shrink-0
                           ${number.length > 0
                             ? 'text-slate-400 hover:bg-slate-100 opacity-100'
                             : 'opacity-0 pointer-events-none'}`}
             >
-              <Delete className="h-5 w-5" />
+              <Delete className="h-[1.2rem] w-[1.2rem]" />
             </button>
           </div>
 
-          {/* ── Suggestions — directly below input for app-like flow ── */}
-          {suggestions.length > 0 && (
-            <div className="w-full mt-2 mb-3 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-in fade-in duration-150 touch-pan-y max-h-36 overflow-y-auto">
-              {suggestions.map((s, i) => (
-                <div
-                  key={`${s.phone}-${i}`}
-                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 active:bg-slate-100/70
-                             transition-colors border-b border-slate-50 last:border-0"
-                >
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold text-white
-                      ${s.type === 'history' ? 'bg-linear-to-br from-slate-400 to-slate-600'
-                        : s.type === 'lead'  ? 'bg-linear-to-br from-emerald-400 to-green-600'
-                        : 'bg-linear-to-br from-blue-400 to-indigo-600'}`}>
-                    {s.name?.charAt(0)?.toUpperCase() || '#'}
-                  </div>
-                  <button
-                    type="button"
-                    className="flex-1 min-w-0 text-left"
-                    onClick={() => {
-                      setNumber(s.phone);
-                    }}
-                  >
-                    <p className="text-[13px] font-semibold text-slate-800 truncate leading-tight">{s.name}</p>
-                    <p className="text-[11px] text-slate-400 font-mono leading-tight">{s.phone}</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      startCall(s.phone, { name: s.name, leadId: s.leadId || s.id });
-                    }}
-                    className="h-7 w-7 rounded-full bg-emerald-500/12 text-emerald-600 border border-emerald-200/70
-                               flex items-center justify-center hover:bg-emerald-500/20 active:scale-90 transition-all shrink-0"
-                  >
-                    <PhoneCall className="h-3.5 w-3.5" />
-                  </button>
+          {/* ── Suggestions ribbon — horizontal scroll, no vertical scroll glitch ── */}
+          <div className={`w-full transition-all duration-200 ${suggestions.length > 0 ? 'mb-3' : 'mb-0 h-0 overflow-hidden'}`}>
+            {suggestions.length > 0 && (
+              <div className="overflow-x-auto scrollbar-hide -mx-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex gap-2 px-1 pb-1" style={{ width: 'max-content' }}>
+                  {suggestions.map((s, i) => (
+                    <SuggestionChip
+                      key={`${s.phone}-${i}`}
+                      s={s}
+                      onSelect={setNumber}
+                      onCall={startCall}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Keypad grid ── */}
-          <div className="grid grid-cols-3 gap-3 mt-1">
-            {KEYS.map(([d, l]) => <KeyBtn key={d} digit={d} letters={l} onPress={onPressKey} />)}
+              </div>
+            )}
           </div>
 
-          {/* ── Dial action section ── */}
-          <div className="w-full mt-3 mb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] flex flex-col items-center gap-2.5">
+          {/* ── Keypad grid — iOS/Android pro style ── */}
+          <div className="grid grid-cols-3 w-full" style={{ gap: '0.55rem 0.75rem' }}>
+            {KEYS.map(([d, l]) => (
+              <div key={d} className="flex justify-center">
+                <KeyBtn digit={d} letters={l} onPress={onPressKey} />
+              </div>
+            ))}
+          </div>
+
+          {/* ── Dial action row ── */}
+          <div className="w-full mt-4 mb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] flex items-center justify-center relative">
             {sims.length > 1 && (
-              <div className="w-full max-w-46">
+              <div className="absolute left-2">
                 <Select value={selectedSim} onValueChange={setSelectedSim}>
-                  <SelectTrigger className="h-9 rounded-xl border-slate-200 text-xs font-medium text-slate-700 bg-white shadow-sm">
+                  <SelectTrigger className="h-9 w-36 rounded-xl border-slate-200 text-xs font-medium text-slate-700 bg-white shadow-sm">
                     <SelectValue placeholder="Select SIM" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1116,11 +1158,13 @@ const DialerPage = () => {
               type="button"
               onClick={() => startCall(number, {})}
               disabled={!number}
-              className="h-16 w-16 rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-[0.85]
-                         shadow-lg shadow-emerald-500/25 ring-2 ring-white flex items-center justify-center text-white
-                         transition-all duration-200 disabled:opacity-40 disabled:shadow-none disabled:pointer-events-none"
+              className="h-[4.25rem] w-[4.25rem] rounded-full bg-emerald-500 hover:bg-emerald-600
+                         shadow-[0_6px_24px_rgba(16,185,129,0.40)] ring-[3px] ring-white
+                         flex items-center justify-center text-white
+                         transition-all duration-200 active:scale-[0.87]
+                         disabled:opacity-35 disabled:shadow-none disabled:pointer-events-none"
             >
-              <PhoneCall className="h-7 w-7" />
+              <PhoneCall className="h-[1.65rem] w-[1.65rem]" />
             </button>
           </div>
         </div>

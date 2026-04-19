@@ -150,6 +150,8 @@ html, body, #root {
   .scroll-area-thin::-webkit-scrollbar { width: 6px; }
   .scroll-area-thin::-webkit-scrollbar-thumb { background: theme('colors.slate.200'); border-radius: 9999px; }
   .scroll-area-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
 }
 
 /* ========= Mobile / Capacitor responsiveness ========= */
