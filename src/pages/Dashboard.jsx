@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useOffline } from '@/context/OfflineContext';
 import { useNavigate } from 'react-router-dom';
-import { Skeleton } from '@/components/ui/skeleton';
 import LeadSearchWidget from '@/components/LeadSearchWidget';
 import { cachedGet, invalidateCache } from '@/lib/queryCache';
 import api from '@/lib/axios';
@@ -77,13 +76,13 @@ const Dashboard = () => {
   const [matterLeadsTotal, setMatterLeadsTotal] = useState(null);
   const [freshLeadsTotal, setFreshLeadsTotal] = useState(null);
   const [freshLeads, setFreshLeads] = useState([]);
-  const [freshLoading, setFreshLoading] = useState(true);
+  const [freshLoading, setFreshLoading] = useState(false);
   const [callAnalytics, setCallAnalytics] = useState(null);
   const [followupCounts, setFollowupCounts] = useState({ scheduled: 0, today: 0, missed: 0 });
   const [todayFollowups, setTodayFollowups] = useState([]);
   const [allFollowups, setAllFollowups] = useState([]);
   const [fupActionLoading, setFupActionLoading] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [browseCat, setBrowseCat] = useState('ALL');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -468,15 +467,10 @@ const Dashboard = () => {
 
               {/* Value + sparkline */}
               <div className="mt-3 flex items-end justify-between gap-2">
-                {loading
-                  ? <Skeleton className="h-8 w-16 rounded-lg" />
-                  : <p className="text-[34px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>
-                      {fmtNum(card.value)}
-                    </p>
-                }
-                {!loading && (
-                  <MiniSpark color={card.flow} pattern={card.spark} variant={card.variant} uid={`s${idx}`} />
-                )}
+                <p className="text-[34px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>
+                  {fmtNum(card.value)}
+                </p>
+                <MiniSpark color={card.flow} pattern={card.spark} variant={card.variant} uid={`s${idx}`} />
               </div>
 
               {/* Label + hint */}
@@ -502,10 +496,7 @@ const Dashboard = () => {
             </div>
             <div className="flex-1 min-w-0">
               <p className={`text-[9px] font-bold uppercase tracking-[0.22em] ${card.iconColor}`}>{card.short}</p>
-              {loading
-                ? <Skeleton className="h-7 w-16 rounded-lg mt-1" />
-                : <p className="text-[28px] font-bold text-slate-900 leading-none tabular-nums tracking-tight mt-1" style={serif}>{fmtNum(card.value)}</p>
-              }
+              <p className="text-[28px] font-bold text-slate-900 leading-none tabular-nums tracking-tight mt-1" style={serif}>{fmtNum(card.value)}</p>
               <p className="text-[11px] font-semibold text-slate-700 mt-1">{card.label} · <span className="font-medium text-slate-400">{card.hint}</span></p>
             </div>
             <MiniSpark color={card.flow} pattern="rise" variant="line" uid="s4" />
@@ -536,11 +527,7 @@ const Dashboard = () => {
         </div>
 
         <div className="px-3 pb-3">
-          {loading ? (
-            <div className="space-y-2">
-              {[0,1,2].map(i => <Skeleton key={i} className="h-18 w-full rounded-2xl" />)}
-            </div>
-          ) : todayFollowups.length === 0 ? (
+          {todayFollowups.length === 0 ? (
             <div className="rounded-2xl bg-linear-to-br from-emerald-50/80 to-teal-50/60 py-9 flex flex-col items-center ring-1 ring-emerald-100/60">
               <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center mb-2 shadow-sm ring-1 ring-emerald-100">
                 <CheckCircle2 className="h-6 w-6 text-emerald-500" strokeWidth={2} />
@@ -656,18 +643,7 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {freshLoading ? (
-          <div className="flex gap-3 px-4 pb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {[0,1,2,3].map(i => (
-              <div key={i} className="shrink-0 w-40 rounded-2xl bg-slate-50 p-3 space-y-2 ring-1 ring-slate-100">
-                <Skeleton className="h-10 w-10 rounded-2xl" />
-                <Skeleton className="h-4 w-28 rounded" />
-                <Skeleton className="h-3 w-20 rounded" />
-                <Skeleton className="h-8 w-full rounded-xl" />
-              </div>
-            ))}
-          </div>
-        ) : freshLeads.length === 0 ? (
+        {freshLeads.length === 0 ? (
           <div className="px-4 pb-4">
             <div className="rounded-2xl bg-violet-50/60 py-8 flex flex-col items-center ring-1 ring-violet-100/60">
               <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center mb-2 shadow-sm ring-1 ring-violet-100">
@@ -745,13 +721,8 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {loading ? (
-          <div className="space-y-3">
-            {[0,1,2].map(i => <Skeleton key={i} className="h-10 w-full rounded-xl" />)}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pipelineItems.map((item) => {
+        <div className="space-y-3">
+          {pipelineItems.map((item) => {
               const count = pipeline[item.key] || 0;
               const pct = maxPipeline > 0 ? (count / maxPipeline) * 100 : 0;
               return (
@@ -776,8 +747,7 @@ const Dashboard = () => {
                 </button>
               );
             })}
-          </div>
-        )}
+        </div>
       </section>
     </div>
   );

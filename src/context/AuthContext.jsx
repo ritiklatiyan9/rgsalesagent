@@ -141,37 +141,50 @@ export const AuthProvider = ({ children }) => {
       try {
         // Immediate load from native storage for "Instant UI"
         const { token, refreshToken, user: storedUser } = await getStoredAuthData();
-        
+
         if (token && storedUser) {
           setAccessToken(token);
           setUser(storedUser);
           setIsTeamHead(hasTeamHeadRole(storedUser));
-          await syncSiteState(storedUser.site_id || (await getStoredActiveSiteId()));
-          await resolveTeamHead(storedUser);
-          await loadAccessibleSites({ ensureDefault: true });
-          
-          // Background sync profile (don't block UI or wait for Render)
+
+          // Minimal site-state init so cache keys resolve — no network call.
+          const storedSiteId = await getStoredActiveSiteId();
+          const initialSiteId = storedUser.site_id || storedSiteId || null;
+          if (initialSiteId) {
+            const normalized = String(initialSiteId);
+            setActiveSiteIdState(normalized);
+            setActiveSiteId(normalized);
+          }
+
+          // 👇 Unblock UI immediately — the rest runs in the background.
+          setLoading(false);
+
+          // Background: hydrate full site list + team-head status from the server.
+          Promise.resolve().then(() => {
+            loadAccessibleSites({ ensureDefault: true }).catch(() => {});
+            resolveTeamHead(storedUser).catch(() => {});
+          });
+
+          // Background sync profile (don't block UI or wait for Render cold start).
           api.get('/auth/me').then(async (res) => {
             if (res.data.success) {
               const updatedUser = res.data.user;
               setUser(updatedUser);
               setIsTeamHead(hasTeamHeadRole(updatedUser));
               await saveAuthData(token, updatedUser, refreshToken || null);
-              await syncSiteState(updatedUser.site_id || (await getStoredActiveSiteId()));
-              await loadAccessibleSites({ ensureDefault: true });
-              await resolveTeamHead(updatedUser);
+              resolveTeamHead(updatedUser).catch(() => {});
             }
           }).catch(err => {
             console.log('[Auth] Background profile sync failed (possibly server sleeping):', err.message);
           });
 
           Promise.resolve().then(() => warmCache(WARM_URLS)).catch(() => {});
+          return;
         }
       } catch (err) {
         console.error('[Auth] initAuth error:', err.message);
-      } finally {
-        setLoading(false);
       }
+      setLoading(false);
     };
 
     initAuth();
