@@ -35,7 +35,7 @@ const OfflineIndicator = () => {
         {online && !isSyncing && pendingCount > 0 && (
           <>
             <span className="h-2 w-2 rounded-full bg-amber-300" />
-            <span>{pendingCount} pending</span>
+            <span>{pendingCount} unsynced</span>
           </>
         )}
       </div>

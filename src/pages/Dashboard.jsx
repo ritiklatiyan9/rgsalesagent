@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useOffline } from '@/context/OfflineContext';
 import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import LeadSearchWidget from '@/components/LeadSearchWidget';
@@ -27,6 +28,7 @@ const FlowCurve = ({ color = '#0ea5e9', opacity = 0.1 }) => (
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const { flushNow, isSyncing: queueSyncing } = useOffline();
   const navigate = useNavigate();
   const isTeamHead = String(user?.role || '').toUpperCase() === 'TEAM_HEAD';
   const roleLabel = isTeamHead ? 'Team Head' : 'Agent';
@@ -113,19 +115,24 @@ const Dashboard = () => {
   };
 
   const refreshDashboard = async () => {
-    if (refreshing) return;
+    if (refreshing || queueSyncing) return;
     setRefreshing(true);
-    invalidateCache('/calls/analytics');
-    invalidateCache('/followups/counts');
-    invalidateCache('/leads/counts');
-    invalidateCache('/followups?limit=200');
-    invalidateCache('/leads?status=NEW&page=1&limit=20');
-    await Promise.allSettled([
-      loadDashboardStats({ force: true }),
-      loadFollowupsSections({ force: true }),
-      loadFreshLeads({ force: true }),
-    ]);
-    setRefreshing(false);
+    try {
+      // Push queued offline writes first so refreshed stats reflect latest server state.
+      await flushNow();
+      invalidateCache('/calls/analytics');
+      invalidateCache('/followups/counts');
+      invalidateCache('/leads/counts');
+      invalidateCache('/followups?limit=200');
+      invalidateCache('/leads?status=NEW&page=1&limit=20');
+      await Promise.allSettled([
+        loadDashboardStats({ force: true }),
+        loadFollowupsSections({ force: true }),
+        loadFreshLeads({ force: true }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
@@ -244,7 +251,7 @@ const Dashboard = () => {
      { icon: Clock1, label: 'Reminder',      nav: '/reminders',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
     { icon: MessageSquare, label: 'Chat',      nav: '/chat',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
     { icon: Calendar,      label: 'Scheduled', nav: '/calls/scheduled', gradient: 'from-amber-50 to-orange-50',    text: 'text-amber-700' },
-    { icon: RefreshCw,     label: refreshing ? 'Syncing' : 'Refresh', action: refreshDashboard, gradient: 'from-emerald-50 to-teal-50', text: 'text-emerald-700', spin: refreshing },
+    { icon: RefreshCw,     label: (refreshing || queueSyncing) ? 'Syncing' : 'Refresh', action: refreshDashboard, gradient: 'from-emerald-50 to-teal-50', text: 'text-emerald-700', spin: (refreshing || queueSyncing) },
     { icon: UsersRound,    label: 'Team',      nav: '/team',            gradient: 'from-violet-50 to-purple-50',   text: 'text-violet-700' },
    
   ];
