@@ -359,6 +359,13 @@ function Inner() {
         });
       } catch { /* silent */ }
 
+      // Notify any listeners (e.g. DialerPage) so they can refresh the recents list.
+      try {
+        window.dispatchEvent(new CustomEvent('rg:call-ended', {
+          detail: { callId: fallback.callId, phoneNumber: fallback.phoneNumber },
+        }));
+      } catch { /* noop */ }
+
       openDrawer({
         phoneNumber: fallback.phoneNumber,
         contactName: fallback.contactName || '',

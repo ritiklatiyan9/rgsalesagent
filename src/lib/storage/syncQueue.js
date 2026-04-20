@@ -8,7 +8,7 @@ const DB_NAME = 'rg_agent_sync';
 const DB_VERSION = 1;
 const STORE_NAME = 'mutations';
 const MAX_RETRIES = 5;
-const RETRY_BACKOFF_BASE = 2000; // 2s, 4s, 8s, 16s, 32s
+const RETRY_BACKOFF_BASE = 500; // 0.5s, 1s, 2s, 4s, 8s — aggressive, user wants fast sync
 
 let dbPromise = null;
 let _listeners = [];
@@ -145,6 +145,10 @@ export async function removeMutation(id) {
 
 /**
  * Update a mutation's retry count and status.
+ * After MAX_RETRIES the entry is DROPPED rather than kept as 'failed' — keeping
+ * a permanently-failed row alive made the Unsynced counter stick forever and,
+ * combined with queue-change notifications, caused the UI to loop between
+ * Syncing/Unsynced without ever draining.
  */
 async function _markRetry(id, error) {
   try {
@@ -158,7 +162,10 @@ async function _markRetry(id, error) {
         entry.lastAttempt = Date.now();
         entry.error = error?.message || String(error);
         if (entry.retries >= MAX_RETRIES) {
-          entry.status = 'failed';
+          const delReq = store.delete(id);
+          delReq.onsuccess = () => { _notify(); resolve(true); };
+          delReq.onerror = () => resolve(false);
+          return;
         }
         const putReq = store.put(entry);
         putReq.onsuccess = () => { _notify(); resolve(true); };
@@ -184,7 +191,12 @@ export async function flushQueue(apiInstance, callbacks = {}) {
     const pending = await getAllPending();
 
     for (const entry of pending) {
-      if (entry.status === 'failed') continue; // skip permanently failed
+      // Legacy cleanup — older builds left entries as status='failed' indefinitely.
+      // Drop them so the Unsynced counter can drain.
+      if (entry.status === 'failed') {
+        await removeMutation(entry.id);
+        continue;
+      }
 
       // Exponential backoff check
       if (entry.lastAttempt) {

@@ -188,12 +188,13 @@ const EMPTY_FORM = {
 const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s]));
 
 // Builds the canonical API URL for a given filter set — used both in fetchLeads and cache probe
-function buildLeadsUrl(page, search, status, category) {
+function buildLeadsUrl(page, search, status, category, importJobId) {
   let url = `/leads?page=${page}&limit=15`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   if (status === 'ACTIVE') url += `&exclude_status=NEW`;
   else if (status !== 'ALL') url += `&status=${status}`;
   if (category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
+  if (importJobId && importJobId !== 'ALL') url += `&import_job_id=${encodeURIComponent(importJobId)}`;
   return url;
 }
 
@@ -302,9 +303,14 @@ const Leads = () => {
   // Default to ACTIVE (all statuses except NEW) — NEW leads have their own Fresh Leads section on Dashboard
   const initialStatus = searchParams.get('status') || 'ACTIVE';
   const initialCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
+  const initialImportJobId = searchParams.get('import_job_id') || 'ALL';
+  // The fresh-leads entry point from the Dashboard card sets ?from=fresh — this is what
+  // reveals the Import Batch (Stage) dropdown. We latch the flag in state so the dropdown
+  // stays visible even after the URL is rewritten by the filter-sync effect below.
+  const [showBatchStages, setShowBatchStages] = useState(() => searchParams.get('from') === 'fresh');
 
   // Probe memory cache synchronously so we can skip skeleton on navigation back
-  const _initCached = getCachedSync(buildLeadsUrl(1, initialSearch, initialStatus, initialCategory));
+  const _initCached = getCachedSync(buildLeadsUrl(1, initialSearch, initialStatus, initialCategory, initialImportJobId));
 
   const [leads, setLeads] = useState(() => _initCached?.leads ?? []);
   const [loading, setLoading] = useState(() => !_initCached);
@@ -315,6 +321,14 @@ const Leads = () => {
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [categoryFilter, setCategoryFilter] = useState(initialCategory);
+  const [importJobFilter, setImportJobFilter] = useState(initialImportJobId);
+
+  // Import batches for the Fresh Leads stage dropdown
+  const [importBatches, setImportBatches] = useState([]);
+  const [importBatchesLoading, setImportBatchesLoading] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameSaving, setRenameSaving] = useState(false);
 
   // Track whether we already have data so fetchLeads knows to skip skeleton
   const hasDataRef = useRef(Boolean(_initCached));
@@ -343,12 +357,12 @@ const Leads = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [shiftLoading, setShiftLoading] = useState(false);
 
-  const fetchLeads = useCallback(async (page, search, status, fresh = false, category) => {
+  const fetchLeads = useCallback(async (page, search, status, fresh = false, category, importJobId) => {
     const hasData = hasDataRef.current;
     if (!hasData) setLoading(true);
     else setRefreshing(true);
     try {
-      const url = buildLeadsUrl(page, search, status, category) + (fresh ? `&_t=${Date.now()}` : '');
+      const url = buildLeadsUrl(page, search, status, category, importJobId) + (fresh ? `&_t=${Date.now()}` : '');
       const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000 });
       if (data.success) {
         setLeads(data.leads);
@@ -372,20 +386,23 @@ const Leads = () => {
     const nextSearch = searchParams.get('search') || '';
     const nextStatus = searchParams.get('status') || 'ACTIVE';
     const nextCategory = searchParams.get('lead_category') || searchParams.get('category') || 'ALL';
+    const nextImportJob = searchParams.get('import_job_id') || 'ALL';
 
     setSearchQuery((prev) => (prev === nextSearch ? prev : nextSearch));
     setStatusFilter((prev) => (prev === nextStatus ? prev : nextStatus));
     setCategoryFilter((prev) => (prev === nextCategory ? prev : nextCategory));
+    setImportJobFilter((prev) => (prev === nextImportJob ? prev : nextImportJob));
+    if (searchParams.get('from') === 'fresh') setShowBatchStages(true);
   }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       // Use ref so fetchLeads is never a dep (prevents double-fetch on filter change)
-      fetchLeadsRef.current(1, searchQuery, statusFilter, false, categoryFilter);
+      fetchLeadsRef.current(1, searchQuery, statusFilter, false, categoryFilter, importJobFilter);
       setCurrentPage(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, categoryFilter]);
+  }, [searchQuery, statusFilter, categoryFilter, importJobFilter]);
 
   // Keep URL in sync with active filters so dashboard quick-search works reliably.
   useEffect(() => {
@@ -393,15 +410,64 @@ const Leads = () => {
     if (searchQuery) next.search = searchQuery;
     if (statusFilter !== 'ALL') next.status = statusFilter;
     if (categoryFilter !== 'ALL') next.lead_category = categoryFilter;
+    if (importJobFilter && importJobFilter !== 'ALL') next.import_job_id = importJobFilter;
+    if (showBatchStages) next.from = 'fresh';
     setSearchParams(next, { replace: true });
-  }, [searchQuery, statusFilter, categoryFilter, setSearchParams]);
+  }, [searchQuery, statusFilter, categoryFilter, importJobFilter, showBatchStages, setSearchParams]);
 
   // Pre-fetch next page
   useEffect(() => {
     if (currentPage < totalPages) {
-      cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter));
+      cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter, importJobFilter));
     }
-  }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter]);
+  }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter, importJobFilter]);
+
+  // Fetch import batches only when the Fresh-Leads stage dropdown should be shown.
+  useEffect(() => {
+    if (!showBatchStages) return;
+    let cancelled = false;
+    setImportBatchesLoading(true);
+    (async () => {
+      try {
+        const { data } = await api.get('/leads/import-batches');
+        if (!cancelled && data?.success) setImportBatches(data.batches || []);
+      } catch (err) {
+        console.error('Failed to fetch import batches', err);
+      } finally {
+        if (!cancelled) setImportBatchesLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [showBatchStages]);
+
+  const selectedBatch = importBatches.find((b) => b.id === importJobFilter) || null;
+
+  const openRenameBatch = () => {
+    if (!selectedBatch) return;
+    setRenameDraft(selectedBatch.label || '');
+    setRenameOpen(true);
+  };
+
+  const saveRenameBatch = async () => {
+    if (!selectedBatch) return;
+    const label = renameDraft.trim();
+    if (!label) { toast.error('Name is required'); return; }
+    setRenameSaving(true);
+    try {
+      const { data } = await api.patch(`/leads/import-batches/${selectedBatch.id}`, { label });
+      if (data?.success) {
+        setImportBatches((prev) => prev.map((b) => b.id === selectedBatch.id ? { ...b, label: data.label } : b));
+        toast.success('Batch renamed');
+        setRenameOpen(false);
+      } else {
+        toast.error(data?.message || 'Unable to rename');
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Unable to rename');
+    } finally {
+      setRenameSaving(false);
+    }
+  };
 
   useEffect(() => {
     const currentIds = new Set(leads.map((l) => l.id));
@@ -581,6 +647,50 @@ const Leads = () => {
               : <PhoneOutgoing className="h-3.5 w-3.5" />
             }
             Shift to Queue
+          </button>
+        </div>
+      )}
+
+      {/* Import Batch (Stage) dropdown — appears only when user came from Fresh Leads card */}
+      {showBatchStages && (
+        <div className="flex items-stretch gap-2">
+          <Select value={importJobFilter} onValueChange={setImportJobFilter}>
+            <SelectTrigger
+              className="flex-1 h-11 px-3 text-[12px] font-semibold rounded-2xl bg-linear-to-r from-violet-50 via-purple-50 to-fuchsia-50
+                         border-0 ring-1 ring-inset ring-violet-200 text-violet-800 shadow-[0_2px_10px_-6px_rgba(139,92,246,0.35)]"
+            >
+              <SelectValue placeholder={importBatchesLoading ? 'Loading imports…' : 'All imports'} />
+            </SelectTrigger>
+            <SelectContent className="max-h-[60vh]">
+              <SelectItem value="ALL" className="text-xs font-semibold text-violet-700">All imports</SelectItem>
+              {importBatches.length === 0 && !importBatchesLoading && (
+                <div className="px-3 py-2 text-[11px] text-slate-400 italic">No imports yet</div>
+              )}
+              {importBatches.map((batch) => (
+                <SelectItem key={batch.id} value={batch.id} className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-800">{batch.label}</span>
+                    <span className="text-[10px] text-slate-400">
+                      · {batch.created_at ? format(new Date(batch.created_at), 'dd MMM, hh:mm a') : ''}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-violet-600 ml-auto">
+                      {batch.lead_count}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            onClick={openRenameBatch}
+            disabled={!selectedBatch}
+            title={selectedBatch ? `Rename ${selectedBatch.label}` : 'Pick a batch to rename it'}
+            className="h-11 w-11 rounded-2xl bg-white ring-1 ring-inset ring-slate-200 text-violet-600
+                       hover:bg-violet-50 hover:ring-violet-200 disabled:opacity-40 disabled:hover:bg-white disabled:hover:ring-slate-200
+                       flex items-center justify-center transition-colors shrink-0"
+          >
+            <Pencil className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -886,6 +996,35 @@ const Leads = () => {
           onClose={() => { setScheduleOpen(false); setScheduleLead(null); }}
         />
       )}
+
+      {/* Rename Import Batch Dialog */}
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base">Rename import batch</DialogTitle>
+            <DialogDescription className="text-xs">
+              Give this import a recognisable name (e.g. "Facebook Apr 20", "Referral batch").
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Name</Label>
+            <Input
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              placeholder="Import 1"
+              maxLength={80}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveRenameBatch(); }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={renameSaving}>Cancel</Button>
+            <Button onClick={saveRenameBatch} disabled={renameSaving || !renameDraft.trim()} className="bg-violet-600 hover:bg-violet-700">
+              {renameSaving ? 'Saving…' : 'Save name'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Details Drawer */}
       <Drawer open={viewOpen} onOpenChange={setViewOpen}>

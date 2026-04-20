@@ -265,7 +265,7 @@ const Dashboard = () => {
     {
       label: 'Fresh Leads', short: 'FRESH · 24H',
       value: freshLeadsTotal, hint: 'New enquiries',
-      icon: Sparkles, nav: '/leads?status=NEW',
+      icon: Sparkles, nav: '/leads?status=NEW&from=fresh',
       gradient: 'from-violet-50 via-purple-50 to-fuchsia-50',
       iconBg: 'bg-violet-100', iconColor: 'text-violet-600',
       ring: 'ring-violet-100',

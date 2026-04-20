@@ -49,9 +49,9 @@ const CALL_TYPE_META = {
 };
 
 const SOURCE_UI_OPTIONS = [
-  { value: 'DIRECT',          label: 'Direct'          },
-  { value: 'REFERALL',        label: 'Referral'        },
-  { value: 'PERSONAL REFERAL', label: 'Personal Referral' },
+  { value: 'DIRECT_CALL',  label: 'Direct Call'  },
+  { value: 'DIRECT_VISIT', label: 'Direct Visit' },
+  { value: 'REFERRAL',     label: 'Referral'     },
 ];
 
 const LEAD_STATUS_OPTIONS  = ['NEW','CONTACTED','INTERESTED','SITE_VISIT','NEGOTIATION','BOOKED','LOST'];
@@ -67,14 +67,16 @@ const phonesMatch     = (a, b) => {
   return na === nb || tail10(na) === tail10(nb);
 };
 
-const mapApiSourceToUi = (value, referralName) => {
-  if (value === 'Direct')   return 'DIRECT';
-  if (value === 'Referral') return referralName ? 'PERSONAL REFERAL' : 'REFERALL';
-  return 'DIRECT';
+const mapApiSourceToUi = (value) => {
+  if (value === 'Direct')       return 'DIRECT_CALL';
+  if (value === 'Direct Visit') return 'DIRECT_VISIT';
+  if (value === 'Referral')     return 'REFERRAL';
+  return 'DIRECT_CALL';
 };
 const mapUiSourceToApi = (value) => {
-  if (value === 'DIRECT') return 'Direct';
-  if (value === 'REFERALL' || value === 'PERSONAL REFERAL') return 'Referral';
+  if (value === 'DIRECT_CALL')  return 'Direct';
+  if (value === 'DIRECT_VISIT') return 'Direct Visit';
+  if (value === 'REFERRAL')     return 'Referral';
   return 'Other';
 };
 
@@ -106,7 +108,7 @@ const getDefaultLeadForm = (callData) => ({
   profession: '',
   status: 'CONTACTED',
   lead_category: '',
-  source_ui: 'DIRECT',
+  source_ui: 'DIRECT_CALL',
   referral_name: '',
   notes: '',
 });
@@ -145,8 +147,6 @@ export default function CallDrawer() {
 
   // ── form state ──
   const [leadForm, setLeadForm]       = useState(getDefaultLeadForm(callData));
-  const [callRemark, setCallRemark]   = useState('');
-  const [savingRemark, setSavingRemark] = useState(false);
   const [isExistingLead, setIsExistingLead] = useState(false);
   const [isEditingLead, setIsEditingLead]   = useState(false);
   const [leadCallHistory, setLeadCallHistory] = useState([]);
@@ -246,9 +246,9 @@ export default function CallDrawer() {
         profession: fullLead.profession || '',
         status: fullLead.status || 'CONTACTED',
         lead_category: fullLead.lead_category || '',
-        source_ui: mapApiSourceToUi(fullLead.lead_source, referralName),
+        source_ui: mapApiSourceToUi(fullLead.lead_source),
         referral_name: referralName,
-        notes: String(fullLead.notes || '').replace(/\s*\[Referee:\s*.+?\]\s*/gi, ' ').trim(),
+        notes: String(callData?.customerNotes || '').trim(),
       });
       setLeadCallHistory(history);
       setFutureAction((prev) => ({
@@ -269,7 +269,6 @@ export default function CallDrawer() {
 
   useEffect(() => {
     setErrors({});
-    setCallRemark('');
     fetchLeadContext();
   }, [fetchLeadContext]);
 
@@ -299,7 +298,7 @@ export default function CallDrawer() {
         status: leadForm.status || 'CONTACTED',
         lead_category: leadForm.lead_category || null,
         lead_source: mapUiSourceToApi(leadForm.source_ui),
-        notes: composeNotes(leadForm.notes, leadForm.referral_name),
+        notes: composeNotes('', leadForm.referral_name),
       };
 
       let result;
@@ -316,13 +315,26 @@ export default function CallDrawer() {
         setIsExistingLead(true);
         setIsEditingLead(false);
 
-        // Save call remark to the call record
+        // Link this call to the saved lead and persist Call Notes so the call
+        // row in Recents shows the client name (instead of "Manual Call") and
+        // the notes surface in the timeline.
         const cid = callData?.callId;
-        if (cid && callRemark.trim()) {
+        const savedLeadId = result?.lead?.id || leadForm.id || null;
+        if (cid) {
           try {
-            await api.put(`/calls/${cid}`, { customer_notes: callRemark.trim() });
+            const body = { customer_notes: leadForm.notes?.trim() || null };
+            if (savedLeadId) body.lead_id = savedLeadId;
+            await api.put(`/calls/${cid}`, body);
           } catch { /* silent */ }
+          try { invalidateCache('/calls/dialer-history'); } catch { /* silent */ }
         }
+
+        // Let the rest of the app (DialerPage recents, etc.) refresh.
+        try {
+          window.dispatchEvent(new CustomEvent('rg:call-updated', {
+            detail: { callId: cid, leadId: savedLeadId, leadName: leadForm.name?.trim() || null },
+          }));
+        } catch { /* noop */ }
 
         await fetchLeadContext();
       } else {
@@ -440,41 +452,6 @@ export default function CallDrawer() {
           </div>
         )}
 
-        {/* ── Call Remark / Notes ── */}
-        <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4 space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-amber-100 flex items-center justify-center">
-              <Edit3 className="h-3.5 w-3.5 text-amber-700" />
-            </div>
-            <p className="text-xs font-bold uppercase tracking-wider text-amber-800">Call Remark</p>
-          </div>
-          <Textarea
-            value={callRemark}
-            onChange={(e) => setCallRemark(e.target.value)}
-            placeholder="What was discussed? Any key points or follow-up needed…"
-            className="min-h-20 text-sm font-medium resize-none rounded-xl bg-white border-amber-200 p-3 shadow-sm placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-amber-400/30 transition-all"
-          />
-          {callData?.callId && callRemark.trim() && (
-            <button
-              type="button"
-              onClick={async () => {
-                setSavingRemark(true);
-                try {
-                  await api.put(`/calls/${callData.callId}`, { customer_notes: callRemark.trim() });
-                  toast.success('Remark saved');
-                } catch { toast.error('Failed to save remark'); }
-                finally { setSavingRemark(false); }
-              }}
-              disabled={savingRemark}
-              className="h-8 px-3 rounded-lg bg-amber-600 text-white text-[11px] font-bold
-                hover:bg-amber-700 active:scale-[0.97] transition-all disabled:opacity-50 flex items-center gap-1.5"
-            >
-              {savingRemark ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save Remark
-            </button>
-          )}
-        </div>
-
         {/* ── Core Action Fields ── */}
         <div className="space-y-3 pt-2">
           <div className="grid grid-cols-2 gap-3">
@@ -512,7 +489,7 @@ export default function CallDrawer() {
                 </SelectContent>
               </Select>
             </div>
-            {['REFERALL', 'PERSONAL REFERAL'].includes(leadForm.source_ui) && (
+            {leadForm.source_ui === 'REFERRAL' && (
               <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1">
                 <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Referee Name</Label>
                 <Input
@@ -840,7 +817,7 @@ export default function CallDrawer() {
           <div className="space-y-4 py-2">
             <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
               <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Lead Source</p>
-              {leadForm.source_ui === 'DIRECT' ? (
+              {leadForm.source_ui === 'DIRECT_CALL' || leadForm.source_ui === 'DIRECT_VISIT' ? (
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                     <Phone className="h-5 w-5 text-blue-600" />

@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Delete, PhoneCall, PhoneOff, Search, X,
-  ArrowDownLeft, ArrowUpRight, PhoneMissed, Smartphone,
-  Clock, Keyboard, Loader2, User, Phone, ChevronRight, RefreshCw,
-  ChevronDown, Pencil, Save, MessageSquare, ExternalLink,
+  ArrowDownLeft, ArrowUpRight, PhoneMissed,
+  Clock, Keyboard, Loader2, User, RefreshCw,
+  ChevronDown, Pencil, MessageSquare, Eye,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
@@ -12,6 +12,13 @@ import api from '@/lib/axios';
 import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
 import { useDialer } from '@/hooks/useDialer';
 import { useDeviceContacts } from '@/hooks/useDeviceContacts';
+import { useCallDrawer } from '@/context/CallDrawerContext';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter } from '@/components/ui/drawer';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Eye as EyeIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import CallTimeline from '@/components/CallTimeline';
 
 /* ── Constants ──────────────────────────────────────────────────────────── */
 const KEYS = [
@@ -28,6 +35,19 @@ const TAB_CONFIG = [
 
 const HISTORY_LIMIT = 30;
 const DIALER_HISTORY_SNAPSHOT_KEY = 'rg:dialerHistorySnapshot';
+
+const STATUS_OPTIONS = [
+  { value: 'NEW', label: 'New Lead', color: 'bg-blue-50 text-blue-700 ring-blue-200' },
+  { value: 'CONTACTED', label: 'Contacted', color: 'bg-amber-50 text-amber-700 ring-amber-200' },
+  { value: 'INTERESTED', label: 'Interested', color: 'bg-indigo-50 text-indigo-700 ring-indigo-200' },
+  { value: 'SITE_VISIT', label: 'Site Visit', color: 'bg-violet-50 text-violet-700 ring-violet-200' },
+  { value: 'NEGOTIATION', label: 'Negotiation', color: 'bg-purple-50 text-purple-700 ring-purple-200' },
+  { value: 'BOOKED', label: 'Booked', color: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
+  { value: 'LOST', label: 'Lost', color: 'bg-slate-50 text-slate-700 ring-slate-200' },
+  { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-50 text-orange-700 ring-orange-200' },
+  { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-50 text-red-700 ring-red-200' },
+  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-50 text-rose-700 ring-rose-200' },
+];
 
 const readDialerHistorySnapshot = () => {
   try {
@@ -195,11 +215,8 @@ const SuggestionChip = memo(({ s, onSelect, onCall }) => {
 SuggestionChip.displayName = 'SuggestionChip';
 
 /* ── History row — expandable accordion ─────────────────────────────────── */
-const HistoryRow = memo(({ call, onCall, outcomes, onUpdate }) => {
+const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', notes: '', outcomeId: '' });
-  const [saving, setSaving] = useState(false);
 
   const { Icon, color, bg } = typeMeta(call.call_type);
   const phone = call.phone_number_dialed || call.lead_phone || '';
@@ -208,49 +225,34 @@ const HistoryRow = memo(({ call, onCall, outcomes, onUpdate }) => {
   const waLink = phone ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}` : null;
   const dur = call.duration_seconds > 0 ? fmtDuration(call.duration_seconds) : null;
 
-  const startEdit = () => {
-    setForm({
-      name: call.lead_name || '',
-      phone: phone,
-      notes: call.customer_notes || '',
-      outcomeId: call.outcome_id || '',
+  const openDrawerFor = (e) => {
+    e.stopPropagation();
+    onOpenDrawer?.({
+      phoneNumber: phone,
+      contactName: call.lead_name || '',
+      callType: String(call.call_type || 'UNKNOWN').toUpperCase(),
+      duration: Number(call.duration_seconds) || 0,
+      timestamp: call.call_start || new Date().toISOString(),
+      callId: typeof call.id === 'number' ? call.id : (String(call.id || '').startsWith('local-') ? null : call.id || null),
+      leadId: call.lead_id || null,
+      customerNotes: call.customer_notes || '',
     });
-    setEditing(true);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      // Update call notes/outcome
-      if (call.id) {
-        const body = { customer_notes: form.notes };
-        if (form.outcomeId) body.outcome_id = form.outcomeId;
-        await api.put(`/calls/${call.id}`, body);
-      }
-      // Update lead name/phone if linked and changed
-      if (call.lead_id && (form.name !== (call.lead_name || '') || form.phone !== phone)) {
-        await api.put(`/leads/${call.lead_id}`, { name: form.name, phone: form.phone });
-      }
-      toast.success('Updated');
-      setEditing(false);
-      if (onUpdate) onUpdate(call.id, {
-        customer_notes: form.notes,
-        outcome_id: form.outcomeId,
-        outcome_label: outcomes?.find(o => String(o.id) === String(form.outcomeId))?.label || call.outcome_label,
-        lead_name: form.name || call.lead_name,
-        phone_number_dialed: form.phone || phone,
-      });
-    } catch { toast.error('Failed to save'); }
-    finally { setSaving(false); }
+  const viewFor = (e) => {
+    e.stopPropagation();
+    onView?.(call);
   };
 
   return (
     <div className={`border-b border-slate-100 last:border-0 ${open ? 'bg-slate-50/60' : ''}`}>
       {/* Summary */}
-      <button
-        type="button"
-        className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-100/60"
+      <div
+        role="button"
+        tabIndex={0}
+        className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-slate-100/60 cursor-pointer"
         onClick={() => setOpen(o => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
       >
         <div className={`h-9 w-9 rounded-full ${bg} flex items-center justify-center shrink-0`}>
           <Icon className={`h-4 w-4 ${color}`} />
@@ -269,138 +271,80 @@ const HistoryRow = memo(({ call, onCall, outcomes, onUpdate }) => {
         {call.outcome_label && (
           <span className="text-[9px] font-semibold text-indigo-600 bg-indigo-50 rounded-full px-2 py-0.5 shrink-0">{call.outcome_label}</span>
         )}
+        <button
+          type="button"
+          onClick={viewFor}
+          title="View details"
+          className="h-8 w-8 rounded-full text-indigo-600 hover:bg-indigo-50 flex items-center justify-center shrink-0 active:scale-90 transition-all"
+        >
+          <Eye className="h-4 w-4" />
+        </button>
         <ChevronDown className={`h-3.5 w-3.5 text-slate-300 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </div>
 
       {/* Expanded */}
       {open && (
         <div className="px-4 pb-3 animate-in fade-in duration-150">
-          {editing ? (
-            /* ── Edit mode ── */
-            <div className="space-y-2 bg-white rounded-xl border border-slate-200 p-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Name</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                    onClick={e => e.stopPropagation()}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Phone</label>
-                  <input
-                    value={form.phone}
-                    onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5 font-mono
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                    onClick={e => e.stopPropagation()}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-slate-400 uppercase">Notes</label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Call notes…"
-                  rows={2}
-                  className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 mt-0.5 resize-none
-                    focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                  onClick={e => e.stopPropagation()}
-                />
-              </div>
-              {outcomes?.length > 0 && (
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-400 uppercase">Outcome</label>
-                  <select
-                    value={form.outcomeId}
-                    onChange={(e) => setForm(f => ({ ...f, outcomeId: e.target.value }))}
-                    onClick={e => e.stopPropagation()}
-                    className="w-full h-8 text-xs border border-slate-200 rounded-lg px-2.5 mt-0.5 bg-white
-                      focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
-                  >
-                    <option value="">Select outcome…</option>
-                    {outcomes.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                  disabled={saving}
-                  className="flex-1 h-9 rounded-lg bg-indigo-600 text-white text-xs font-semibold
-                    hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-                >
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setEditing(false); }}
-                  className="h-9 px-4 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] transition-all"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* ── Details mode ── */
-            <div className="space-y-2">
-              {/* Info chips */}
-              {(call.lead_status || call.lead_category || call.next_action) && (
-                <div className="flex flex-wrap gap-1.5">
-                  {call.lead_status && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_status)}`}>{call.lead_status}</span>}
-                  {call.lead_category && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_category)}`}>{call.lead_category}</span>}
-                  {call.next_action && call.next_action !== 'NONE' && (
-                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">→ {call.next_action.replace('_', ' ')}</span>
-                  )}
-                </div>
-              )}
-
-              {/* Notes */}
-              {call.customer_notes && (
-                <p className="text-[11px] text-slate-600 leading-relaxed bg-white rounded-lg border border-slate-100 px-2.5 py-2">
-                  {call.customer_notes}
-                </p>
-              )}
-
-              {/* Actions — 4 compact icon buttons in a row */}
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onCall(phone, { name, leadId: call.lead_id }); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold
-                    shadow-sm shadow-emerald-500/20 active:scale-[0.96] transition-all"
-                >
-                  <PhoneCall className="h-3.5 w-3.5" /> Call
-                </button>
-                {waLink && (
-                  <a
-                    href={waLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-green-50 text-green-700 text-[11px] font-semibold
-                      border border-green-200 active:scale-[0.96] transition-all"
-                  >
-                    <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
-                  </a>
+          <div className="space-y-2">
+            {/* Info chips */}
+            {(call.lead_status || call.lead_category || call.next_action) && (
+              <div className="flex flex-wrap gap-1.5">
+                {call.lead_status && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_status)}`}>{call.lead_status}</span>}
+                {call.lead_category && <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${statusBadge(call.lead_category)}`}>{call.lead_category}</span>}
+                {call.next_action && call.next_action !== 'NONE' && (
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">→ {call.next_action.replace('_', ' ')}</span>
                 )}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); startEdit(); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold
-                    border border-slate-200 active:scale-[0.96] transition-all"
-                >
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
               </div>
+            )}
+
+            {/* Notes */}
+            {call.customer_notes && (
+              <p className="text-[11px] text-slate-600 leading-relaxed bg-white rounded-lg border border-slate-100 px-2.5 py-2">
+                {call.customer_notes}
+              </p>
+            )}
+
+            {/* Actions — 4 compact icon buttons in a row */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onCall(phone, { name, leadId: call.lead_id }); }}
+                className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-emerald-500 text-white text-[11px] font-semibold
+                  shadow-sm shadow-emerald-500/20 active:scale-[0.96] transition-all"
+              >
+                <PhoneCall className="h-3.5 w-3.5" /> Call
+              </button>
+              {waLink && (
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-green-50 text-green-700 text-[11px] font-semibold
+                    border border-green-200 active:scale-[0.96] transition-all"
+                >
+                  <WhatsAppIcon className="h-3.5 w-3.5" /> WhatsApp
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={viewFor}
+                className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-indigo-50 text-indigo-700 text-[11px] font-semibold
+                  border border-indigo-200 active:scale-[0.96] transition-all"
+                title="View details"
+              >
+                <Eye className="h-3.5 w-3.5" /> View
+              </button>
+              <button
+                type="button"
+                onClick={openDrawerFor}
+                className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold
+                  border border-slate-200 active:scale-[0.96] transition-all"
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -426,6 +370,7 @@ const DialerPage = () => {
           onCallConnected, onCallEnded } = useDialer();
   const { deviceContacts: syncedContacts, syncing: contactsSyncing, synced: contactsSynced,
           syncContacts, clearCache: clearContactsCache, count: deviceContactCount } = useDeviceContacts();
+  const { openDrawer: openCallDrawer } = useCallDrawer();
 
   /* ── Core state ── */
   const [tab, setTab]                   = useState('keypad');
@@ -448,6 +393,80 @@ const DialerPage = () => {
 
   /* ── Call outcomes (for edit dropdown) ── */
   const [outcomes, setOutcomes]             = useState([]);
+
+  /* ── Lead view drawer state (matches Leads page Eye behavior) ── */
+  const [viewOpen, setViewOpen]               = useState(false);
+  const [viewTarget, setViewTarget]           = useState(null);
+  const [viewCallHistory, setViewCallHistory] = useState([]);
+  const [viewCallLoading, setViewCallLoading] = useState(false);
+  const [viewLoading, setViewLoading]         = useState(false);
+
+  const handleViewCall = useCallback(async (call) => {
+    const phone = call?.phone_number_dialed || call?.lead_phone || '';
+    setViewOpen(true);
+    // Seed current call into timeline immediately so the drawer shows history
+    // even for unlinked rows — avoids the "nothing to show + slow spinner" feel.
+    const seedCall = call?.id != null && !String(call.id).startsWith('local-') ? [{
+      id: call.id,
+      call_type: call.call_type,
+      call_start: call.call_start,
+      call_end: null,
+      duration_seconds: call.duration_seconds || 0,
+      customer_notes: call.customer_notes || null,
+      outcome_label: call.outcome_label || null,
+    }] : [];
+    setViewCallHistory(seedCall);
+    setViewTarget({
+      id: call?.lead_id || null,
+      name: call?.lead_name || (phone ? phone : 'Unknown'),
+      phone,
+      email: '',
+      address: '',
+      profession: '',
+      status: call?.lead_status || null,
+      lead_category: call?.lead_category || null,
+      lead_source: null,
+      notes: '',
+      photo_url: null,
+      created_at: null,
+      calls_dialed: null,
+    });
+
+    const resolveLeadId = async () => {
+      if (call?.lead_id) return call.lead_id;
+      if (!phone) return null;
+      try {
+        // Fast, cached phone lookup so timeline works for unlinked calls too.
+        const search = encodeURIComponent(phone);
+        const data = await cachedGet(`/leads?search=${search}&limit=5`, { staleTime: 120_000, cacheTime: 600_000 });
+        const tail = String(phone).replace(/\D/g, '').slice(-10);
+        const match = (data?.leads || []).find((l) => String(l.phone || '').replace(/\D/g, '').slice(-10) === tail);
+        return match?.id || null;
+      } catch { return null; }
+    };
+
+    setViewLoading(true);
+    setViewCallLoading(true);
+    try {
+      const leadId = await resolveLeadId();
+      if (!leadId) {
+        // No linked lead — keep the seed data; stop spinners.
+        setViewLoading(false);
+        setViewCallLoading(false);
+        return;
+      }
+      // Parallel fetch — cache-backed so repeat clicks are instant.
+      const [leadData, callsData] = await Promise.all([
+        cachedGet(`/leads/${leadId}`, { staleTime: 60_000, cacheTime: 600_000 }).catch(() => null),
+        cachedGet(`/calls/lead/${leadId}`, { staleTime: 30_000, cacheTime: 300_000 }).catch(() => null),
+      ]);
+      if (leadData?.success && leadData?.lead) setViewTarget(leadData.lead);
+      if (callsData?.success && Array.isArray(callsData.calls)) setViewCallHistory(callsData.calls);
+    } finally {
+      setViewLoading(false);
+      setViewCallLoading(false);
+    }
+  }, []);
 
   const timerRef          = useRef(null);
   const timerSecRef       = useRef(0);
@@ -529,20 +548,36 @@ const DialerPage = () => {
     if (historyFilter && historyFilter !== 'ALL') params.set('call_type', historyFilter);
     const url = `/calls/dialer-history?${params}`;
 
+    // Preserve optimistic rows (local-* ids or the currently active call) across resets
+    // so in-flight calls don't disappear while the server response is in flight.
+    const pickOptimistic = (items = []) => items.filter((item) => {
+      const id = item?.id != null ? String(item.id) : '';
+      if (id.startsWith('local-')) return true;
+      const activeId = activeCallRef.current?.localTempId
+        ? String(activeCallRef.current.localTempId)
+        : activeCallRef.current?.callId
+          ? String(activeCallRef.current.callId)
+          : null;
+      if (activeId && id === activeId) return true;
+      return false;
+    });
+
     // Local-first for instant UI (memory/IDB cache)
     if (reset) {
       const local = getCachedSync(url);
       if (local?.success && Array.isArray(local.calls)) {
-        const deduped = dedupeRecents(local.calls);
-        setHistory(deduped);
+        setHistory((prev) => {
+          const merged = [...pickOptimistic(prev), ...local.calls];
+          const deduped = dedupeRecents(merged);
+          writeDialerHistorySnapshot({ calls: deduped, nextCursor: local.nextCursor || null, hasMore: Boolean(local.hasMore) });
+          return deduped;
+        });
         setHistoryCursor(local.nextCursor || null);
         setHistoryHasMore(Boolean(local.hasMore));
-        writeDialerHistorySnapshot({ calls: deduped, nextCursor: local.nextCursor || null, hasMore: Boolean(local.hasMore) });
       } else {
         const snapshot = readDialerHistorySnapshot();
         if (snapshot?.calls?.length) {
-          const deduped = dedupeRecents(snapshot.calls);
-          setHistory(deduped);
+          setHistory((prev) => dedupeRecents([...pickOptimistic(prev), ...snapshot.calls]));
           setHistoryCursor(snapshot.nextCursor || null);
           setHistoryHasMore(Boolean(snapshot.hasMore));
         }
@@ -554,7 +589,9 @@ const DialerPage = () => {
       const data = await api.get(url).then(r => r.data);
       if (data.success) {
         setHistory(prev => {
-          const merged = reset ? data.calls : [...prev, ...data.calls];
+          const merged = reset
+            ? [...pickOptimistic(prev), ...data.calls]
+            : [...prev, ...data.calls];
           const deduped = dedupeRecents(merged);
           writeDialerHistorySnapshot({ calls: deduped, nextCursor: data.nextCursor, hasMore: data.hasMore });
           return deduped;
@@ -716,16 +753,30 @@ const DialerPage = () => {
     return () => observer.disconnect();
   }, [tab, historyHasMore, historyLoadingMore, loadHistory]);
 
-  /* ── Re-sync when app returns to foreground while on recents tab ── */
+  /* ── Re-sync when app returns to foreground (always refresh recents) ── */
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === 'visible' && tab === 'recents') {
-        autoSyncDeviceCalls().finally(() => loadHistory(true));
-      }
+      if (document.visibilityState !== 'visible') return;
+      autoSyncDeviceCalls().finally(() => loadHistoryRef.current?.(true));
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [tab, autoSyncDeviceCalls]);
+  }, [autoSyncDeviceCalls]);
+
+  /* ── Listen for web-fallback call-end broadcast ── */
+  useEffect(() => {
+    const onCallEndedEvent = () => { loadHistoryRef.current?.(true); };
+    const onCallUpdatedEvent = () => {
+      invalidateCache('/calls/dialer-history');
+      loadHistoryRef.current?.(true);
+    };
+    window.addEventListener('rg:call-ended', onCallEndedEvent);
+    window.addEventListener('rg:call-updated', onCallUpdatedEvent);
+    return () => {
+      window.removeEventListener('rg:call-ended', onCallEndedEvent);
+      window.removeEventListener('rg:call-updated', onCallUpdatedEvent);
+    };
+  }, []);
 
   /* ── Init: permissions, SIMs, outcomes ── */
   useEffect(() => {
@@ -774,11 +825,6 @@ const DialerPage = () => {
     }).catch(() => {});
   }, []);
 
-  /* ── Update a call record in local history ── */
-  const handleCallUpdate = useCallback((callId, updatedCall) => {
-    setHistory(prev => prev.map(c => c.id === callId ? { ...c, ...updatedCall } : c));
-  }, []);
-
   /* ── Call events ── */
   useEffect(() => {
     const subConn = onCallConnected((evt) => {
@@ -817,8 +863,8 @@ const DialerPage = () => {
       setTimerSec(0);
       setActiveCall(null);
       callIdRef.current = null;
-      // Refresh history if on that tab
-      if (tabRef.current === 'recents') loadHistoryRef.current?.(true);
+      // Always refresh recents on end so the finished call is visible immediately.
+      loadHistoryRef.current?.(true);
     });
 
     return () => {
@@ -849,6 +895,8 @@ const DialerPage = () => {
       localTempId,
     });
 
+    const isApp = window.Capacitor?.isNativePlatform?.() || false;
+
     // Show immediately in recents (local-first)
     upsertRecent({
       id: localTempId,
@@ -856,7 +904,7 @@ const DialerPage = () => {
       call_start: nowIso,
       duration_seconds: 0,
       call_status: 'ACTIVE',
-      call_source: 'APP',
+      call_source: isApp ? 'APP' : 'WEB',
       phone_number_dialed: phone,
       lead_id: opts.leadId || null,
       lead_name: opts.name || 'Manual Call',
@@ -866,8 +914,6 @@ const DialerPage = () => {
       openDialer(phone).catch(() => {});
       toast.message('Opened system dialer');
     });
-
-    const isApp = window.Capacitor?.isNativePlatform?.() || false;
     try {
       localStorage.setItem('rg:lastDialedCall', JSON.stringify({
         phone, name: opts.name || 'Manual Call',
@@ -902,7 +948,12 @@ const DialerPage = () => {
           localStorage.setItem('rg:lastDialedCall', JSON.stringify(stored));
         } catch {}
       }
-    }).catch(() => {});
+
+      // Refresh recents from server so the newly-created call is reflected everywhere.
+      loadHistoryRef.current?.(true);
+    }).catch(() => {
+      // Even if server failed, keep the optimistic local row — user can retry.
+    });
   }, [activeCall, selectedSim, makeCall, openDialer, upsertRecent]);
 
   const handleManualStop = useCallback(async () => {
@@ -931,8 +982,10 @@ const DialerPage = () => {
     setTimerSec(0);
     setActiveCall(null);
     callIdRef.current = null;
-    if (tab === 'recents') loadHistory(true);
-  }, [activeCall, timerSec, tab, loadHistory, upsertRecent]);
+    // Always refresh recents when a call ends, regardless of current tab,
+    // so the row shows up immediately when the user switches back.
+    loadHistoryRef.current?.(true);
+  }, [activeCall, timerSec, upsertRecent]);
 
   const onPressKey = useCallback((v) => {
     const input = numberInputRef.current;
@@ -1240,7 +1293,7 @@ const DialerPage = () => {
             ) : (
               <>
                 {filteredHistory.map((call, i) => (
-                  <HistoryRow key={call.id || i} call={call} onCall={startCall} outcomes={outcomes} onUpdate={handleCallUpdate} />
+                  <HistoryRow key={call.id || i} call={call} onCall={startCall} onOpenDrawer={openCallDrawer} onView={handleViewCall} />
                 ))}
 
                 {/* Device contacts matches */}
@@ -1305,6 +1358,99 @@ const DialerPage = () => {
         </div>
       )}
       </div>{/* end scrollable content */}
+
+      {/* View Details Drawer — matches Leads page Eye behavior */}
+      <Drawer open={viewOpen} onOpenChange={setViewOpen}>
+        <DrawerContent className="max-h-[92vh]">
+          <DrawerHeader className="shrink-0 border-b border-slate-100 pb-3">
+            <DrawerTitle className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <EyeIcon className="h-4 w-4 text-indigo-600" />
+              </div>
+              Lead Details
+            </DrawerTitle>
+            <DrawerDescription>
+              {viewLoading ? 'Loading…' : `All information for ${viewTarget?.name || 'this contact'}`}
+            </DrawerDescription>
+          </DrawerHeader>
+          {viewTarget && (
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-4 py-4">
+              {viewTarget.photo_url && (
+                <div className="flex justify-center pb-3 border-b border-border/40">
+                  <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl overflow-hidden border-2 border-slate-200 shadow-sm">
+                    <img src={viewTarget.photo_url} alt={viewTarget.name} className="w-full h-full object-cover" />
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Name</p>
+                  <p className="font-medium">{viewTarget.name || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Phone</p>
+                  <p className="font-medium font-mono">{viewTarget.phone || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Email</p>
+                  <p className="font-medium truncate" title={viewTarget.email}>{viewTarget.email || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Address</p>
+                  <p className="font-medium">{viewTarget.address || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Profession</p>
+                  <p className="font-medium">{viewTarget.profession || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Status</p>
+                  {viewTarget.status ? (
+                    <Badge variant="secondary" className={`mt-1 text-[10px] px-2 py-0.5 border-0 font-medium ${STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.color || 'bg-slate-100 text-slate-700'}`}>
+                      {STATUS_OPTIONS.find((s) => s.value === viewTarget.status)?.label || viewTarget.status}
+                    </Badge>
+                  ) : (
+                    <p className="font-medium text-slate-400">—</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Category</p>
+                  {viewTarget.lead_category ? (
+                    <Badge variant="outline" className="mt-1 text-[10px] px-2 py-0.5 font-medium">
+                      {viewTarget.lead_category}
+                    </Badge>
+                  ) : (
+                    <p className="font-medium text-slate-400">—</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Source</p>
+                  <p className="font-medium">{viewTarget.lead_source || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Added On</p>
+                  <p className="font-medium">{viewTarget.created_at ? format(new Date(viewTarget.created_at), 'MMM dd, yyyy') : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs uppercase font-semibold">Calls Dialed</p>
+                  <p className="font-medium">{viewTarget.calls_dialed ?? 0}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs uppercase font-semibold mb-1">Notes</p>
+                <div className="bg-slate-50 p-3 rounded-md text-sm text-slate-700 whitespace-pre-wrap border border-slate-100">
+                  {(viewTarget.notes && String(viewTarget.notes).replace(/\s*\[Referee:\s*.+?\]\s*/gi, ' ').trim()) || 'No notes available.'}
+                </div>
+              </div>
+
+              <CallTimeline calls={viewCallHistory} loading={viewCallLoading} />
+            </div>
+          )}
+          <DrawerFooter className="shrink-0 border-t border-slate-100 pt-3">
+            <Button type="button" onClick={() => setViewOpen(false)} className="h-9 w-full text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 shadow-none">Close</Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 };
