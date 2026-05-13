@@ -6,6 +6,7 @@ import App from './App.jsx';
 import { persistInit } from './lib/storage/persistCache';
 import { hydrateCache } from './lib/queryCache';
 import { initNetwork } from './lib/network';
+import { init as initRecentsStore } from './lib/recentsStore';
 
 // Pre-initialize persistence + network before React mounts.
 // This ensures cached data is available on first render (no blank screen).
@@ -13,6 +14,9 @@ async function bootstrap() {
   try {
     await persistInit();
     await Promise.all([hydrateCache(), initNetwork()]);
+    // Recents store hydrates from localStorage synchronously and kicks off a
+    // background server refresh — independent of which page mounts first.
+    initRecentsStore();
   } catch (e) {
     console.warn('[bootstrap] init failed (non-fatal):', e.message);
   }

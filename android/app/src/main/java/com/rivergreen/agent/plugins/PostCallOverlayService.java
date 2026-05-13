@@ -276,11 +276,9 @@ public class PostCallOverlayService extends Service {
         // ── Add to window ────────────────────────────────────────────────────
         overlayView = root;
         try {
-            showDebugNotification(this, "Attempting to add overlay to window...");
             windowManager.addView(overlayView, params);
             Log.d(TAG, "showOverlay: overlay added to window");
         } catch (Exception e) {
-            showDebugNotification(this, "Overlay FAILED: " + e.getMessage());
             Log.e(TAG, "showOverlay failed: " + e.getMessage());
             overlayView = null;
             stopSelf();
@@ -412,20 +410,5 @@ public class PostCallOverlayService extends Service {
         }
     }
 
-    private void showDebugNotification(Context context, String msg) {
-        try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    "debug_channel", "Debug", android.app.NotificationManager.IMPORTANCE_HIGH);
-            nm.createNotificationChannel(channel);
-            
-            android.app.Notification notif = new androidx.core.app.NotificationCompat.Builder(context, "debug_channel")
-                    .setContentTitle("Debug Overlay")
-                    .setContentText(msg)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .build();
-            nm.notify((int) System.currentTimeMillis(), notif);
-        } catch (Exception e) {}
-    }
 }
 

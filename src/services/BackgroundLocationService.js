@@ -40,8 +40,6 @@ export const startBackgroundTracking = async () => {
       // Add watcher for Native (Android/iOS)
       watcherId = await BackgroundGeolocation.addWatcher(
         {
-          backgroundMessage: 'Tracking active to ensure real-time map updates.',
-          backgroundTitle: 'Agent Live Tracking',
           requestPermissions: true,
           stale: false,
           distanceFilter: 10, // Updates every 10 meters change
@@ -50,7 +48,7 @@ export const startBackgroundTracking = async () => {
           if (error) {
             if (error.code === 'NOT_AUTHORIZED') {
               const confirmed = window.confirm(
-                'This app needs your location to track your real-time attendance and map location even when the app is in background.'
+                'DG Sales needs location access to keep working when the app is in the background. Open settings to allow it?'
               );
               if (confirmed) {
                 BackgroundGeolocation.openSettings();

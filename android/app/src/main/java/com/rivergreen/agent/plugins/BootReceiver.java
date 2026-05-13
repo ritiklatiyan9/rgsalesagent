@@ -3,7 +3,6 @@ package com.rivergreen.agent.plugins;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 import android.util.Log;
 
 /**
@@ -19,22 +18,11 @@ public class BootReceiver extends BroadcastReceiver {
         if (intent == null || intent.getAction() == null) return;
 
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            Log.d(TAG, "BOOT_COMPLETED received — starting CallDetectorService");
-            startCallDetectorService(context);
-        }
-    }
-
-    private void startCallDetectorService(Context context) {
-        try {
-            Intent serviceIntent = new Intent(context, CallDetectorService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent);
-            } else {
-                context.startService(serviceIntent);
-            }
-            Log.d(TAG, "CallDetectorService started after boot");
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start service after boot: " + e.getMessage());
+            // Foreground service auto-start on boot is disabled to avoid the
+            // persistent "DG Sales is running in background" notification.
+            // The CallStateReceiver registered in the manifest still wakes up
+            // the app for telephony broadcasts when the user makes a call.
+            Log.d(TAG, "BOOT_COMPLETED received — foreground service auto-start is disabled");
         }
     }
 }

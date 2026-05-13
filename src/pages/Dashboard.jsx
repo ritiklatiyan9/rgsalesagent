@@ -13,6 +13,7 @@ import {
   MessageSquare, UsersRound, Sparkles, Star,
   Search, ChevronRight, Calendar, TrendingUp,
   Clock1, RefreshCw,
+  ListTodo, ShieldCheck, BookOpen, CreditCard, CalendarCheck,
 } from 'lucide-react';
 
 const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
@@ -232,14 +233,14 @@ const Dashboard = () => {
   /* ── Stat card configs ── */
   const statCards = [
     {
-      label: 'Total Leads', short: 'PIPELINE',
-      value: leadTotal, hint: 'In your pipeline',
-      icon: Target, nav: '/leads',
-      gradient: 'from-blue-50 via-indigo-50 to-violet-50',
-      iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
-      ring: 'ring-blue-100',
-      ribbon: 'from-blue-500 via-indigo-500 to-violet-500',
-      flow: '#4f46e5', spark: 'rise', variant: 'line',
+      label: 'Matter Leads', short: 'MATTER',
+      value: matterLeadsTotal, hint: 'Leads you\'ve called',
+      icon: Star, nav: '/matter-leads',
+      gradient: 'from-rose-50 via-pink-50 to-fuchsia-50',
+      iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
+      ring: 'ring-rose-100',
+      ribbon: 'from-rose-500 via-pink-500 to-fuchsia-500',
+      flow: '#e11d48', spark: 'rise', variant: 'line',
     },
     {
       label: 'Today Calls', short: 'CALLS',
@@ -272,16 +273,7 @@ const Dashboard = () => {
       ribbon: 'from-violet-500 via-purple-500 to-fuchsia-500',
       flow: '#8b5cf6', spark: 'line', variant: 'line',
     },
-    {
-      label: 'Matter Leads', short: 'MATTER',
-      value: matterLeadsTotal, hint: 'Leads you\'ve called',
-      icon: Star, nav: '/matter-leads',
-      gradient: 'from-rose-50 via-pink-50 to-fuchsia-50',
-      iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
-      ring: 'ring-rose-100',
-      ribbon: 'from-rose-500 via-pink-500 to-fuchsia-500',
-      flow: '#e11d48', spark: 'rise', variant: 'line',
-    },
+   
   ];
 
   /* ── Quick nav ── */
@@ -431,6 +423,31 @@ const Dashboard = () => {
         </div>
       )}
 
+      {/* ══════ WORKSPACE — quick access to new modules ══════ */}
+      <div className="grid grid-cols-4 gap-2.5 pt-1">
+        {[
+        
+          { to: '/supervision-tasks',  icon: ShieldCheck,    label: 'Tasks',      ring: 'ring-violet-100',  bg: 'bg-violet-50',  color: 'text-violet-600' },
+          { to: '/bookings',           icon: BookOpen,       label: 'Bookings',   ring: 'ring-blue-100',    bg: 'bg-blue-50',    color: 'text-blue-600' },
+          { to: '/sales',              icon: CreditCard,     label: 'Sales',      ring: 'ring-emerald-100', bg: 'bg-emerald-50', color: 'text-emerald-600' },
+          { to: '/attendance/history', icon: CalendarCheck,  label: 'Attendance', ring: 'ring-amber-100',   bg: 'bg-amber-50',   color: 'text-amber-600' },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.to}
+              onClick={() => navigate(item.to)}
+              className={`group rounded-2xl bg-white ring-1 ${item.ring} p-2.5 flex flex-col items-center gap-1.5 active:scale-95 transition-all hover:shadow-[0_8px_20px_-8px_rgba(15,23,42,0.12)]`}
+            >
+              <div className={`h-9 w-9 rounded-xl ${item.bg} flex items-center justify-center`}>
+                <Icon className={`h-4.5 w-4.5 ${item.color}`} strokeWidth={2.2} />
+              </div>
+              <span className="text-[10.5px] font-bold text-slate-700 leading-none">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* ══════ TODAY AT A GLANCE ══════ */}
       <div className="flex items-end justify-between pt-2">
         <h2 className="text-[18px] font-bold text-slate-900 tracking-tight" style={serif}>
@@ -492,7 +509,7 @@ const Dashboard = () => {
           >
             <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${card.ribbon}`} />
             <div className={`h-12 w-12 rounded-2xl ${card.iconBg} flex items-center justify-center shrink-0 ring-1 ring-slate-100`}>
-              <Icon className={`h-5.5 w-5.5 ${card.iconColor}`} strokeWidth={2} fill="currentColor" />
+              <Icon className={`h-5.5 w-5.5 ${card.iconColor}`} strokeWidth={2.2} />
             </div>
             <div className="flex-1 min-w-0">
               <p className={`text-[9px] font-bold uppercase tracking-[0.22em] ${card.iconColor}`}>{card.short}</p>
@@ -505,202 +522,7 @@ const Dashboard = () => {
         );
       })()}
 
-      {/* ══════ TODAY'S AGENDA ══════ */}
-      <section className="rounded-[24px] bg-white border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-9 w-9 rounded-2xl bg-amber-50 flex items-center justify-center ring-1 ring-amber-100">
-              <Clock className="h-4.5 w-4.5 text-amber-600" strokeWidth={2} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-bold text-slate-900 leading-tight tracking-tight" style={serif}>
-                Today's <span className="italic font-normal text-slate-500">agenda</span>
-              </h2>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{todayFollowups.length} follow-ups pending</p>
-            </div>
-          </div>
-          {todayFollowups.length > 0 && (
-            <button onClick={() => navigate('/reminders')} className="text-[11px] font-semibold text-indigo-600 flex items-center gap-0.5 px-2.5 py-1.5 rounded-full bg-indigo-50 active:bg-indigo-100 transition-colors shrink-0">
-              See all <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-        </div>
 
-        <div className="px-3 pb-3">
-          {todayFollowups.length === 0 ? (
-            <div className="rounded-2xl bg-linear-to-br from-emerald-50/80 to-teal-50/60 py-9 flex flex-col items-center ring-1 ring-emerald-100/60">
-              <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center mb-2 shadow-sm ring-1 ring-emerald-100">
-                <CheckCircle2 className="h-6 w-6 text-emerald-500" strokeWidth={2} />
-              </div>
-              <p className="text-sm font-bold text-slate-800">All clear!</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">No follow-ups due today.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {todayFollowups.slice(0, 8).map((f) => {
-                const scheduledDate = f.scheduled_at ? new Date(f.scheduled_at) : null;
-                const isOverdue = scheduledDate ? scheduledDate < new Date() : false;
-                const timeStr = scheduledDate
-                  ? (isToday(scheduledDate) ? format(scheduledDate, 'hh:mm a') : format(scheduledDate, 'dd MMM, hh:mm a'))
-                  : '';
-                const isActioning = fupActionLoading === `${f.id}_complete` || fupActionLoading === `${f.id}_snooze`;
-
-                return (
-                  <div
-                    key={f.id}
-                    className={`flex items-center gap-3 rounded-2xl p-2.5 transition-all duration-200 ${
-                      isOverdue
-                        ? 'bg-rose-50/70 ring-1 ring-rose-200/60'
-                        : 'bg-slate-50/70 ring-1 ring-slate-100'
-                    }`}
-                  >
-                    {/* Date pill */}
-                    <div className={`shrink-0 h-11 w-11 rounded-xl flex flex-col items-center justify-center ${
-                      isOverdue ? 'bg-white ring-1 ring-rose-200' : 'bg-white ring-1 ring-slate-100'
-                    }`}>
-                      <span className={`text-[15px] font-extrabold leading-none ${isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
-                        {scheduledDate ? format(scheduledDate, 'dd') : '--'}
-                      </span>
-                      <span className={`text-[8px] font-bold uppercase mt-0.5 tracking-wider ${isOverdue ? 'text-rose-400' : 'text-slate-400'}`}>
-                        {scheduledDate ? format(scheduledDate, 'MMM') : ''}
-                      </span>
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-[13px] font-bold text-slate-800 truncate">{f.lead_name || 'Unknown'}</p>
-                        {isOverdue && <span className="text-[8px] font-bold bg-rose-500 text-white px-1.5 py-0.5 rounded-full leading-none tracking-wider">LATE</span>}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        {timeStr && <span className="text-[10px] text-slate-500 font-medium">{timeStr}</span>}
-                        {f.followup_type && (
-                          <span className="text-[9px] font-medium text-slate-400">· {f.followup_type.replace('_', ' ')}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-1 shrink-0">
-                      {f.lead_phone && (
-                        <a
-                          href={`tel:${f.lead_phone}`}
-                          className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center active:scale-90 transition-transform ring-1 ring-emerald-100"
-                        >
-                          <Phone className="h-3.5 w-3.5" strokeWidth={2.2} />
-                        </a>
-                      )}
-                      <button
-                        className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center active:scale-90 transition-transform ring-1 ring-indigo-100 disabled:opacity-40"
-                        onClick={() => completeFollowup(f.id)}
-                        disabled={isActioning}
-                      >
-                        {fupActionLoading === `${f.id}_complete`
-                          ? <span className="h-3.5 w-3.5 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
-                          : <Check className="h-3.5 w-3.5" strokeWidth={2.4} />}
-                      </button>
-                      <button
-                        className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center active:scale-90 transition-transform ring-1 ring-amber-100 disabled:opacity-40"
-                        onClick={() => snoozeFollowup(f.id)}
-                        disabled={isActioning}
-                      >
-                        {fupActionLoading === `${f.id}_snooze`
-                          ? <span className="h-3.5 w-3.5 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
-                          : <AlarmClock className="h-3.5 w-3.5" strokeWidth={2.2} />}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ══════ FRESH LEADS CAROUSEL ══════ */}
-      <section className="rounded-[24px] bg-white border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-9 w-9 rounded-2xl bg-violet-50 flex items-center justify-center ring-1 ring-violet-100">
-              <Sparkles className="h-4.5 w-4.5 text-violet-600" strokeWidth={2} />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h2 className="text-[15px] font-bold text-slate-900 leading-tight tracking-tight" style={serif}>
-                  Fresh <span className="italic font-normal text-slate-500">leads</span>
-                </h2>
-                {!freshLoading && freshLeads.length > 0 && (
-                  <span className="h-4.5 min-w-4.5 inline-flex items-center justify-center rounded-full bg-violet-600 px-1.5 text-[9px] font-bold text-white">
-                    {freshLeadsTotal ?? freshLeads.length}
-                  </span>
-                )}
-              </div>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">New enquiries awaiting contact</p>
-            </div>
-          </div>
-          <button onClick={() => navigate('/leads?status=NEW')} className="text-[11px] font-semibold text-violet-600 flex items-center gap-0.5 px-2.5 py-1.5 rounded-full bg-violet-50 active:bg-violet-100 transition-colors shrink-0">
-            View all <ChevronRight className="h-3 w-3" />
-          </button>
-        </div>
-
-        {freshLeads.length === 0 ? (
-          <div className="px-4 pb-4">
-            <div className="rounded-2xl bg-violet-50/60 py-8 flex flex-col items-center ring-1 ring-violet-100/60">
-              <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center mb-2 shadow-sm ring-1 ring-violet-100">
-                <CheckCircle2 className="h-6 w-6 text-violet-400" strokeWidth={2} />
-              </div>
-              <p className="text-sm font-bold text-slate-800">No fresh leads</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">All enquiries contacted.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-3 px-4 pb-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {freshLeads.slice(0, 10).map((lead) => {
-              const ago = (() => {
-                if (!lead.created_at) return '';
-                const diff = Date.now() - new Date(lead.created_at).getTime();
-                const h = Math.floor(diff / 3600000);
-                const d = Math.floor(diff / 86400000);
-                return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : 'Just now';
-              })();
-              return (
-                <div
-                  key={lead.id}
-                  onClick={() => navigate('/leads?status=NEW')}
-                  className="shrink-0 w-42 rounded-2xl bg-white ring-1 ring-slate-100 p-3 flex flex-col gap-2 active:scale-[0.97] transition-all cursor-pointer shadow-[0_2px_8px_-2px_rgba(15,23,42,0.06)] hover:ring-violet-200 hover:shadow-[0_6px_18px_-8px_rgba(139,92,246,0.25)]"
-                >
-                  <div className="h-10 w-10 rounded-2xl bg-linear-to-br from-violet-100 to-purple-200/70 flex items-center justify-center ring-1 ring-violet-200/50 overflow-hidden">
-                    {lead.photo_url ? (
-                      <img src={lead.photo_url} alt={lead.name} className="w-full h-full rounded-2xl object-cover" loading="lazy" />
-                    ) : (
-                      <span className="text-sm font-bold text-violet-700">{lead.name?.charAt(0)?.toUpperCase()}</span>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-bold text-slate-800 truncate leading-tight">{lead.name || 'Unnamed'}</p>
-                    {lead.phone && <p className="text-[10px] text-slate-500 truncate mt-0.5 font-mono">{lead.phone}</p>}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {lead.lead_category && (
-                      <span className="text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-violet-50 ring-1 ring-violet-200/60 text-violet-700">{lead.lead_category}</span>
-                    )}
-                    {ago && <span className="text-[9px] text-slate-400 font-medium">{ago}</span>}
-                  </div>
-                  {lead.phone && (
-                    <a
-                      href={`tel:${lead.phone}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center justify-center gap-1 h-8 rounded-xl bg-linear-to-r from-violet-600 to-purple-600 text-white text-[10px] font-semibold active:scale-95 transition-transform shadow-sm shadow-violet-300/50 mt-auto"
-                    >
-                      <Phone className="h-3 w-3" strokeWidth={2.4} /> Call
-                    </a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {/* ══════ PIPELINE ══════ */}
       <section className="rounded-[24px] bg-white border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.05)] p-4">
@@ -716,7 +538,7 @@ const Dashboard = () => {
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">{fmtNum(leadTotal)} total leads</p>
             </div>
           </div>
-          <button onClick={() => navigate('/leads')} className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5 px-2.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 transition-colors shrink-0">
+          <button onClick={() => navigate('/leads?status=ALL')} className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5 px-2.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 transition-colors shrink-0">
             All leads <ChevronRight className="h-3 w-3" />
           </button>
         </div>

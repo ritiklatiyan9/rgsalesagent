@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { User, Mail, Phone, MapPin, Briefcase, Camera, Save, X, Lock } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Briefcase, Camera, Save, X, Lock, Hash, Copy, Check } from 'lucide-react';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -24,6 +24,19 @@ export default function Profile() {
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleCopyReferral = async () => {
+    if (!user?.sponsor_code) return;
+    try {
+      await navigator.clipboard.writeText(user.sponsor_code);
+      setCopiedCode(true);
+      toast.success('Referral code copied');
+      setTimeout(() => setCopiedCode(false), 1800);
+    } catch {
+      toast.error('Could not copy referral code');
+    }
+  };
 
   // Profile form state
   const [formData, setFormData] = useState({
@@ -198,6 +211,35 @@ export default function Profile() {
 
         {/* Profile Tab */}
         <TabsContent value="profile" className="space-y-6">
+          {/* Referral Code Card */}
+          <Card className="border-indigo-100 bg-linear-to-br from-indigo-50 via-violet-50 to-fuchsia-50 overflow-hidden">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-11 w-11 shrink-0 rounded-xl bg-white/70 ring-1 ring-indigo-100 flex items-center justify-center">
+                    <Hash className="h-5 w-5 text-indigo-600" strokeWidth={2.4} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-700">Your Referral Code</p>
+                    <p className="text-[22px] font-bold text-slate-900 tabular-nums tracking-wider mt-0.5 truncate">
+                      {user?.sponsor_code || '—'}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Bookings made with this code count as your referrals.</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleCopyReferral}
+                  variant="outline"
+                  disabled={!user?.sponsor_code}
+                  className="shrink-0 bg-white/80 border-indigo-200 hover:bg-white text-indigo-700"
+                >
+                  {copiedCode ? <Check className="h-4 w-4 mr-1.5" /> : <Copy className="h-4 w-4 mr-1.5" />}
+                  {copiedCode ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Profile Information</CardTitle>

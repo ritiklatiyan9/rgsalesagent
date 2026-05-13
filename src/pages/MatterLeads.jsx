@@ -2,11 +2,18 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+    Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
+} from '@/components/ui/drawer';
 import { cachedGet, getCachedSync } from '@/lib/queryCache';
 import { useCallAction } from '@/hooks/useCallAction';
+import api from '@/lib/axios';
+import { format } from 'date-fns';
+import CallTimeline from '@/components/CallTimeline';
 import {
     Phone, Search, PhoneCall, Clock, Star,
-    ChevronLeft, ChevronRight, X,
+    ChevronLeft, ChevronRight, X, Eye,
 } from 'lucide-react';
 
 /* ─── WhatsApp Icon ─── */
@@ -84,6 +91,31 @@ export default function MatterLeads() {
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const searchTimer = useRef(null);
     const listTopRef = useRef(null);
+
+    const [viewOpen, setViewOpen] = useState(false);
+    const [viewTarget, setViewTarget] = useState(null);
+    const [viewCallHistory, setViewCallHistory] = useState([]);
+    const [viewCallLoading, setViewCallLoading] = useState(false);
+
+    const openView = useCallback(async (lead) => {
+        setViewTarget(lead);
+        setViewCallHistory([]);
+        setViewOpen(true);
+        if (lead?.id) {
+            setViewCallLoading(true);
+            try {
+                const { data } = await api.get(`/calls/lead/${lead.id}`);
+                if (data?.success && Array.isArray(data.calls)) {
+                    setViewCallHistory(data.calls);
+                }
+            } catch (err) {
+                console.error('Failed to fetch call history:', err);
+                setViewCallHistory([]);
+            } finally {
+                setViewCallLoading(false);
+            }
+        }
+    }, []);
 
     const fetchLeads = useCallback(async (pg, q) => {
         const isFirstLoad = pg === 1 && !hasDataRef.current;
@@ -316,8 +348,8 @@ export default function MatterLeads() {
                                     </div>
 
                                     {/* Action buttons */}
-                                    {lead.phone && (
-                                        <div className="flex flex-col gap-1.5 shrink-0">
+                                    <div className="flex flex-col gap-1.5 shrink-0">
+                                        {lead.phone && (
                                             <button
                                                 type="button"
                                                 onClick={(e) => { e.stopPropagation(); initiateCall(lead.phone, { leadId: lead.id, name: lead.name }); }}
@@ -326,6 +358,16 @@ export default function MatterLeads() {
                                             >
                                                 <Phone className="h-4 w-4" />
                                             </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); openView(lead); }}
+                                            className="h-9 w-9 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-indigo-600 flex items-center justify-center hover:bg-indigo-50 hover:text-indigo-700 active:scale-90 transition-all"
+                                            title={`View details — ${lead.name}`}
+                                        >
+                                            <Eye className="h-4 w-4" />
+                                        </button>
+                                        {lead.phone && (
                                             <a
                                                 href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`}
                                                 target="_blank"
@@ -336,8 +378,8 @@ export default function MatterLeads() {
                                             >
                                                 <WaIcon cls="h-4 w-4" />
                                             </a>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -420,6 +462,103 @@ export default function MatterLeads() {
                     Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total.toLocaleString('en-IN')} leads
                 </p>
             )}
+
+            {/* View Details Drawer */}
+            <Drawer open={viewOpen} onOpenChange={setViewOpen}>
+                <DrawerContent className="max-h-[92vh]">
+                    <DrawerHeader className="shrink-0 border-b border-slate-100 pb-3">
+                        <DrawerTitle className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                                <Eye className="h-4 w-4 text-indigo-600" />
+                            </div>
+                            Lead Details
+                        </DrawerTitle>
+                        <DrawerDescription>All information for {viewTarget?.name}</DrawerDescription>
+                    </DrawerHeader>
+                    {viewTarget && (
+                        <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-4 py-4">
+                            {viewTarget.photo_url && (
+                                <div className="flex justify-center pb-3 border-b border-border/40">
+                                    <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl overflow-hidden border-2 border-slate-200 shadow-sm">
+                                        <img src={viewTarget.photo_url} alt={viewTarget.name} className="w-full h-full object-cover" />
+                                    </div>
+                                </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Name</p>
+                                    <p className="font-medium">{viewTarget.name || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Phone</p>
+                                    <p className="font-medium font-mono">{viewTarget.phone || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Email</p>
+                                    <p className="font-medium truncate" title={viewTarget.email}>{viewTarget.email || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Address</p>
+                                    <p className="font-medium">{viewTarget.address || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Profession</p>
+                                    <p className="font-medium">{viewTarget.profession || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Status</p>
+                                    {viewTarget.status ? (
+                                        <Badge variant="secondary" className={`mt-1 text-[10px] px-2 py-0.5 border-0 font-medium ${STATUS_PILL[viewTarget.status] || 'bg-slate-100 text-slate-700'}`}>
+                                            {viewTarget.status.replace(/_/g, ' ')}
+                                        </Badge>
+                                    ) : (
+                                        <p className="font-medium text-slate-400">—</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Category</p>
+                                    {viewTarget.lead_category ? (
+                                        <Badge variant="outline" className="mt-1 text-[10px] px-2 py-0.5 font-medium">
+                                            {viewTarget.lead_category}
+                                        </Badge>
+                                    ) : (
+                                        <p className="font-medium text-slate-400">—</p>
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Source</p>
+                                    <p className="font-medium">{viewTarget.lead_source || '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Added On</p>
+                                    <p className="font-medium">{viewTarget.created_at ? format(new Date(viewTarget.created_at), 'MMM dd, yyyy') : '—'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-muted-foreground text-xs uppercase font-semibold">Calls</p>
+                                    <p className="font-medium">{viewTarget.call_count ?? 0}</p>
+                                </div>
+                                {viewTarget.assigned_to_name && (
+                                    <div className="col-span-2">
+                                        <p className="text-muted-foreground text-xs uppercase font-semibold">Assigned To</p>
+                                        <p className="font-medium">{viewTarget.assigned_to_name}</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <p className="text-muted-foreground text-xs uppercase font-semibold mb-1">Notes</p>
+                                <div className="bg-slate-50 p-3 rounded-md text-sm text-slate-700 whitespace-pre-wrap border border-slate-100">
+                                    {(viewTarget.notes && String(viewTarget.notes).replace(/\s*\[Referee:\s*.+?\]\s*/gi, ' ').trim()) || 'No notes available.'}
+                                </div>
+                            </div>
+
+                            <CallTimeline calls={viewCallHistory} loading={viewCallLoading} />
+                        </div>
+                    )}
+                    <DrawerFooter className="shrink-0 border-t border-slate-100 pt-3">
+                        <Button type="button" onClick={() => setViewOpen(false)} className="h-9 w-full text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 shadow-none">Close</Button>
+                    </DrawerFooter>
+                </DrawerContent>
+            </Drawer>
         </div>
     );
 }

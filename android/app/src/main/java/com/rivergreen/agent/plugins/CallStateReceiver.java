@@ -48,28 +48,11 @@ public class CallStateReceiver extends BroadcastReceiver {
                 } else if (stateStr.equals(TelephonyManager.EXTRA_STATE_OFFHOOK)) {
                     listener.onCallStateChanged(CallEvent.OFFHOOK, number);
                 } else if (stateStr.equals(TelephonyManager.EXTRA_STATE_IDLE)) {
-                    showDebugNotification(context, "Call ENDED Receiver: " + number);
                     listener.onCallStateChanged(CallEvent.IDLE, number);
                 }
                 break;
             }
         }
-    }
-
-    private void showDebugNotification(Context context, String msg) {
-        try {
-            android.app.NotificationManager nm = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    "debug_channel", "Debug", android.app.NotificationManager.IMPORTANCE_HIGH);
-            nm.createNotificationChannel(channel);
-            
-            android.app.Notification notif = new androidx.core.app.NotificationCompat.Builder(context, "debug_channel")
-                    .setContentTitle("Debug")
-                    .setContentText(msg)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .build();
-            nm.notify((int) System.currentTimeMillis(), notif);
-        } catch (Exception e) {}
     }
 
     /**

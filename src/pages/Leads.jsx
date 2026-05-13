@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   Plus, Pencil, Search, Users,
-  ChevronLeft, ChevronRight, AlertCircle, Eye,
+  AlertCircle, Eye,
   BellPlus, Camera, X, ImageIcon, PhoneOutgoing,
 } from 'lucide-react';
 import CallTimeline from '@/components/CallTimeline';
@@ -315,9 +315,12 @@ const Leads = () => {
   const [leads, setLeads] = useState(() => _initCached?.leads ?? []);
   const [loading, setLoading] = useState(() => !_initCached);
   const [refreshing, setRefreshing] = useState(false); // silent background sync indicator
+  const [loadingMore, setLoadingMore] = useState(false); // infinite-scroll fetch indicator
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(() => _initCached?.pagination?.totalPages ?? 1);
+  // Sentinel that triggers the next-page fetch when scrolled into view.
+  const loadMoreRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [categoryFilter, setCategoryFilter] = useState(initialCategory);
@@ -357,15 +360,27 @@ const Leads = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [shiftLoading, setShiftLoading] = useState(false);
 
-  const fetchLeads = useCallback(async (page, search, status, fresh = false, category, importJobId) => {
+  // `append=true` means infinite-scroll loaded the next page — concat to the
+  // existing list instead of replacing. Filter/search changes always fetch
+  // page 1 in replace mode so the list resets cleanly.
+  const fetchLeads = useCallback(async (page, search, status, fresh = false, category, importJobId, append = false) => {
     const hasData = hasDataRef.current;
-    if (!hasData) setLoading(true);
+    if (append) setLoadingMore(true);
+    else if (!hasData) setLoading(true);
     else setRefreshing(true);
     try {
       const url = buildLeadsUrl(page, search, status, category, importJobId) + (fresh ? `&_t=${Date.now()}` : '');
       const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000 });
       if (data.success) {
-        setLeads(data.leads);
+        setLeads((prev) => {
+          if (!append) return data.leads;
+          // Defend against double-trigger: drop any incoming row whose id is
+          // already in the list (can happen if the IntersectionObserver fires
+          // twice while the request is in flight).
+          const existing = new Set(prev.map((l) => l.id));
+          const incoming = data.leads.filter((l) => !existing.has(l.id));
+          return [...prev, ...incoming];
+        });
         setTotalPages(data.pagination.totalPages);
         hasDataRef.current = true;
       }
@@ -375,6 +390,7 @@ const Leads = () => {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
   }, []); // stable — all values passed as args, no state deps
 
@@ -421,6 +437,62 @@ const Leads = () => {
       cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter, importJobFilter));
     }
   }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter, importJobFilter]);
+
+  // Infinite scroll. Two safety nets so this is reliable across layouts:
+  //   1. IntersectionObserver rooted on the actual scrolling ancestor (the
+  //      app shell uses an internally-scrolling <main overflow-y-auto>, so
+  //      a viewport-rooted IO never fires — the document never scrolls).
+  //   2. A scroll listener on the same ancestor, in case IO misses (some
+  //      mobile WebViews don't fire IO callbacks reliably under
+  //      momentum-scroll). Both share the same trigger function and a
+  //      single in-flight guard.
+  useEffect(() => {
+    if (loading || loadingMore) return;
+    if (currentPage >= totalPages) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+
+    // Walk up from the sentinel to the nearest scrollable ancestor.
+    const findScrollParent = (node) => {
+      let cur = node?.parentElement;
+      while (cur && cur !== document.body) {
+        const oy = window.getComputedStyle(cur).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return cur;
+        cur = cur.parentElement;
+      }
+      return null;
+    };
+    const scrollParent = findScrollParent(el);
+
+    const triggerNext = () => {
+      if (loadingMore) return;
+      if (currentPage >= totalPages) return;
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchLeadsRef.current(nextPage, searchQuery, statusFilter, false, categoryFilter, importJobFilter, true);
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) triggerNext(); },
+      { root: scrollParent || null, rootMargin: '300px' },
+    );
+    observer.observe(el);
+
+    // Belt-and-braces: scroll listener on the same parent.
+    const onScroll = () => {
+      const target = scrollParent || document.scrollingElement;
+      if (!target) return;
+      const dist = target.scrollHeight - target.scrollTop - target.clientHeight;
+      if (dist < 320) triggerNext();
+    };
+    const scrollSrc = scrollParent || window;
+    scrollSrc.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      scrollSrc.removeEventListener('scroll', onScroll);
+    };
+  }, [currentPage, totalPages, loading, loadingMore, searchQuery, statusFilter, categoryFilter, importJobFilter]);
 
   // Fetch import batches only when the Fresh-Leads stage dropdown should be shown.
   useEffect(() => {
@@ -810,29 +882,25 @@ const Leads = () => {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && !loading && (
-        <div className="flex items-center justify-between pt-1 pb-2 px-1">
-          <p className="text-[11px] text-slate-500 italic" style={serif}>
-            Page <span className="font-bold text-slate-800 not-italic">{currentPage}</span> of <span className="font-bold text-slate-800 not-italic">{totalPages}</span>
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
-              disabled={currentPage === 1}
-              className="h-9 px-3 rounded-full bg-white ring-1 ring-inset ring-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 flex items-center gap-1 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </button>
-            <button
-              onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchLeads(p, searchQuery, statusFilter, false, categoryFilter); }}
-              disabled={currentPage === totalPages}
-              className="h-9 px-3 rounded-full bg-white ring-1 ring-inset ring-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-50 flex items-center gap-1 active:scale-95 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+      {/* Infinite-scroll sentinel — when this scrolls into view the effect
+          above triggers the next page fetch. Shows a small spinner while the
+          request is in flight; once we've hit the last page it switches to a
+          subtle "end of list" caption so users know nothing is missing. */}
+      {!loading && leads.length > 0 && (
+        currentPage < totalPages ? (
+          <div ref={loadMoreRef} className="py-6 flex items-center justify-center gap-2">
+            <span className="h-4 w-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              {loadingMore ? 'Loading more…' : 'Scroll for more'}
+            </span>
           </div>
-        </div>
+        ) : (
+          totalPages > 1 && (
+            <p className="text-center text-[11px] italic text-slate-400 py-4" style={serif}>
+              — end of list · {leads.length} leads —
+            </p>
+          )
+        )
       )}
 
 

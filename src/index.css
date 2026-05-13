@@ -67,6 +67,10 @@ html, body, #root {
 }
 
 @theme inline {
+  /* Extra-small breakpoint for the narrowest phones (≥420px). Tailwind's
+     default `sm:` is 640px which is too wide to gate two-column form grids
+     on phones — anything narrower than `xs` stacks in one column. */
+  --breakpoint-xs: 420px;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/dialog';
 
 import api from '@/lib/axios';
-import { invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
 import {
   formatCallType,
   formatCallDuration,
@@ -54,7 +54,20 @@ const SOURCE_UI_OPTIONS = [
   { value: 'REFERRAL',     label: 'Referral'     },
 ];
 
-const LEAD_STATUS_OPTIONS  = ['NEW','CONTACTED','INTERESTED','SITE_VISIT','NEGOTIATION','BOOKED','LOST'];
+// Status values must match VALID_STATUSES in backend/src/controllers/lead.controller.js.
+// Order = call-flow + outcome buckets so the most common picks sit at the top.
+const LEAD_STATUS_OPTIONS = [
+  { value: 'NEW',           label: 'New Lead' },
+  { value: 'CONTACTED',     label: 'Contacted' },
+  { value: 'INTERESTED',    label: 'Interested' },
+  { value: 'SITE_VISIT',    label: 'Site Visit' },
+  { value: 'NEGOTIATION',   label: 'Negotiation' },
+  { value: 'BOOKED',        label: 'Booked' },
+  { value: 'LOST',          label: 'Lost' },
+  { value: 'NOT_ANSWERING', label: 'Call Cut / Not Answering' },
+  { value: 'INCOMING_OFF',  label: 'Incoming Off' },
+  { value: 'SWITCH_OFF',    label: 'Switch Off' },
+];
 const LEAD_CATEGORY_VALUES = ['PRIME','HOT','NORMAL','COLD','DEAD'];
 const FOLLOWUP_TYPES       = ['CALL','WHATSAPP','VISIT','MEETING'];
 
@@ -175,97 +188,115 @@ export default function CallDrawer() {
     };
   }, []);
 
-  // ── fetch lead context ──
+  // Build a form object from a lead record (server response shape).
+  const formFromLead = useCallback((lead) => {
+    if (!lead) return getDefaultLeadForm(callData);
+    return {
+      id: lead.id,
+      name: lead.name || defaultLeadName(callData?.phoneNumber),
+      phone: lead.phone || callData?.phoneNumber || '',
+      email: lead.email || '',
+      address: lead.address || '',
+      profession: lead.profession || '',
+      status: lead.status || 'CONTACTED',
+      lead_category: lead.lead_category || '',
+      source_ui: mapApiSourceToUi(lead.lead_source),
+      referral_name: extractReferralName(lead.notes),
+      notes: String(callData?.customerNotes || '').trim(),
+    };
+  }, [callData]);
+
+  // ── fetch lead context — optimistic, parallel, cache-backed ──
+  // Strategy:
+  // 1. Synchronously prefill the form from `callData` so the drawer renders
+  //    a usable form immediately — never a blank/disabled state.
+  // 2. If the server response is already in the in-memory cache, adopt it
+  //    on the same tick (no flicker).
+  // 3. Otherwise fire the lookups in parallel in the background and merge
+  //    when they return. The drawer is interactive the whole time.
   const fetchLeadContext = useCallback(async () => {
-    if (!callData?.phoneNumber) {
-      setIsExistingLead(false);
-      setLeadForm(getDefaultLeadForm(callData));
-      setLeadCallHistory([]);
-      setIsEditingLead(false);
-      return;
+    // (1) Optimistic synchronous prefill — never block the render.
+    const optimistic = getDefaultLeadForm(callData);
+    setLeadForm(optimistic);
+    setIsExistingLead(false);
+    setIsEditingLead(false);
+    setLeadCallHistory([]);
+    setAccordionValue([]);
+
+    if (!callData?.phoneNumber) return;
+
+    // (2) Cache-hit path — if we already have the lead in memory, use it.
+    let matchedLead = null;
+    if (callData?.leadId) {
+      const cached = getCachedSync(`/leads/${callData.leadId}`);
+      if (cached?.success && cached.lead) matchedLead = cached.lead;
     }
+    if (matchedLead) {
+      setIsExistingLead(true);
+      setLeadForm(formFromLead(matchedLead));
+      const cachedHistory = getCachedSync(`/calls/lead/${matchedLead.id}`);
+      if (cachedHistory?.success) setLeadCallHistory(cachedHistory.calls || []);
+    }
+
+    // (3) Background revalidation — never blocks the form. Quiet loading
+    //     indicator only for the timeline / profile sections that need it.
     setLoadingContext(true);
     try {
-      let matchedLead = null;
-
-      if (callData?.leadId) {
+      // Resolve the lead — prefer the explicit id, otherwise search by phone.
+      if (!matchedLead && callData?.leadId) {
         try {
-          const { data } = await api.get(`/leads/${callData.leadId}`);
+          const data = await cachedGet(`/leads/${callData.leadId}`, { staleTime: 30_000, cacheTime: 300_000 });
           if (data?.success) matchedLead = data.lead;
+        } catch { /* ignore */ }
+      }
+      if (!matchedLead) {
+        try {
+          const search = encodeURIComponent(callData.phoneNumber);
+          const data = await cachedGet(`/leads?search=${search}&limit=20`, { staleTime: 60_000, cacheTime: 300_000 });
+          const leads = data?.success ? (data.leads || []) : [];
+          matchedLead = leads.find((l) => phonesMatch(l.phone, callData.phoneNumber)) || null;
         } catch { /* ignore */ }
       }
 
       if (!matchedLead) {
-        const search = encodeURIComponent(callData.phoneNumber);
-        const { data } = await api.get(`/leads?search=${search}&limit=20`);
-        const leads    = data?.success ? (data.leads || []) : [];
-        matchedLead    = leads.find((l) => phonesMatch(l.phone, callData.phoneNumber)) || null;
-      }
-
-      if (!matchedLead) {
-        setIsExistingLead(false);
-        setIsEditingLead(false);
-        
-        const formObj = getDefaultLeadForm(callData);
+        // No lead — try contact directory in parallel for a name suggestion.
         try {
           const search = encodeURIComponent(callData.phoneNumber);
-          const { data } = await api.get(`/contacts?search=${search}&limit=10`);
+          const data = await cachedGet(`/contacts?search=${search}&limit=10`, { staleTime: 60_000, cacheTime: 600_000 });
           const contacts = data?.success ? (data.contacts || []) : [];
           const matchedContact = contacts.find((c) => phonesMatch(c.phone, callData.phoneNumber));
-          
-          if (matchedContact && matchedContact.name) {
-            formObj.name = matchedContact.name;
+          if (matchedContact?.name) {
+            setLeadForm((prev) => ({ ...prev, name: prev.name || matchedContact.name }));
           }
-        } catch (err) {
-          // Ignore if API fails
-        }
-        
-        setLeadForm(formObj);
-        setLeadCallHistory([]);
-        setAccordionValue(['profile']); // Open profile to prompt saving new lead
+        } catch { /* ignore */ }
+        setAccordionValue(['profile']);
         return;
       }
 
-      const [leadRes, callRes] = await Promise.all([
-        api.get(`/leads/${matchedLead.id}`),
-        api.get(`/calls/lead/${matchedLead.id}`),
-      ]);
+      // Lead resolved — fetch full record + history in parallel, but don't
+      // hold up the form: each result patches state independently.
+      const fullLeadPromise = cachedGet(`/leads/${matchedLead.id}`, { staleTime: 30_000, cacheTime: 300_000 }).catch(() => null);
+      const historyPromise  = cachedGet(`/calls/lead/${matchedLead.id}`, { staleTime: 30_000, cacheTime: 300_000 }).catch(() => null);
 
-      const fullLead    = leadRes?.data?.success ? leadRes.data.lead : matchedLead;
-      const history     = callRes?.data?.success ? (callRes.data.calls || []) : [];
-      const referralName = extractReferralName(fullLead?.notes);
+      const [leadRes, callRes] = await Promise.all([fullLeadPromise, historyPromise]);
+
+      const fullLead = leadRes?.success ? leadRes.lead : matchedLead;
+      const history  = callRes?.success ? (callRes.calls || []) : [];
 
       setIsExistingLead(true);
-      setIsEditingLead(false);
-      setLeadForm({
-        id: fullLead.id,
-        name: fullLead.name || defaultLeadName(callData?.phoneNumber),
-        phone: fullLead.phone || callData?.phoneNumber || '',
-        email: fullLead.email || '',
-        address: fullLead.address || '',
-        profession: fullLead.profession || '',
-        status: fullLead.status || 'CONTACTED',
-        lead_category: fullLead.lead_category || '',
-        source_ui: mapApiSourceToUi(fullLead.lead_source),
-        referral_name: referralName,
-        notes: String(callData?.customerNotes || '').trim(),
-      });
+      setLeadForm(formFromLead(fullLead));
       setLeadCallHistory(history);
       setFutureAction((prev) => ({
         ...prev,
         notes: prev.notes || `Follow up after ${formatCallType(callData?.callType)} call`,
       }));
-      setAccordionValue(isEditingLead ? ['profile'] : []); 
     } catch {
-      setIsExistingLead(false);
-      setIsEditingLead(false);
-      setLeadForm(getDefaultLeadForm(callData));
-      setLeadCallHistory([]);
+      // Form already shows the optimistic prefill — leave it as-is.
       setAccordionValue(['profile']);
     } finally {
       setLoadingContext(false);
     }
-  }, [callData]);
+  }, [callData, formFromLead]);
 
   useEffect(() => {
     setErrors({});
@@ -315,26 +346,42 @@ export default function CallDrawer() {
         setIsExistingLead(true);
         setIsEditingLead(false);
 
-        // Link this call to the saved lead and persist Call Notes so the call
-        // row in Recents shows the client name (instead of "Manual Call") and
-        // the notes surface in the timeline.
         const cid = callData?.callId;
         const savedLeadId = result?.lead?.id || leadForm.id || null;
-        if (cid) {
-          try {
-            const body = { customer_notes: leadForm.notes?.trim() || null };
-            if (savedLeadId) body.lead_id = savedLeadId;
-            await api.put(`/calls/${cid}`, body);
-          } catch { /* silent */ }
-          try { invalidateCache('/calls/dialer-history'); } catch { /* silent */ }
-        }
+        const savedLeadName = leadForm.name?.trim() || null;
+        const savedNotes = leadForm.notes?.trim() || null;
 
-        // Let the rest of the app (DialerPage recents, etc.) refresh.
+        // Patch the local Recents row instantly (no server round-trip), so
+        // the row picks up the client name as soon as the user hits Save.
+        // The `phone` is included so the store can ALSO patch any unlinked
+        // sibling rows for the same number (e.g. an optimistic local row that
+        // was never linked to the server cid because of the bridge race).
         try {
           window.dispatchEvent(new CustomEvent('rg:call-updated', {
-            detail: { callId: cid, leadId: savedLeadId, leadName: leadForm.name?.trim() || null },
+            detail: {
+              callId: cid,
+              leadId: savedLeadId,
+              leadName: savedLeadName,
+              customerNotes: savedNotes,
+              phone: leadForm.phone || callData?.phoneNumber || null,
+            },
           }));
         } catch { /* noop */ }
+
+        // Persist the call→lead link + notes in the background; do NOT block
+        // the UI on this round-trip.
+        if (cid) {
+          const body = { customer_notes: savedNotes };
+          if (savedLeadId) body.lead_id = savedLeadId;
+          api.put(`/calls/${cid}`, body).catch(() => { /* silent */ });
+          try {
+            invalidateCache('/calls/dialer-history');
+            if (savedLeadId) {
+              invalidateCache(`/calls/lead/${savedLeadId}`);
+              invalidateCache(`/leads/${savedLeadId}`);
+            }
+          } catch { /* silent */ }
+        }
 
         await fetchLeadContext();
       } else {
@@ -382,252 +429,185 @@ export default function CallDrawer() {
   if (!callData) return null;
   return (
     <Drawer open={open} onOpenChange={(val) => { if (!val) closeDrawer(); }}>
-      <DrawerContent className="max-h-[90vh] bg-slate-50 flex flex-col">
+      <DrawerContent className="max-h-[92vh] sm:max-h-[90vh] bg-slate-50 flex flex-col">
         {/* ── Top bar ── */}
-        <DrawerHeader className="px-5 pt-5 pb-3 shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-3 w-full">
-            <button
-              onClick={closeDrawer}
-              className="h-9 w-9 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors shrink-0"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="flex-1 min-w-0 text-left">
-              <DrawerTitle className="text-[15px] font-bold text-slate-800 truncate m-0 pb-0.5">Call Summary</DrawerTitle>
-              <p className="text-[11px] text-slate-500 truncate">Post-call client workspace</p>
-            </div>
-
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${meta.bg} ${meta.color} border ${meta.border}`}>
-              <CallIcon className="h-3.5 w-3.5" />
-              {formatCallType(callData?.callType)}
-            </div>
+        <DrawerHeader className="px-3 pt-2.5 pb-2 shrink-0 flex-row items-center gap-2 space-y-0 border-b border-slate-200">
+          <button
+            onClick={closeDrawer}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors shrink-0"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <div className="flex-1 min-w-0 text-left">
+            <DrawerTitle className="text-[13px] font-medium text-slate-900 truncate m-0">Call Summary</DrawerTitle>
+            <p className="text-[10.5px] text-slate-500 truncate m-0">
+              <span className={meta.color}>{formatCallType(callData?.callType)}</span>
+              {callData?.phoneNumber ? <span className="font-mono"> · {callData.phoneNumber}</span> : null}
+              {callData?.duration ? <span> · {formatCallDuration(callData.duration)}</span> : null}
+            </p>
           </div>
         </DrawerHeader>
 
         {/* ── Body ── */}
-        <div className="flex-1 overflow-y-auto px-1">
-          <div className="max-w-2xl mx-auto px-4 pb-8 space-y-5">
+        <div className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 pb-4 space-y-2.5">
 
-        {/* ── Call Stats Glass Card ── */}
-        <div className="bg-gradient-to-br from-indigo-50/80 to-white border border-indigo-100/50 rounded-2xl p-1.5 shadow-sm">
-          <div className="grid grid-cols-3 gap-1.5">
-            <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white px-2 py-3 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-              <div className="h-7 w-7 rounded-full bg-indigo-50 flex items-center justify-center">
-                <Phone className="h-3.5 w-3.5 text-indigo-600" strokeWidth={2.5} />
-              </div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Number</span>
-              <span className="text-xs font-bold font-mono text-slate-800 truncate w-full text-center">
-                {callData?.phoneNumber || 'Unknown'}
-              </span>
-            </div>
-            <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white px-2 py-3 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-              <div className="h-7 w-7 rounded-full bg-emerald-50 flex items-center justify-center">
-                <Clock className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.5} />
-              </div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Duration</span>
-              <span className="text-xs font-bold font-mono text-slate-800 uppercase">
-                {formatCallDuration(callData?.duration)}
-              </span>
-            </div>
-            <div className="flex flex-col items-center gap-1.5 rounded-xl bg-white px-2 py-3 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-              <div className="h-7 w-7 rounded-full bg-sky-50 flex items-center justify-center">
-                <Calendar className="h-3.5 w-3.5 text-sky-600" strokeWidth={2.5} />
-              </div>
-              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Time</span>
-              <span className="text-[11px] font-bold text-slate-800 text-center leading-tight">
-                {formatCallTimestamp(callData?.timestamp)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Missed call notice ── */}
+        {/* ── Missed call notice — single subtle line, no chunky card ── */}
         {callData?.callType === 'MISSED' && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-3">
-            <PhoneMissed className="h-5 w-5 text-rose-500 shrink-0" />
-            <p className="text-sm text-rose-700 font-medium">
-              Missed call — follow up with this client.
-            </p>
-          </div>
+          <p className="text-[11px] text-rose-600 flex items-center gap-1.5">
+            <PhoneMissed className="h-3.5 w-3.5 shrink-0" />
+            Missed call — follow up with this client.
+          </p>
         )}
 
-        {/* ── Core Action Fields ── */}
-        <div className="space-y-3 pt-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</Label>
+        {/* ── Core fields ── */}
+        <div className="rounded-md border border-slate-200 bg-white p-3 space-y-2.5">
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-2.5">
+            <div className="space-y-1 min-w-0">
+              <Label className="text-[10.5px] text-slate-500 font-normal">Status</Label>
               <Select value={leadForm.status} onValueChange={setLeadField('status')}>
-                <SelectTrigger className="h-12 text-sm rounded-xl bg-white border-slate-200 font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus:ring-1 focus:ring-slate-300"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {LEAD_STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s} className="text-sm font-medium">{s}</SelectItem>)}
+                  {LEAD_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-[12.5px]">{opt.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Category</Label>
+            <div className="space-y-1 min-w-0">
+              <Label className="text-[10.5px] text-slate-500 font-normal">Category</Label>
               <Select
                 value={leadForm.lead_category || 'NONE'}
                 onValueChange={(v) => setLeadField('lead_category')(v === 'NONE' ? '' : v)}
               >
-                <SelectTrigger className="h-12 text-sm rounded-xl bg-white border-slate-200 font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus:ring-1 focus:ring-slate-300"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE" className="text-sm font-medium">Uncategorized</SelectItem>
-                  {LEAD_CATEGORY_VALUES.map((c) => <SelectItem key={c} value={c} className="text-sm font-medium">{c}</SelectItem>)}
+                  <SelectItem value="NONE" className="text-[12.5px]">Uncategorized</SelectItem>
+                  {LEAD_CATEGORY_VALUES.map((c) => <SelectItem key={c} value={c} className="text-[12.5px]">{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Source</Label>
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-2.5">
+            <div className="space-y-1 min-w-0">
+              <Label className="text-[10.5px] text-slate-500 font-normal">Source</Label>
               <Select value={leadForm.source_ui} onValueChange={setLeadField('source_ui')}>
-                <SelectTrigger className="h-12 text-sm rounded-xl bg-white border-slate-200 font-semibold text-slate-700 shadow-sm focus:ring-2 focus:ring-indigo-500/20"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus:ring-1 focus:ring-slate-300"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SOURCE_UI_OPTIONS.map((opt) => <SelectItem key={opt.value} value={opt.value} className="text-sm font-medium">{opt.label}</SelectItem>)}
+                  {SOURCE_UI_OPTIONS.map((opt) => <SelectItem key={opt.value} value={opt.value} className="text-[12.5px]">{opt.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             {leadForm.source_ui === 'REFERRAL' && (
-              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Referee Name</Label>
+              <div className="space-y-1 min-w-0 animate-in fade-in slide-in-from-top-1">
+                <Label className="text-[10.5px] text-slate-500 font-normal">Referee Name</Label>
                 <Input
                   value={leadForm.referral_name}
                   onChange={(e) => setLeadField('referral_name')(e.target.value)}
                   placeholder="Who referred?"
-                  className="h-12 text-sm rounded-xl bg-white border-slate-200 font-semibold text-slate-700 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500/20 transition-all"
+                  className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
                 />
               </div>
             )}
           </div>
 
-          <div className="space-y-1.5 pt-1">
-            <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Call Notes</Label>
+          <div className="space-y-1">
+            <Label className="text-[10.5px] text-slate-500 font-normal">Call Notes</Label>
             <Textarea
               value={leadForm.notes}
               onChange={(e) => setLeadField('notes')(e.target.value)}
-              placeholder="Discussion summary, objections, next steps..."
-              className="min-h-24 text-sm font-medium resize-none rounded-xl bg-white border-slate-200 p-3 shadow-sm placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-indigo-500/20 transition-all"
+              placeholder="Discussion summary, objections, next steps…"
+              className="min-h-20 text-[12.5px] resize-none rounded-md bg-white border-slate-200 p-2.5 shadow-none placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-slate-300"
             />
           </div>
         </div>
 
         {/* ── Progressive Disclosure Accordions ── */}
-        <Accordion type="multiple" value={accordionValue} onValueChange={setAccordionValue} className="space-y-3 pt-3">
-          
+        <Accordion type="multiple" value={accordionValue} onValueChange={setAccordionValue} className="space-y-2">
+
           {/* Client Profile */}
-          <AccordionItem value="profile" className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-            <AccordionTrigger className="hover:no-underline px-4 py-3.5 border-b border-transparent data-[state=open]:border-slate-100 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-xl bg-indigo-50 flex items-center justify-center">
-                  <Users className="h-4.5 w-4.5 text-indigo-600" />
-                </div>
-                <div className="flex flex-col items-start">
-                  <span className="text-[13px] font-bold text-slate-800 tracking-wide">Client Profile</span>
-                  <span className="text-[10px] text-slate-500 font-medium">Name, Phone, Email & Address</span>
-                </div>
+          <AccordionItem value="profile" className="rounded-md border border-slate-200 bg-white overflow-hidden">
+            <AccordionTrigger className="hover:no-underline px-3 py-2.5 text-left">
+              <div className="flex items-center gap-2 w-full">
+                <Users className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                <span className="text-[12.5px] font-medium text-slate-900">Client Profile</span>
+                <span className="text-[10.5px] text-slate-500 ml-auto mr-2">{isExistingLead ? 'Saved' : 'New'}</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-5 pt-4">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-4">
-                <Badge variant={isExistingLead ? "default" : "outline"} className={`text-[10px] uppercase tracking-wider ${isExistingLead ? 'bg-indigo-600' : 'border-slate-300 text-slate-500'}`}>
-                  {isExistingLead ? 'Saved Client' : 'New Client'}
-                </Badge>
-                {isExistingLead && (
+            <AccordionContent className="px-3 pb-3 pt-1">
+              {isExistingLead && (
+                <div className="flex justify-end mb-2">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px] gap-1 text-indigo-600 hover:bg-indigo-50 px-2.5 rounded-lg"
+                    className="h-6 text-[11px] gap-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-2 rounded-md"
                     onClick={(e) => { e.preventDefault(); setIsEditingLead((v) => !v); }}
                   >
                     <Edit3 className="h-3 w-3" />
-                    {isEditingLead ? 'Lock Info' : 'Edit Info'}
+                    {isEditingLead ? 'Lock' : 'Edit'}
                   </Button>
-                )}
-              </div>
-
-              {loadingContext ? (
-                <div className="flex justify-center items-center py-4">
-                  <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
                 </div>
-              ) : (
-                <div className="space-y-3.5">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Full Name <span className="text-rose-500">*</span>
-                    </Label>
-                    <div className="relative">
-                      <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <Input
-                        value={leadForm.name}
-                        onChange={(e) => setLeadField('name')(e.target.value)}
-                        placeholder="e.g. John Doe"
-                        disabled={isExistingLead && !isEditingLead}
-                        className={`pl-9 h-11 text-sm font-semibold rounded-xl ${errors.name ? 'border-rose-400 ring-rose-400' : 'bg-slate-50/50'}`}
-                      />
-                    </div>
-                    {errors.name && <p className="text-xs text-rose-500">{errors.name}</p>}
+              )}
+
+              {(
+                <div className="space-y-2.5">
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Name <span className="text-rose-500">*</span></Label>
+                    <Input
+                      value={leadForm.name}
+                      onChange={(e) => setLeadField('name')(e.target.value)}
+                      placeholder="Full name"
+                      disabled={isExistingLead && !isEditingLead}
+                      className={`h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300 ${errors.name ? 'border-rose-400' : ''}`}
+                    />
+                    {errors.name && <p className="text-[10.5px] text-rose-500">{errors.name}</p>}
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Phone <span className="text-rose-500">*</span>
-                    </Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <Input
-                        value={leadForm.phone}
-                        onChange={(e) => setLeadField('phone')(e.target.value)}
-                        placeholder="+91 98765 43210"
-                        disabled={isExistingLead && !isEditingLead}
-                        className={`pl-9 h-11 text-sm font-mono font-bold rounded-xl ${errors.phone ? 'border-rose-400 ring-rose-400' : 'bg-slate-50/50'}`}
-                      />
-                    </div>
-                    {errors.phone && <p className="text-xs text-rose-500">{errors.phone}</p>}
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Phone <span className="text-rose-500">*</span></Label>
+                    <Input
+                      value={leadForm.phone}
+                      onChange={(e) => setLeadField('phone')(e.target.value)}
+                      placeholder="+91 98765 43210"
+                      disabled={isExistingLead && !isEditingLead}
+                      className={`h-9 text-[12.5px] font-mono rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300 ${errors.phone ? 'border-rose-400' : ''}`}
+                    />
+                    {errors.phone && <p className="text-[10.5px] text-rose-500">{errors.phone}</p>}
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                      <Input
-                        value={leadForm.email}
-                        onChange={(e) => setLeadField('email')(e.target.value)}
-                        placeholder="john@example.com"
-                        disabled={isExistingLead && !isEditingLead}
-                        className="pl-9 h-11 text-sm font-medium rounded-xl bg-slate-50/50"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Email</Label>
+                    <Input
+                      value={leadForm.email}
+                      onChange={(e) => setLeadField('email')(e.target.value)}
+                      placeholder="john@example.com"
+                      disabled={isExistingLead && !isEditingLead}
+                      className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Address</Label>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <Input
-                          value={leadForm.address}
-                          onChange={(e) => setLeadField('address')(e.target.value)}
-                          placeholder="City, State"
-                          disabled={isExistingLead && !isEditingLead}
-                          className="pl-9 h-11 text-sm font-medium rounded-xl bg-slate-50/50"
-                        />
-                      </div>
+                  <div className="grid grid-cols-1 xs:grid-cols-2 gap-2.5">
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-[10.5px] text-slate-500 font-normal">Address</Label>
+                      <Input
+                        value={leadForm.address}
+                        onChange={(e) => setLeadField('address')(e.target.value)}
+                        placeholder="City, State"
+                        disabled={isExistingLead && !isEditingLead}
+                        className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                      />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Profession</Label>
-                      <div className="relative">
-                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                        <Input
-                          value={leadForm.profession}
-                          onChange={(e) => setLeadField('profession')(e.target.value)}
-                          placeholder="Software Engineer"
-                          disabled={isExistingLead && !isEditingLead}
-                          className="pl-9 h-11 text-sm font-medium rounded-xl bg-slate-50/50"
-                        />
-                      </div>
+                    <div className="space-y-1 min-w-0">
+                      <Label className="text-[10.5px] text-slate-500 font-normal">Profession</Label>
+                      <Input
+                        value={leadForm.profession}
+                        onChange={(e) => setLeadField('profession')(e.target.value)}
+                        placeholder="Software Engineer"
+                        disabled={isExistingLead && !isEditingLead}
+                        className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                      />
                     </div>
                   </div>
                 </div>
@@ -636,175 +616,145 @@ export default function CallDrawer() {
           </AccordionItem>
 
           {/* Timeline */}
-          <AccordionItem value="timeline" className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-            <AccordionTrigger className="hover:no-underline px-4 py-3.5 border-b border-transparent data-[state=open]:border-slate-100 transition-colors">
-              <div className="flex items-center gap-3 w-full">
-                <div className="h-9 w-9 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
-                  <Clock className="h-4.5 w-4.5 text-slate-600" />
-                </div>
-                <div className="flex flex-col items-start flex-1 text-left">
-                  <span className="text-[13px] font-bold text-slate-800 tracking-wide">Call Timeline</span>
-                  <span className="text-[10px] text-slate-500 font-medium">History of interactions</span>
-                </div>
-                <Badge variant="secondary" className="mr-2 text-[10px] rounded-lg px-2 h-5 bg-slate-100 text-slate-600">{leadCallHistory.length}</Badge>
+          <AccordionItem value="timeline" className="rounded-md border border-slate-200 bg-white overflow-hidden">
+            <AccordionTrigger className="hover:no-underline px-3 py-2.5 text-left">
+              <div className="flex items-center gap-2 w-full">
+                <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                <span className="text-[12.5px] font-medium text-slate-900">Call Timeline</span>
+                <span className="text-[10.5px] text-slate-500 ml-auto mr-2">{leadCallHistory.length}</span>
               </div>
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4 pt-3 space-y-2.5 max-h-[300px] overflow-y-auto">
-              {loadingContext ? (
-                <p className="text-[11px] text-center text-slate-400 py-4 font-medium">Loading history...</p>
-              ) : leadCallHistory.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-6 text-center">
-                  <div className="h-10 w-10 rounded-full bg-slate-50 flex items-center justify-center mb-2">
-                    <Phone className="h-4 w-4 text-slate-300" />
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">No Previous Calls</p>
-                </div>
+            <AccordionContent className="px-3 pb-3 pt-1 max-h-[260px] overflow-y-auto">
+              {leadCallHistory.length === 0 ? (
+                <p className="text-[11px] text-center text-slate-400 py-3">
+                  {loadingContext ? 'Loading…' : 'No previous calls'}
+                </p>
               ) : (
-                <div className="space-y-2.5 pt-1 relative before:absolute before:inset-0 before:ml-[15px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                  {leadCallHistory.map((call, index) => (
-                    <div key={call.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full border-2 border-white bg-slate-100 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                         {call.call_type === 'MISSED' ? <PhoneMissed className="h-3 w-3 text-rose-500" /> : <Clock className="h-3 w-3 text-slate-500" />}
+                <div className="divide-y divide-slate-100">
+                  {leadCallHistory.map((call) => (
+                    <div key={call.id} className="py-2 first:pt-0 last:pb-0">
+                      <div className="flex items-center gap-2">
+                        {call.call_type === 'MISSED'
+                          ? <PhoneMissed className="h-3 w-3 text-rose-500 shrink-0" />
+                          : <Clock className="h-3 w-3 text-slate-400 shrink-0" />}
+                        <p className="text-[11px] text-slate-700">
+                          {formatDate(call.call_start)} · {formatTime(call.call_start)}
+                          <span className="text-slate-500 font-mono"> · {formatCallDuration(call.duration_seconds)}</span>
+                        </p>
+                        {call.outcome_label && (
+                          <span className="text-[10px] text-slate-500 ml-auto">{call.outcome_label}</span>
+                        )}
                       </div>
-                      <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-2.5rem)] pl-3 md:pl-0">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 shadow-sm">
-                          <p className="text-[10px] font-bold text-slate-700">
-                            {formatDate(call.call_start)} · {formatTime(call.call_start)}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-slate-500 font-medium">Duration: <span className="font-mono text-slate-800">{formatCallDuration(call.duration_seconds)}</span></span>
-                            {call.outcome_label && <span className="text-[9px] uppercase tracking-wider bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-600 font-bold">{call.outcome_label}</span>}
-                          </div>
-                          {call.customer_notes && (
-                            <p className="text-[10px] text-indigo-600 mt-1.5 leading-relaxed line-clamp-2 flex items-start gap-1">
-                              <Edit3 className="h-2.5 w-2.5 shrink-0 mt-0.5 text-indigo-400" />
-                              {call.customer_notes}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                      {call.customer_notes && (
+                        <p className="text-[10.5px] text-slate-600 leading-relaxed mt-1 pl-5 line-clamp-2">
+                          {call.customer_notes}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </AccordionContent>
           </AccordionItem>
+
+          {/* Schedule Follow-up */}
+          <AccordionItem value="schedule" className="rounded-md border border-slate-200 bg-white overflow-hidden">
+            <AccordionTrigger className="hover:no-underline px-3 py-2.5 text-left">
+              <div className="flex items-center gap-2 w-full">
+                <CalendarDays className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                <span className="text-[12.5px] font-medium text-slate-900">Schedule Follow-up</span>
+                {!leadForm?.id && <span className="text-[10.5px] text-amber-600 ml-auto mr-2">Save client first</span>}
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="px-3 pb-3 pt-1">
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 xs:grid-cols-2 gap-2.5">
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Type</Label>
+                    <Select value={futureAction.followup_type} onValueChange={(v) => setFutureAction((p) => ({ ...p, followup_type: v }))}>
+                      <SelectTrigger className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus:ring-1 focus:ring-slate-300"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FOLLOWUP_TYPES.map((t) => <SelectItem key={t} value={t} className="text-[12.5px]">{t}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Date</Label>
+                    <Input
+                      type="date"
+                      min={toISODate(new Date())}
+                      value={futureAction.scheduled_date}
+                      onChange={(e) => setFutureAction((p) => ({ ...p, scheduled_date: e.target.value }))}
+                      className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 xs:grid-cols-2 gap-2.5">
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Time</Label>
+                    <Input
+                      type="time"
+                      value={futureAction.scheduled_time}
+                      onChange={(e) => setFutureAction((p) => ({ ...p, scheduled_time: e.target.value }))}
+                      className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                    />
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <Label className="text-[10.5px] text-slate-500 font-normal">Notes</Label>
+                    <Input
+                      value={futureAction.notes}
+                      onChange={(e) => setFutureAction((p) => ({ ...p, notes: e.target.value }))}
+                      placeholder="Topic"
+                      className="h-9 text-[12.5px] rounded-md bg-white border-slate-200 text-slate-800 shadow-none focus-visible:ring-1 focus-visible:ring-slate-300"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    className="h-8 gap-1 rounded-md bg-slate-900 hover:bg-slate-800 text-[11.5px] font-medium px-3 shadow-none"
+                    onClick={saveFutureAction}
+                    disabled={!leadForm?.id || savingFutureAction}
+                  >
+                    {savingFutureAction ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    Confirm
+                  </Button>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
         </Accordion>
 
-        {/* ── Schedule Follow-up ── */}
-        <div className="bg-violet-50/50 rounded-2xl border border-violet-100 p-4 shadow-sm mt-2">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-violet-100/60">
-            <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-violet-100 flex items-center justify-center">
-                <CalendarDays className="h-4 w-4 text-violet-600" />
-              </div>
-              <div>
-                <p className="text-[13px] font-bold text-slate-800 tracking-wide">Schedule Follow-up</p>
-                {!leadForm?.id && <p className="text-[10px] text-amber-600 font-medium">Save client to schedule</p>}
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowScheduleForm((v) => !v)}
-              className="gap-1.5 text-[11px] font-bold text-violet-700 border-violet-200 hover:bg-violet-100 bg-white h-8 rounded-lg shadow-sm"
-              disabled={!leadForm?.id || savingFutureAction}
-            >
-              <CalendarDays className="h-3.5 w-3.5" />
-              {showScheduleForm ? 'Cancel' : 'Plan'}
-            </Button>
-          </div>
-
-          {showScheduleForm && leadForm?.id && (
-            <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-violet-700/70">Type</Label>
-                  <Select value={futureAction.followup_type} onValueChange={(v) => setFutureAction((p) => ({ ...p, followup_type: v }))}>
-                    <SelectTrigger className="h-10 text-sm rounded-xl bg-white border-violet-200 font-medium shadow-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {FOLLOWUP_TYPES.map((t) => <SelectItem key={t} value={t} className="text-sm font-medium">{t}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-violet-700/70">Date</Label>
-                  <Input
-                    type="date"
-                    min={toISODate(new Date())}
-                    value={futureAction.scheduled_date}
-                    onChange={(e) => setFutureAction((p) => ({ ...p, scheduled_date: e.target.value }))}
-                    className="h-10 text-sm rounded-xl bg-white border-violet-200 font-medium shadow-sm"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-violet-700/70">Time</Label>
-                  <Input
-                    type="time"
-                    value={futureAction.scheduled_time}
-                    onChange={(e) => setFutureAction((p) => ({ ...p, scheduled_time: e.target.value }))}
-                    className="h-10 text-sm rounded-xl bg-white border-violet-200 font-medium shadow-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-violet-700/70">Notes</Label>
-                  <Input
-                    value={futureAction.notes}
-                    onChange={(e) => setFutureAction((p) => ({ ...p, notes: e.target.value }))}
-                    placeholder="Topic..."
-                    className="h-10 text-sm rounded-xl bg-white border-violet-200 font-medium shadow-sm"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end pt-1">
-                <Button
-                  type="button"
-                  className="h-9 gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-[11px] font-bold uppercase px-4 shadow-sm"
-                  onClick={saveFutureAction}
-                  disabled={!leadForm?.id || savingFutureAction}
-                >
-                  {savingFutureAction ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Confirm
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
         </div>
         </div>
 
-        {/* ── Sticky Primary CTA Footer ── */}
-        <div className="shrink-0 bg-white border-t border-slate-200/60 p-4 pb-safe flex flex-col gap-2.5 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)] z-10">
-          <div className="max-w-2xl mx-auto w-full flex flex-col gap-2.5">
-            <Button
-              onClick={saveLead}
-              disabled={!canSaveLead}
-              className="h-12 w-full gap-2 text-[13px] tracking-wide font-bold rounded-2xl bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 active:scale-[0.98] transition-all"
-            >
-              {savingLead ? (
-                <span className="flex items-center gap-2">
-                  <span className="h-4 w-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Saving…
-                </span>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  {isExistingLead ? 'Update Client Log' : 'Save As New Client'}
-                </>
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={savingLead || savingFutureAction}
-              className="h-10 w-full text-sm font-semibold gap-1.5 rounded-2xl text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-              onClick={closeDrawer}
-            >
-              Cancel & Dismiss
-            </Button>
-          </div>
+        {/* ── Sticky Footer ── */}
+        <div className="shrink-0 bg-white border-t border-slate-200 px-3 py-2.5 pb-safe flex items-center gap-2 z-10">
+          <Button
+            variant="ghost"
+            disabled={savingLead || savingFutureAction}
+            className="h-9 text-[12.5px] font-medium gap-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 shadow-none px-3"
+            onClick={closeDrawer}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={saveLead}
+            disabled={!canSaveLead}
+            className="flex-1 h-9 gap-1.5 text-[12.5px] font-medium rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-none"
+          >
+            {savingLead ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Saving
+              </span>
+            ) : (
+              <>
+                <Save className="h-3.5 w-3.5" />
+                {isExistingLead ? 'Update' : 'Save Client'}
+              </>
+            )}
+          </Button>
         </div>
 
       {/* ── Source Details Modal ── */}

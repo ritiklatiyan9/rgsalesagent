@@ -4,14 +4,21 @@ import { io } from 'socket.io-client';
 import Sidebar from './Sidebar';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, X, ChevronRight, LogOut, User, Settings, LayoutDashboard, Users, ContactRound, Clock, MessageSquare, House, PhoneCall, Calendar } from 'lucide-react';
+import { Bell, X, ChevronRight, LogOut, User, Settings, Users, ContactRound, MessageSquare, House, PhoneCall, Calendar, Check, MapPin } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Drawer, DrawerContent, DrawerClose, DrawerTitle } from '@/components/ui/drawer';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import api, { getAccessToken } from '@/lib/axios';
 import { cn } from '@/lib/utils';
 import BackgroundPermissionBanner from '@/components/BackgroundPermissionBanner';
 import { startBackgroundTracking, stopBackgroundTracking } from '@/services/BackgroundLocationService';
-import homeLogo from '@/assets/home.png';
+import usePushNotifications from '@/hooks/usePushNotifications';
 
 const routeNames = {
   '/dashboard': 'Dashboard',
@@ -68,7 +75,14 @@ const timeAgo = (dateStr) => {
 const LayoutBody = () => {
   const { openMobile, setOpenMobile } = useSidebar();
   const { pathname } = useLocation();
-  const { user, logout, activeSiteId } = useAuth();
+  const { user, logout, activeSiteId, sites, switchSite, siteLoading } = useAuth();
+  const handleSiteChange = async (siteId) => {
+    await switchSite(siteId);
+  };
+
+  // Register FCM token, surface foreground notifications, and route taps to
+  // the right page (chat / lead / booking / supervision-task / etc).
+  usePushNotifications();
   const roleLabel = String(user?.role || '').toUpperCase() === 'TEAM_HEAD' ? 'Team Head' : 'Agent';
   const navigate = useNavigate();
   const [isPending, startTransition] = useTransition();
@@ -234,33 +248,21 @@ const LayoutBody = () => {
       <Sidebar />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="bg-white/80 backdrop-blur-xl shrink-0 z-20 border-b border-slate-200/60 sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <div className="h-14 sm:h-16 flex items-center justify-between px-3 sm:px-4 md:px-8">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-2 active:scale-95 transition-transform duration-150"
-                title="Home"
-              >
-                <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center shadow-sm shadow-indigo-100/50">
-                  <img src={homeLogo} alt="RiverGreen" className="h-6 w-6 sm:h-7 sm:w-7 object-contain" />
-                </div>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
+        <header className="bg-white/90 backdrop-blur-xl shrink-0 z-20 border-b border-slate-200 sticky top-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <div className="h-11 sm:h-12 flex flex-row-reverse items-center justify-between px-3 sm:px-4 md:px-8">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               <div className="relative" ref={notifRef}>
                 <button
                   onClick={() => setNotifOpen((o) => !o)}
-                  className={`h-9 w-9 sm:h-10 sm:w-10 flex items-center justify-center rounded-xl border transition-colors shrink-0
+                  className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors shrink-0
                   ${notifOpen
-                      ? 'bg-slate-100 border-slate-200 text-slate-800'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 hover:border-slate-200'
+                      ? 'bg-slate-100 text-slate-900'
+                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                 >
-                  <Bell className="h-4 w-4" strokeWidth={2.5} />
+                  <Bell className="h-4 w-4" strokeWidth={2} />
                   {totalNotificationCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-4.5 h-4.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none ring-2 ring-white">
+                    <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-semibold flex items-center justify-center leading-none ring-2 ring-white">
                       {totalNotificationCount > 99 ? '99+' : totalNotificationCount}
                     </span>
                   )}
@@ -436,13 +438,40 @@ const LayoutBody = () => {
                 )}
               </div>
             </div>
+
+            <div className="flex items-center min-w-0 max-w-[60%]">
+              <Select
+                value={activeSiteId || undefined}
+                onValueChange={handleSiteChange}
+                disabled={siteLoading || !sites?.length}
+              >
+                <SelectTrigger
+                  className="h-8 bg-transparent border-0 text-slate-800 text-[13px] font-medium rounded-md px-2 gap-1 hover:bg-slate-100 transition-colors min-w-0 max-w-full shadow-none focus:ring-0 [&>span]:truncate"
+                  title="Switch site"
+                >
+                  <SelectValue placeholder={sites?.length ? 'Select site' : 'No site'} />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {(sites || []).map((site) => (
+                    <SelectItem key={site.id} value={String(site.id)}>
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <span>{site.name}</span>
+                        {String(activeSiteId || '') === String(site.id) && (
+                          <Check className="h-4 w-4 text-emerald-600" />
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </header>
 
         <BackgroundPermissionBanner />
 
         <main className="flex-1 min-h-0 overflow-y-auto w-full [scrollbar-width:thin] [scrollbar-color:var(--color-slate-200)_transparent] bg-white sm:bg-[#f8fafc]">
-          <div className="p-2 sm:p-5 md:p-8 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-10 max-w-7xl mx-auto">
+          <div className="p-2 sm:p-5 md:p-8 pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] md:pb-10 max-w-7xl mx-auto min-h-full flex flex-col">
             <Suspense fallback={<PageSkeleton />}>
               <Outlet key={activeSiteId || 'no-site'} />
             </Suspense>

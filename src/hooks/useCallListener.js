@@ -58,8 +58,10 @@ export function useCallListener({ onCallEnded } = {}) {
         const res = await CallDetector.startListening();
         if (mounted) setIsListening(!!res?.listening);
       } catch {}
-      // Start the foreground service for background/killed-app detection
-      try { await CallDetector.startCallDetection(); } catch {}
+      // Foreground service is intentionally NOT started here: it forces a
+      // persistent "DG Sales is running in background" notification that the
+      // user does not want. In-foreground detection still works via the
+      // CallStateReceiver registered above.
       try {
         pluginSub = await CallDetector.addListener('callEnded', dispatch);
       } catch {}

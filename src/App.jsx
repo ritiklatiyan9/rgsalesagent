@@ -68,6 +68,15 @@ const CallDetectorBridge = lazy(() =>
 const PlotBookings = lazy(() => import('@/pages/PlotBookings'));
 const BookingDetail = lazy(() => import('@/pages/BookingDetail'));
 
+// Tasks
+const Tasks = lazy(() => import('@/pages/Tasks'));
+
+// Sales (payments)
+const Sales = lazy(() => import('@/pages/Sales'));
+
+// Supervision Tasks (assigned by admin)
+const SupervisionTasks = lazy(() => import('@/pages/SupervisionTasks'));
+
 // Attendance
 const MarkAttendance = lazy(() => import('@/pages/MarkAttendance'));
 const MyAttendance = lazy(() => import('@/pages/MyAttendance'));
@@ -140,6 +149,15 @@ export default function App() {
               {/* Bookings */}
               <Route path="bookings" element={<PlotBookings />} />
               <Route path="bookings/:id" element={<BookingDetail />} />
+
+              {/* Tasks */}
+              <Route path="tasks" element={<Tasks />} />
+
+              {/* Sales (payments tied to referral code) */}
+              <Route path="sales" element={<Sales />} />
+
+              {/* Supervision Tasks (admin-assigned) */}
+              <Route path="supervision-tasks" element={<SupervisionTasks />} />
 
               {/* Reminders */}
               <Route path="reminders" element={<Reminders />} />

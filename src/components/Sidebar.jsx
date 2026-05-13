@@ -35,6 +35,10 @@ import {
   CalendarDays,
   MessageSquare,
   Check,
+  ListTodo,
+  CreditCard,
+  BookOpen,
+  ShieldCheck,
 } from 'lucide-react';
 import { PhoneOutgoing } from 'lucide-react';
 import homeLogo from '@/assets/home.png';
@@ -108,6 +112,9 @@ const getNavItems = (isTeamHead) => {
         { to: '/content-share', icon: FileText, label: 'Library & Create' },
       ]
     },
+    { to: '/supervision-tasks', icon: ShieldCheck, label: 'Supervision Tasks', iconColor: 'text-violet-500' },
+    { to: '/bookings', icon: BookOpen, label: 'My Bookings', iconColor: 'text-blue-500' },
+    { to: '/sales', icon: CreditCard, label: 'My Sales', iconColor: 'text-emerald-500' },
     { to: '/reminders', icon: BellRing, label: 'Reminders', iconColor: 'text-amber-500' },
     {
       id: 'attendance-menu', icon: Fingerprint, label: 'Attendance', iconColor: 'text-violet-500',

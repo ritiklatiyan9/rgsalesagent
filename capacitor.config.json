@@ -1,6 +1,6 @@
 {
   "appId": "com.rivergreen.agent",
-  "appName": "RiverGreen Agent",
+  "appName": "DG Sales",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
@@ -27,6 +27,13 @@
       "notifications": [
         "android.permission.POST_NOTIFICATIONS"
       ]
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "LocalNotifications": {
+      "iconColor": "#6366f1",
+      "sound": "notification_bell.wav"
     }
   }
 }

@@ -10,6 +10,7 @@ const ACCESS_TOKEN_KEY = 'rg_access_token';
 const REFRESH_TOKEN_KEY = 'rg_refresh_token';
 const USER_DATA_KEY = 'rg_user_data';
 const ACTIVE_SITE_KEY = 'rg_active_site_id';
+const SITES_LIST_KEY = 'rg_sites_list';
 
 // Helpers for native storage persistence
 export const saveAuthData = async (token, user, refreshToken = null) => {
@@ -31,11 +32,35 @@ export const getStoredActiveSiteId = async () => {
   return value || null;
 };
 
+// Cache the user's accessible sites list locally so the header dropdown can
+// render instantly on cold start (before the network call returns).
+export const saveSitesList = async (sites) => {
+  if (!Array.isArray(sites) || sites.length === 0) {
+    await Preferences.remove({ key: SITES_LIST_KEY });
+    return;
+  }
+  // Strip to just what the header needs — keeps the cache small.
+  const slim = sites.map((s) => ({ id: s.id, name: s.name }));
+  await Preferences.set({ key: SITES_LIST_KEY, value: JSON.stringify(slim) });
+};
+
+export const getStoredSitesList = async () => {
+  try {
+    const { value } = await Preferences.get({ key: SITES_LIST_KEY });
+    if (!value) return [];
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const clearAuthData = async () => {
   await Preferences.remove({ key: ACCESS_TOKEN_KEY });
   await Preferences.remove({ key: REFRESH_TOKEN_KEY });
   await Preferences.remove({ key: USER_DATA_KEY });
   await Preferences.remove({ key: ACTIVE_SITE_KEY });
+  await Preferences.remove({ key: SITES_LIST_KEY });
 };
 
 export const getStoredAuthData = async () => {

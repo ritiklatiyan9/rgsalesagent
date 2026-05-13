@@ -20,6 +20,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import com.rivergreen.agent.R;
+
 /**
  * Foreground Service that runs in the :call_detector process.
  * It survives the main app being killed because of android:process=":call_detector".
@@ -33,7 +35,9 @@ import androidx.core.app.NotificationCompat;
 public class CallDetectorService extends Service {
 
     private static final String TAG = "RG_CallDetectorSvc";
-    private static final String CHANNEL_ID = "call_detector_channel";
+    private static final String CHANNEL_ID = "call_detector_channel_v2";
+    private static final String OLD_CHANNEL_ID = "call_detector_channel";
+    private static final String OLD_DEBUG_CHANNEL_ID = "debug_channel";
     private static final int NOTIFICATION_ID = 9001;
     public static final String PREFS_NAME = "rg_call_events";
 
@@ -85,15 +89,23 @@ public class CallDetectorService extends Service {
     // ── Notification channel & foreground notification ────────────────────────
 
     private void createNotificationChannel() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm == null) return;
+
+        // Drop legacy channels so users don't see the old "Monitoring calls..." text.
+        try { nm.deleteNotificationChannel(OLD_CHANNEL_ID); } catch (Exception ignored) {}
+        try { nm.deleteNotificationChannel(OLD_DEBUG_CHANNEL_ID); } catch (Exception ignored) {}
+
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "Call Detection Service",
-                NotificationManager.IMPORTANCE_LOW
+                getString(R.string.app_name),
+                NotificationManager.IMPORTANCE_MIN
         );
-        channel.setDescription("Monitors phone calls to help you capture leads");
         channel.setShowBadge(false);
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm != null) nm.createNotificationChannel(channel);
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_SECRET);
+        nm.createNotificationChannel(channel);
     }
 
     private Notification buildNotification() {
@@ -104,12 +116,13 @@ public class CallDetectorService extends Service {
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("RiverGreen Active")
-                .setContentText("Monitoring calls for lead capture")
+                .setContentTitle(getString(R.string.app_name))
                 .setSmallIcon(android.R.drawable.ic_menu_call)
                 .setOngoing(true)
+                .setSilent(true)
                 .setContentIntent(pi)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
                 .build();
     }
 

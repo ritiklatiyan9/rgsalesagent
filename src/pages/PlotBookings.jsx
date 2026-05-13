@@ -1,48 +1,44 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  BookOpen, Search, Filter, ChevronLeft, ChevronRight, Eye, MapPin,
-  User, Phone, CheckCircle2, Clock, Loader2, BadgeCheck,
-  TrendingUp, Plus, Table2, CreditCard,
+  BookOpen, Search, ChevronLeft, ChevronRight, MapPin,
+  Download, Loader2, X,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
-const STATUS_COLORS = {
-  PENDING_APPROVAL: '#f59e0b', ACTIVE: '#3b82f6', COMPLETED: '#22c55e',
-  CANCELLED: '#ef4444', TRANSFERRED: '#8b5cf6',
+// Status palette uses subtle bg + dot to keep the list calm and scannable
+// on a phone — no large coloured banners on every card.
+const STATUS_META = {
+  PENDING_APPROVAL: { label: 'Pending',     dot: 'bg-amber-500',   text: 'text-amber-700',   bg: 'bg-amber-50' },
+  ACTIVE:           { label: 'Active',      dot: 'bg-blue-500',    text: 'text-blue-700',    bg: 'bg-blue-50' },
+  COMPLETED:        { label: 'Done',        dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
+  CANCELLED:        { label: 'Cancelled',   dot: 'bg-rose-500',    text: 'text-rose-700',    bg: 'bg-rose-50' },
+  TRANSFERRED:      { label: 'Transferred', dot: 'bg-violet-500',  text: 'text-violet-700',  bg: 'bg-violet-50' },
 };
-const STATUS_LABELS = {
-  PENDING_APPROVAL: 'Pending Approval', ACTIVE: 'Active', COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled', TRANSFERRED: 'Transferred',
-};
-const PAYMENT_LABELS = { ONE_TIME: 'One-Time', INSTALLMENT: 'Installment' };
-const FREQ_MONTHS = { WEEKLY: 0, MONTHLY: 1, QUARTERLY: 3, HALF_YEARLY: 6, YEARLY: 12 };
 
-const genSchedule = (bookingAmt, totalAmt, count, frequency, startDate) => {
-  if (count < 2 || !totalAmt) return [];
-  const remaining = totalAmt - bookingAmt;
-  const each = Math.ceil(remaining / (count - 1));
-  const schedule = [];
-  const base = startDate ? new Date(startDate) : new Date();
-  for (let i = 1; i < count; i++) {
-    const d = new Date(base);
-    if (frequency === 'WEEKLY') d.setDate(d.getDate() + 7 * i);
-    else if (frequency === 'YEARLY') d.setFullYear(d.getFullYear() + i);
-    else d.setMonth(d.getMonth() + (FREQ_MONTHS[frequency] || 1) * i);
-    const amt = i === count - 1 ? remaining - each * (count - 2) : each;
-    schedule.push({ num: i, date: d.toLocaleDateString('en-IN'), amount: Math.max(0, amt) });
-  }
-  return schedule;
+const FILTERS = [
+  { value: '',                  label: 'All' },
+  { value: 'PENDING_APPROVAL',  label: 'Pending' },
+  { value: 'ACTIVE',            label: 'Active' },
+  { value: 'COMPLETED',         label: 'Done' },
+  { value: 'CANCELLED',         label: 'Cancelled' },
+];
+
+// Compact INR — "₹1.2L" instead of "₹1,20,000" on tight mobile cards.
+const fmtCompact = (v) => {
+  const n = Number(v || 0);
+  if (n >= 10000000) return `₹${(n/10000000).toFixed(n % 10000000 === 0 ? 0 : 1)}Cr`;
+  if (n >= 100000)   return `₹${(n/100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
+  if (n >= 1000)     return `₹${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`;
+  return `₹${n}`;
 };
 
 const PlotBookings = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,26 +47,29 @@ const PlotBookings = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [availablePlots, setAvailablePlots] = useState([]);
-  const [loadingPlots, setLoadingPlots] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
 
-  const [createForm, setCreateForm] = useState({
-    plot_id: '', client_name: '', client_phone: '', client_email: '',
-    booking_date: new Date().toISOString().slice(0, 10),
-    booking_amount: '', total_amount: '',
-    payment_type: 'ONE_TIME', installment_count: '12', installment_frequency: 'MONTHLY',
-    payment_method: 'CASH', notes: '',
-  });
-
-  const installmentSchedule = useMemo(() => {
-    if (createForm.payment_type !== 'INSTALLMENT') return [];
-    return genSchedule(
-      Number(createForm.booking_amount) || 0, Number(createForm.total_amount) || 0,
-      Number(createForm.installment_count) || 0, createForm.installment_frequency, createForm.booking_date,
-    );
-  }, [createForm.booking_amount, createForm.total_amount, createForm.installment_count, createForm.installment_frequency, createForm.booking_date, createForm.payment_type]);
+  const handleQuickDownload = async (e, booking) => {
+    e.stopPropagation();
+    if (downloadingId) return;
+    setDownloadingId(booking.id);
+    try {
+      const [{ downloadBookingReceipt }, { data }] = await Promise.all([
+        import('@/lib/bookingReceipt'),
+        api.get(`/bookings/${booking.id}`),
+      ]);
+      const full = data?.booking || booking;
+      await downloadBookingReceipt(full, data?.payments || [], data?.paymentSummary || null, {
+        agentName: user?.name || full.booked_by_name,
+      });
+      toast.success('Receipt ready');
+    } catch (err) {
+      console.error('[receipt]', err);
+      toast.error(err?.message || 'Could not generate receipt');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const fetchBookings = useCallback(async () => {
     setLoading(true);
@@ -95,379 +94,197 @@ const PlotBookings = () => {
     } catch { /* silent */ }
   }, []);
 
-  const fetchAvailablePlots = useCallback(async () => {
-    setLoadingPlots(true);
-    try {
-      const { data } = await api.get('/colony-maps/plots?status=AVAILABLE&limit=200');
-      if (data.success) setAvailablePlots(data.plots || []);
-    } catch { /* silent */ }
-    finally { setLoadingPlots(false); }
-  }, []);
-
-
-
   useEffect(() => { fetchBookings(); }, [fetchBookings]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  const handlePlotSelect = (plotId) => {
-    const plot = availablePlots.find(p => p.id === plotId);
-    setCreateForm(f => ({ ...f, plot_id: plotId, total_amount: plot?.total_price ? String(plot.total_price) : f.total_amount }));
-  };
-
-  const handleCreateBooking = async () => {
-    if (!createForm.plot_id || !createForm.client_name || !createForm.client_phone || !createForm.booking_amount) {
-      toast.error('Plot, client name, phone, and booking amount are required');
-      return;
-    }
-    setCreating(true);
-    try {
-      const payload = {
-        plot_id: createForm.plot_id,
-        client_name: createForm.client_name,
-        client_phone: createForm.client_phone,
-        client_email: createForm.client_email || undefined,
-        booking_date: createForm.booking_date,
-        booking_amount: Number(createForm.booking_amount),
-        total_amount: Number(createForm.total_amount || createForm.booking_amount),
-        payment_type: createForm.payment_type,
-        payment_method: createForm.payment_method,
-        notes: createForm.notes || undefined,
-      };
-      if (createForm.payment_type === 'INSTALLMENT') {
-        payload.installment_count = Number(createForm.installment_count);
-        payload.installment_frequency = createForm.installment_frequency;
-      }
-      const { data } = await api.post('/bookings', payload);
-      if (data.success) {
-        toast.success('Booking created successfully!');
-        setCreateOpen(false);
-        setCreateForm({ plot_id: '', client_name: '', client_phone: '', client_email: '', booking_date: new Date().toISOString().slice(0, 10), booking_amount: '', total_amount: '', payment_type: 'ONE_TIME', installment_count: '12', installment_frequency: 'MONTHLY', payment_method: 'CASH', notes: '' });
-        fetchBookings(); fetchStats();
-      }
-    } catch (err) { toast.error(err.response?.data?.message || 'Failed to create booking'); }
-    finally { setCreating(false); }
-  };
-
-  const statCards = stats ? [
-    { label: 'My Bookings', value: stats.total_bookings || 0, icon: BookOpen, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { label: 'Active', value: stats.active_bookings || 0, icon: Clock, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-    { label: 'Completed', value: stats.completed_bookings || 0, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { label: 'Total Value', value: `₹${Number(stats.total_value || 0).toLocaleString('en-IN')}`, icon: TrendingUp, color: 'text-violet-500', bg: 'bg-violet-50' },
-  ] : [];
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 shrink-0" /> My Bookings
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">{total} total booking records</p>
-        </div>
-        <Button onClick={() => { setCreateOpen(true); fetchAvailablePlots(); }}
-          className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl shrink-0">
-          <Plus className="w-4 h-4 sm:mr-2" />
-          <span className="hidden sm:inline">New Booking</span>
-        </Button>
+    <div className="pb-24 md:pb-6 max-w-3xl mx-auto">
+      {/* Page header */}
+      <div className="flex items-baseline justify-between mb-4">
+        <h1 className="text-[22px] font-bold text-slate-900 leading-tight tracking-tight">My Bookings</h1>
+        <span className="text-[12px] text-slate-500 font-medium">{total} total</span>
       </div>
 
+      {/* Stats — 2x2 on mobile, 4 cols at sm+ */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {statCards.map((s, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center`}>
-                  <s.icon className={`w-5 h-5 ${s.color}`} />
-                </div>
-              </div>
-              <p className="text-2xl font-bold text-slate-800">{s.value}</p>
-              <p className="text-xs text-slate-500 font-medium mt-1">{s.label}</p>
-            </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <StatPill label="Bookings" value={stats.total_bookings || 0}     accent="text-slate-800" />
+          <StatPill label="Active"   value={stats.active_bookings || 0}    accent="text-blue-600" />
+          <StatPill label="Done"     value={stats.completed_bookings || 0} accent="text-emerald-600" />
+          <StatPill label="Value"    value={fmtCompact(stats.total_value || 0)} accent="text-violet-600" />
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+        <input
+          type="search"
+          placeholder="Search client, phone, plot…"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          className="w-full h-11 pl-10 pr-10 rounded-2xl bg-white ring-1 ring-slate-200 focus:ring-slate-400 outline-none text-[14px] placeholder:text-slate-400 transition-shadow"
+        />
+        {search && (
+          <button
+            onClick={() => { setSearch(''); setPage(1); }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-slate-100 active:scale-90 transition"
+          >
+            <X className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+        )}
+      </div>
+
+      {/* Filter chips — horizontal scroll, hides scrollbar */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {FILTERS.map((f) => {
+          const active = statusFilter === f.value;
+          return (
+            <button
+              key={f.value}
+              onClick={() => { setStatusFilter(f.value); setPage(1); }}
+              className={`shrink-0 px-3.5 h-8 rounded-full text-[12px] font-semibold transition-all ${
+                active
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="space-y-2.5">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
+        </div>
+      ) : bookings.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="space-y-2.5">
+          {bookings.map((b) => (
+            <BookingCard
+              key={b.id}
+              booking={b}
+              downloading={downloadingId === b.id}
+              onOpen={() => navigate(`/bookings/${b.id}`)}
+              onDownload={(e) => handleQuickDownload(e, b)}
+            />
           ))}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-        <form onSubmit={e => { e.preventDefault(); setPage(1); fetchBookings(); }} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input placeholder="Search by client name, phone, plot..." value={search}
-              onChange={e => setSearch(e.target.value)} className="pl-10 rounded-xl" />
-          </div>
-          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v === 'ALL' ? '' : v); setPage(1); }}>
-            <SelectTrigger className="w-44 rounded-xl"><SelectValue placeholder="All Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Status</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl">
-            <Filter className="w-4 h-4 mr-2" /> Filter
-          </Button>
-        </form>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[0,1,2,3,4,5].map(i => <Skeleton key={i} className="h-56 rounded-2xl" />)}
-        </div>
-      ) : bookings.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
-          <BookOpen className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-600 mb-2">No Bookings Found</h3>
-          <p className="text-slate-400">No bookings match your current filters.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {bookings.map(b => {
-            const sc = STATUS_COLORS[b.status] || '#6b7280';
-            const paid = Number(b.total_paid || 0);
-            const totalAmt = Number(b.total_amount || 0);
-            const pct = totalAmt > 0 ? Math.min(100, Math.round((paid / totalAmt) * 100)) : 0;
-            return (
-              <div key={b.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                <div className="h-1.5 w-full" style={{ backgroundColor: sc }} />
-                <div className="p-5 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <MapPin className="w-4 h-4 text-emerald-500" />
-                        <span className="font-bold text-slate-800">{b.plot_number}</span>
-                        <span className="text-xs text-slate-400">{b.colony_name}</span>
-                      </div>
-                      <p className="text-sm text-slate-500">{PAYMENT_LABELS[b.payment_type] || b.payment_type}</p>
-                    </div>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase"
-                      style={{ backgroundColor: sc + '15', color: sc }}>
-                      {STATUS_LABELS[b.status] || b.status}
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-sm">
-                      <User className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="font-medium text-slate-700">{b.client_name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <Phone className="w-3 h-3" /> {b.client_phone}
-                    </div>
-                    {b.booked_by_name && (
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <BadgeCheck className="w-3 h-3" /> Agent: {b.booked_by_name}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                      <span>₹{paid.toLocaleString('en-IN')} paid</span>
-                      <span>₹{totalAmt.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, backgroundColor: pct >= 100 ? '#22c55e' : '#3b82f6' }} />
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1">{pct}% complete</p>
-                  </div>
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-50">
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/bookings/${b.id}`)}
-                      className="flex-1 rounded-lg text-xs">
-                      <Eye className="w-3 h-3 mr-1" /> View Details
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+      {/* Pagination */}
+      {totalPages > 1 && !loading && (
+        <div className="flex items-center justify-center gap-2 pt-5">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+            className="h-10 w-10 rounded-xl bg-white ring-1 ring-slate-200 disabled:opacity-40 flex items-center justify-center active:scale-95 transition"
+          >
+            <ChevronLeft className="w-4 h-4 text-slate-700" />
+          </button>
+          <span className="text-[13px] text-slate-600 font-semibold px-3 tabular-nums">{page} / {totalPages}</span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+            className="h-10 w-10 rounded-xl bg-white ring-1 ring-slate-200 disabled:opacity-40 flex items-center justify-center active:scale-95 transition"
+          >
+            <ChevronRight className="w-4 h-4 text-slate-700" />
+          </button>
         </div>
       )}
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-4">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="rounded-xl">
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm text-slate-600 font-medium">Page {page} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="rounded-xl">
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* Create Booking Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-blue-500" /> Create New Booking
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-5 py-2">
-            <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1.5 block uppercase tracking-wide">Select Plot *</label>
-              <Select value={createForm.plot_id} onValueChange={handlePlotSelect}>
-                <SelectTrigger className="rounded-lg">
-                  <SelectValue placeholder={loadingPlots ? 'Loading plots...' : 'Select available plot'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availablePlots.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      Plot {p.plot_number}{p.block ? ` (Block ${p.block})` : ''} — {p.colony_name || 'Colony'}{p.total_price ? ` • ₹${Number(p.total_price).toLocaleString('en-IN')}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Client Information</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Full Name *</label>
-                  <Input placeholder="Client name" value={createForm.client_name}
-                    onChange={e => setCreateForm(f => ({ ...f, client_name: e.target.value }))} className="rounded-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Phone *</label>
-                  <Input placeholder="Phone number" value={createForm.client_phone}
-                    onChange={e => setCreateForm(f => ({ ...f, client_phone: e.target.value }))} className="rounded-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Email</label>
-                  <Input type="email" placeholder="Email (optional)" value={createForm.client_email}
-                    onChange={e => setCreateForm(f => ({ ...f, client_email: e.target.value }))} className="rounded-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Booking Date</label>
-                  <Input type="date" value={createForm.booking_date}
-                    onChange={e => setCreateForm(f => ({ ...f, booking_date: e.target.value }))} className="rounded-lg" />
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Payment Details</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Plot Total Price (₹)</label>
-                  <Input type="number" placeholder="Total price" value={createForm.total_amount}
-                    onChange={e => setCreateForm(f => ({ ...f, total_amount: e.target.value }))} className="rounded-lg" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Booking Amount (₹) *</label>
-                  <Input type="number" placeholder="Initial payment" value={createForm.booking_amount}
-                    onChange={e => setCreateForm(f => ({ ...f, booking_amount: e.target.value }))} className="rounded-lg" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Payment Type</label>
-                  <Select value={createForm.payment_type} onValueChange={v => setCreateForm(f => ({ ...f, payment_type: v }))}>
-                    <SelectTrigger className="rounded-lg"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ONE_TIME">One-Time Payment</SelectItem>
-                      <SelectItem value="INSTALLMENT">Installments</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 mb-1 block">Payment Method</label>
-                  <Select value={createForm.payment_method} onValueChange={v => setCreateForm(f => ({ ...f, payment_method: v }))}>
-                    <SelectTrigger className="rounded-lg"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CASH">Cash</SelectItem>
-                      <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
-                      <SelectItem value="CHEQUE">Cheque</SelectItem>
-                      <SelectItem value="UPI">UPI</SelectItem>
-                      <SelectItem value="CARD">Card</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {createForm.payment_type === 'INSTALLMENT' && (
-              <div>
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Installment Schedule</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Total Installments (incl. booking)</label>
-                    <Input type="number" min="2" max="120" placeholder="e.g. 12" value={createForm.installment_count}
-                      onChange={e => setCreateForm(f => ({ ...f, installment_count: e.target.value }))} className="rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Frequency</label>
-                    <Select value={createForm.installment_frequency} onValueChange={v => setCreateForm(f => ({ ...f, installment_frequency: v }))}>
-                      <SelectTrigger className="rounded-lg"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="MONTHLY">Monthly</SelectItem>
-                        <SelectItem value="QUARTERLY">Quarterly</SelectItem>
-                        <SelectItem value="HALF_YEARLY">Half Yearly</SelectItem>
-                        <SelectItem value="YEARLY">Yearly</SelectItem>
-                        <SelectItem value="WEEKLY">Weekly</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                {installmentSchedule.length > 0 && (
-                  <div className="rounded-xl border border-slate-100 overflow-hidden">
-                    <div className="bg-slate-50 px-4 py-2.5 flex items-center gap-2 border-b border-slate-100">
-                      <Table2 className="w-4 h-4 text-blue-500" />
-                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                        Schedule Preview ({installmentSchedule.length} installments)
-                      </span>
-                      <span className="ml-auto text-xs font-bold text-emerald-600">
-                        Remaining: ₹{(Number(createForm.total_amount || 0) - Number(createForm.booking_amount || 0)).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                    <div className="max-h-52 overflow-y-auto">
-                      <table className="w-full text-xs">
-                        <thead className="bg-slate-50/50"><tr>
-                          <th className="px-4 py-2 text-left text-slate-500 font-semibold">#</th>
-                          <th className="px-4 py-2 text-left text-slate-500 font-semibold">Due Date</th>
-                          <th className="px-4 py-2 text-right text-slate-500 font-semibold">Amount</th>
-                        </tr></thead>
-                        <tbody className="divide-y divide-slate-50">
-                          <tr className="bg-emerald-50/50">
-                            <td className="px-4 py-2 text-emerald-700 font-bold">0</td>
-                            <td className="px-4 py-2 text-slate-600">{new Date(createForm.booking_date).toLocaleDateString('en-IN')} <span className="text-emerald-600 font-semibold">(Booking)</span></td>
-                            <td className="px-4 py-2 text-right font-bold text-emerald-700">₹{Number(createForm.booking_amount || 0).toLocaleString('en-IN')}</td>
-                          </tr>
-                          {installmentSchedule.map(s => (
-                            <tr key={s.num} className="hover:bg-slate-50/50">
-                              <td className="px-4 py-2 text-slate-500">{s.num}</td>
-                              <td className="px-4 py-2 text-slate-600">{s.date}</td>
-                              <td className="px-4 py-2 text-right font-semibold text-slate-800">₹{s.amount.toLocaleString('en-IN')}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-slate-50"><tr>
-                          <td colSpan={2} className="px-4 py-2 font-bold text-slate-700 text-right">Total</td>
-                          <td className="px-4 py-2 font-bold text-right text-slate-900">₹{Number(createForm.total_amount || 0).toLocaleString('en-IN')}</td>
-                        </tr></tfoot>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div>
-              <label className="text-xs font-semibold text-slate-500 mb-1 block">Notes</label>
-              <Input placeholder="Optional notes..." value={createForm.notes}
-                onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))} className="rounded-lg" />
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sticky bottom-0 bg-white pt-3 border-t border-slate-100">
-            <Button variant="outline" onClick={() => setCreateOpen(false)} className="rounded-xl">Cancel</Button>
-            <Button onClick={handleCreateBooking} disabled={creating}
-              className="bg-blue-500 hover:bg-blue-600 text-white rounded-xl">
-              {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BookOpen className="w-4 h-4 mr-2" />}
-              Create Booking
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
+
+function StatPill({ label, value, accent }) {
+  return (
+    <div className="bg-white rounded-2xl ring-1 ring-slate-100 p-3">
+      <p className={`text-[18px] font-bold tabular-nums leading-tight truncate ${accent}`}>{value}</p>
+      <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+function BookingCard({ booking, downloading, onOpen, onDownload }) {
+  const status = STATUS_META[booking.status]
+    || { label: booking.status || '—', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-50' };
+  const paid = Number(booking.total_paid || 0);
+  const totalAmt = Number(booking.total_amount || 0);
+  const pct = totalAmt > 0 ? Math.min(100, Math.round((paid / totalAmt) * 100)) : 0;
+
+  return (
+    <div
+      onClick={onOpen}
+      className="bg-white rounded-2xl ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] p-4 cursor-pointer active:scale-[0.99] transition-transform"
+    >
+      <div className="flex items-start gap-3">
+        {/* Plot badge — square chip with plot number */}
+        <div className="shrink-0 h-12 w-12 rounded-xl bg-emerald-50 ring-1 ring-emerald-100 text-emerald-700 flex flex-col items-center justify-center">
+          <MapPin className="w-3 h-3 opacity-70" />
+          <span className="text-[10px] font-bold mt-0.5 leading-none truncate max-w-[44px]">
+            {booking.plot_number?.toString().slice(0, 6) || '—'}
+          </span>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[14px] font-bold text-slate-900 truncate">{booking.client_name || '—'}</p>
+            <span className={`shrink-0 inline-flex items-center gap-1.5 ${status.bg} ${status.text} text-[10px] font-bold px-2 h-5 rounded-full uppercase tracking-wide`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+              {status.label}
+            </span>
+          </div>
+          <p className="text-[12px] text-slate-500 truncate">{booking.client_phone || '—'}</p>
+          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+            {booking.colony_name || 'RiverGreen'} · Plot {booking.plot_number}
+          </p>
+        </div>
+      </div>
+
+      {/* Progress + amount */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-[11px] mb-1.5">
+          <span className="font-semibold text-emerald-700 tabular-nums">{fmtCompact(paid)}</span>
+          <span className="text-slate-400 tabular-nums">of {fmtCompact(totalAmt)} · {pct}%</span>
+        </div>
+        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Download CTA — single primary action; "View Details" handled by tapping card */}
+      <button
+        onClick={onDownload}
+        disabled={downloading}
+        className="mt-3 w-full h-10 rounded-xl bg-emerald-50 hover:bg-emerald-100 ring-1 ring-emerald-200 disabled:opacity-60 disabled:cursor-not-allowed text-emerald-700 text-[12px] font-semibold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+      >
+        {downloading
+          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Preparing…</>
+          : <><Download className="w-3.5 h-3.5" /> Download Receipt</>}
+      </button>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-3xl bg-white ring-1 ring-slate-100 p-10 text-center">
+      <div className="h-14 w-14 mx-auto rounded-2xl bg-slate-50 flex items-center justify-center mb-3">
+        <BookOpen className="h-7 w-7 text-slate-400" />
+      </div>
+      <p className="text-[15px] font-semibold text-slate-800">No Bookings Yet</p>
+      <p className="text-[12px] text-slate-500 mt-1 max-w-[260px] mx-auto">
+        Bookings tied to your referral code will appear here.
+      </p>
+    </div>
+  );
+}
 
 export default PlotBookings;

@@ -277,18 +277,37 @@ function Inner() {
     // Auto-log to backend immediately.
     let savedCall = null;
 
-    if (isAppInitiated && appFallback?.callId) {
+    // If this call was started from inside the app but the /calls/quick-log
+    // POST hasn't returned yet (and so callId isn't in localStorage), wait
+    // briefly and re-read. Without this, a fast-ending call falls through to
+    // the "external call" branch below and creates a DUPLICATE row in Recents.
+    let resolvedCallId = appFallback?.callId || null;
+    if (isAppInitiated && !resolvedCallId) {
+      for (let i = 0; i < 6 && !resolvedCallId; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const refreshed = getDialerFallback();
+        if (refreshed?.callId) resolvedCallId = refreshed.callId;
+      }
+    }
+
+    if (isAppInitiated && resolvedCallId) {
       // App already created the call record at dial-time — just UPDATE it
       try {
-        const { data: response } = await api.put(`/calls/${appFallback.callId}/end`, {
+        const { data: response } = await api.put(`/calls/${resolvedCallId}/end`, {
           duration_seconds: durationSeconds || 0,
           call_status: isMissed ? 'MISSED' : 'COMPLETED',
           customer_notes: null,
         });
-        savedCall = response?.call || { id: appFallback.callId };
+        savedCall = response?.call || { id: resolvedCallId };
       } catch (err) {
         console.error('[CallDetectorBridge] Update call failed:', err);
       }
+    } else if (isAppInitiated) {
+      // App-initiated but quick-log POST never returned. DialerPage's own
+      // onCallEnded handler still fires the optimistic upsert + end PUT
+      // (using its callIdRef once the POST resolves), so we MUST NOT create
+      // a parallel row here — that's the duplicate the user sees in Recents.
+      // Just open the drawer with whatever phone we have.
     } else {
       // External/incoming call — create a new record
       try {
@@ -328,7 +347,7 @@ function Inner() {
     // Background / external calls are auto-logged above but don't pop the UI.
     if (!isAppInitiated) return;
 
-    enrichedData.callId = savedCall?.id || appFallback?.callId || null;
+    enrichedData.callId = savedCall?.id || resolvedCallId || null;
     openDrawer(enrichedData);
   }, [getRecentCalls, isDuplicateEndEvent, logCallNow, openDrawer]);
 

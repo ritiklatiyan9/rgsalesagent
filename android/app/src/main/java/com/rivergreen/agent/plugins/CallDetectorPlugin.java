@@ -47,12 +47,14 @@ public class CallDetectorPlugin extends Plugin implements CallStateReceiver.Call
 
     @Override
     public void load() {
+        // Stop any previously-running foreground service so the persistent
+        // "DG Sales is running in background" notification is cleared on upgrade.
+        stopForegroundDetectionService();
+
         if (getPermissionState("phoneState") == PermissionState.GRANTED) {
             registerReceiver();
             isListening = true;
             Log.d(TAG, "load: auto-started listening (permissions already granted)");
-            // Also start the foreground service for background detection
-            startForegroundDetectionService();
         } else {
             Log.d(TAG, "load: permissions not yet granted — waiting");
         }
@@ -269,6 +271,13 @@ public class CallDetectorPlugin extends Plugin implements CallStateReceiver.Call
         } catch (Exception e) {
             Log.w(TAG, "startForegroundDetectionService failed: " + e.getMessage());
         }
+    }
+
+    private void stopForegroundDetectionService() {
+        try {
+            Intent serviceIntent = new Intent(getContext(), CallDetectorService.class);
+            getContext().stopService(serviceIntent);
+        } catch (Exception ignored) {}
     }
 
     // ── Receiver management ──────────────────────────────────────────────────

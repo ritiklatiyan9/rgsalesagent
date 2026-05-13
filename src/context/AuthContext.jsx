@@ -9,9 +9,12 @@ import api, {
   getStoredAuthData,
   getStoredActiveSiteId,
   saveActiveSiteId,
+  saveSitesList,
+  getStoredSitesList,
   dispatchLogout,
 } from '@/lib/axios';
 import { warmCache, invalidateCache } from '@/lib/queryCache';
+import { rehydrateForSite as rehydrateRecents, reset as resetRecents } from '@/lib/recentsStore';
 import { clearQueue } from '@/lib/storage/syncQueue';
 
 const WARM_URLS = [
@@ -56,6 +59,8 @@ export const AuthProvider = ({ children }) => {
 
       const nextSites = Array.isArray(data.sites) ? data.sites : [];
       setSites(nextSites);
+      // Persist for instant render on next cold start.
+      saveSitesList(nextSites).catch(() => {});
 
       const storedSiteId = await getStoredActiveSiteId();
       const preferredSiteId = storedSiteId || data.active_site_id || user?.site_id || null;
@@ -100,6 +105,9 @@ export const AuthProvider = ({ children }) => {
 
       await syncSiteState(siteId);
       invalidateCache();
+      // Recents are site-scoped — rehydrate from the new site's snapshot and
+      // kick off a fresh server fetch so Recents reflects the new site instantly.
+      rehydrateRecents();
       if (warmAfterSwitch) warmCache(WARM_URLS);
       return true;
     } catch {
@@ -154,7 +162,16 @@ export const AuthProvider = ({ children }) => {
             const normalized = String(initialSiteId);
             setActiveSiteIdState(normalized);
             setActiveSiteId(normalized);
+            // The recents store was init'd in main.jsx with no site id; now that
+            // we know it, swap to the per-site snapshot and trigger a refresh.
+            rehydrateRecents();
           }
+
+          // Hydrate the sites list from local storage so the header dropdown
+          // shows the active site immediately, before /auth/sites resolves.
+          getStoredSitesList()
+            .then((cached) => { if (cached.length) setSites(cached); })
+            .catch(() => {});
 
           // 👇 Unblock UI immediately — the rest runs in the background.
           setLoading(false);
@@ -218,6 +235,9 @@ export const AuthProvider = ({ children }) => {
       setUser(data.user);
       setIsTeamHead(hasTeamHeadRole(data.user));
       await syncSiteState(data.user.site_id || null);
+      // Bring recents up to date for the just-logged-in user's site before
+      // any page that consumes them mounts.
+      rehydrateRecents();
       await loadAccessibleSites({ ensureDefault: true });
       await resolveTeamHead(data.user);
       Promise.resolve().then(() => warmCache(WARM_URLS)).catch(() => {});
@@ -238,6 +258,7 @@ export const AuthProvider = ({ children }) => {
       await syncSiteState(null);
       await clearAuthData();
       invalidateCache();
+      resetRecents();
       clearQueue().catch(() => {});
     }
   };

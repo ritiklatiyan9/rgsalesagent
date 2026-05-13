@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "536159867120",
+    "project_id": "dgdefence-5c267",
+    "storage_bucket": "dgdefence-5c267.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:536159867120:android:2690ac0a8f88370ae27235",
+        "android_client_info": {
+          "package_name": "com.rivergreen.admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD0nizyHxFRxAfZ_azDHAUf_KPPJkNTVs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:536159867120:android:2c94864f394f17fee27235",
+        "android_client_info": {
+          "package_name": "com.rivergreen.agent"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD0nizyHxFRxAfZ_azDHAUf_KPPJkNTVs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:536159867120:android:31b0be629be811bae27235",
+        "android_client_info": {
+          "package_name": "com.yourcompany.admin_defence_garden1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD0nizyHxFRxAfZ_azDHAUf_KPPJkNTVs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
