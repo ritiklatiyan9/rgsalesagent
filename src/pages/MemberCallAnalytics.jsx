@@ -1,23 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import {
   ArrowLeft, Phone, Clock, Users, Target, CalendarDays,
-  ChevronLeft, ChevronRight, RefreshCw, Timer, CheckCircle,
-  PhoneOutgoing, PhoneIncoming, PhoneMissed, Hash, BarChart3,
-  Calendar, AlertCircle, Crown,
+  RefreshCw, CheckCircle2, BarChart3, AlertCircle, TrendingUp,
+  Flame,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -25,69 +15,43 @@ import {
 } from 'recharts';
 
 const formatDuration = (seconds) => {
-  if (!seconds) return '0:00';
+  if (!seconds) return '0m';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-const formatDate = (date) => {
-  if (!date) return '—';
-  return new Date(date).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
-};
-
-const formatTime = (date) => {
-  if (!date) return '';
-  return new Date(date).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
-};
-
-const CallTypeIcon = ({ type }) => {
-  if (type === 'INCOMING') return <PhoneIncoming className="h-3.5 w-3.5 text-green-600" />;
-  if (type === 'MISSED') return <PhoneMissed className="h-3.5 w-3.5 text-red-500" />;
-  return <PhoneOutgoing className="h-3.5 w-3.5 text-blue-600" />;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 };
 
 const fmtNum = (n) => Number(n || 0).toLocaleString('en-IN');
 
-const StatCard = ({ label, value, icon: Icon, accent, iconBg, iconColor, sub, loading }) => (
-  <div className={`stat-card border-l-4 ${accent} hover:shadow-md transition-shadow`}>
-    <div className="flex items-start justify-between mb-2">
-      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider leading-tight">{label}</p>
-      <div className={`h-7 w-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+const ChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-lg text-xs">
+      <p className="font-semibold text-slate-700 mb-1">{label}</p>
+      <p className="text-indigo-600 font-bold">{payload[0]?.value} calls</p>
+    </div>
+  );
+};
+
+const StatTile = ({ label, value, icon: Icon, bg, iconColor, valueColor, sub, loading }) => (
+  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5 flex flex-col gap-2">
+    <div className="flex items-center justify-between">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</p>
+      <div className={`h-7 w-7 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
         <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
       </div>
     </div>
     {loading ? (
-      <Skeleton className="h-7 w-16 rounded" />
+      <Skeleton className="h-7 w-14 rounded" />
     ) : (
-      <>
-        <p className="text-xl font-bold tabular-nums truncate">{value}</p>
-        {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
-      </>
+      <div>
+        <p className={`text-[22px] font-extrabold tabular-nums leading-none ${valueColor || 'text-slate-800'}`}>{value}</p>
+        {sub && <p className="text-[10px] text-slate-400 font-medium mt-1">{sub}</p>}
+      </div>
     )}
   </div>
 );
-
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white border border-border/40 rounded-xl p-3 shadow-lg text-xs min-w-[120px]">
-      <p className="font-medium text-slate-700 mb-2">{label}</p>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center justify-between gap-3">
-          <span style={{ color: p.color }}>{p.name}</span>
-          <span className="font-semibold text-slate-800">{fmtNum(p.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 const MemberCallAnalytics = () => {
   const { memberId } = useParams();
@@ -96,422 +60,239 @@ const MemberCallAnalytics = () => {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [data, setData] = useState(null);
   const [memberInfo, setMemberInfo] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [page, setPage] = useState(1);
+  const [allTimeSummary, setAllTimeSummary] = useState(null);
+  const [dailyChart, setDailyChart] = useState([]);
 
-  // Guard: only team heads
-  if (!isTeamHead) {
-    return (
-      <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-        <AlertCircle className="h-10 w-10 mx-auto mb-3 text-slate-300" />
-        <p className="text-slate-500 font-medium">Access denied.</p>
-        <p className="text-sm text-slate-400 mt-1">Only team heads can view member call analytics.</p>
-      </div>
-    );
-  }
-
-  // Fetch member info
   useEffect(() => {
+    if (!isTeamHead || !user?.team_id) { setLoading(false); return; }
     const fetchMemberInfo = async () => {
-      if (!user?.team_id) return;
       try {
         const { data: res } = await api.get(`/teams/${user.team_id}/members-performance`);
         if (res.success) {
           const member = (res.members || []).find(m => String(m.id) === String(memberId));
           if (member) setMemberInfo(member);
-          else {
-            toast.error('Member not found in your team');
-            navigate('/team/performance');
-          }
+          else { toast.error('Member not found in your team'); navigate('/team/performance'); }
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        setLoading(false);
+      }
     };
     fetchMemberInfo();
-  }, [user, memberId, navigate]);
+  }, [isTeamHead, user, memberId, navigate]);
 
-  const fetchCallDetails = useCallback(async (p = 1, isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  useEffect(() => {
+    if (!isTeamHead) return;
+    api.get(`/calls/agent/${memberId}/details?page=1&limit=1`)
+      .then(({ data: res }) => { if (res.success) setAllTimeSummary(res.summary); })
+      .catch(() => {});
+  }, [isTeamHead, memberId]);
+
+  useEffect(() => {
+    if (!isTeamHead) return;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    api.get(`/calls/agent/${memberId}/details?date_from=${thirtyDaysAgo.toISOString().split('T')[0]}&page=1&limit=1000`)
+      .then(({ data: res }) => {
+        if (!res.success || !res.calls) return;
+        const grouped = {};
+        res.calls.forEach(c => {
+          const key = new Date(c.call_start).toISOString().split('T')[0];
+          const label = new Date(c.call_start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+          if (!grouped[key]) grouped[key] = { date: label, sortKey: key, calls: 0 };
+          grouped[key].calls += 1;
+        });
+        setDailyChart(Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
+      })
+      .catch(() => {});
+  }, [isTeamHead, memberId]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!isTeamHead) return;
+    setRefreshing(true);
     try {
-      const params = new URLSearchParams();
-      params.set('page', p);
-      params.set('limit', '25');
-
-      if (selectedDate && !dateFrom && !dateTo) {
-        params.set('date_from', `${selectedDate}T00:00:00`);
-        params.set('date_to', `${selectedDate}T23:59:59`);
-      } else {
-        if (dateFrom) params.set('date_from', `${dateFrom}T00:00:00`);
-        if (dateTo) params.set('date_to', `${dateTo}T23:59:59`);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const [sumRes, dailyRes] = await Promise.all([
+        api.get(`/calls/agent/${memberId}/details?page=1&limit=1`),
+        api.get(`/calls/agent/${memberId}/details?date_from=${thirtyDaysAgo.toISOString().split('T')[0]}&page=1&limit=1000`),
+      ]);
+      if (sumRes.data.success) setAllTimeSummary(sumRes.data.summary);
+      if (dailyRes.data.success && dailyRes.data.calls) {
+        const grouped = {};
+        dailyRes.data.calls.forEach(c => {
+          const key = new Date(c.call_start).toISOString().split('T')[0];
+          const label = new Date(c.call_start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+          if (!grouped[key]) grouped[key] = { date: label, sortKey: key, calls: 0 };
+          grouped[key].calls += 1;
+        });
+        setDailyChart(Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey)));
       }
+    } catch { toast.error('Refresh failed'); }
+    finally { setRefreshing(false); }
+  }, [isTeamHead, memberId]);
 
-      const { data: res } = await api.get(`/calls/agent/${memberId}/details?${params}`);
-      if (res.success) {
-        setData(res);
-        setPage(p);
-      }
-    } catch {
-      toast.error('Failed to load call details');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [memberId, selectedDate, dateFrom, dateTo]);
+  // Guard AFTER all hooks
+  if (!isTeamHead) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="h-16 w-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mb-4">
+          <AlertCircle className="h-8 w-8 text-slate-300" />
+        </div>
+        <p className="text-[15px] font-bold text-slate-700">Access Denied</p>
+        <p className="text-[12px] text-slate-400 mt-1.5">Only team heads can view this page.</p>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    fetchCallDetails(1);
-  }, [fetchCallDetails]);
-
-  // All-time summary
-  const [allTimeSummary, setAllTimeSummary] = useState(null);
-  useEffect(() => {
-    const fetchSummary = async () => {
-      try {
-        const { data: res } = await api.get(`/calls/agent/${memberId}/details?page=1&limit=1`);
-        if (res.success) setAllTimeSummary(res.summary);
-      } catch { /* ignore */ }
-    };
-    fetchSummary();
-  }, [memberId]);
-
-  // Daily calls chart
-  const [dailyChart, setDailyChart] = useState([]);
-  useEffect(() => {
-    const fetchDaily = async () => {
-      try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const params = new URLSearchParams();
-        params.set('date_from', thirtyDaysAgo.toISOString().split('T')[0]);
-        params.set('page', '1');
-        params.set('limit', '1000');
-        const { data: res } = await api.get(`/calls/agent/${memberId}/details?${params}`);
-        if (res.success && res.calls) {
-          const grouped = {};
-          res.calls.forEach(c => {
-            const d = new Date(c.call_start).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-            const key = new Date(c.call_start).toISOString().split('T')[0];
-            if (!grouped[key]) grouped[key] = { date: d, sortKey: key, calls: 0, duration: 0 };
-            grouped[key].calls += 1;
-            grouped[key].duration += Number(c.duration_seconds || 0);
-          });
-          const sorted = Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-          setDailyChart(sorted);
-        }
-      } catch { /* ignore */ }
-    };
-    fetchDaily();
-  }, [memberId]);
-
-  const summary = data?.summary || allTimeSummary || {};
-  const calls = data?.calls || [];
-  const pagination = data?.pagination || { total: 0, page: 1, totalPages: 1 };
-
-  const sourceColor = {
-    WEB: 'bg-blue-50 text-blue-700 border-blue-200',
-    APP: 'bg-green-50 text-green-700 border-green-200',
-    MANUAL: 'bg-slate-50 text-slate-700 border-slate-200',
-  };
-
-  const handleDateClick = (dateKey) => {
-    setDateFrom('');
-    setDateTo('');
-    setSelectedDate(dateKey);
-  };
-
-  const handleRangeApply = () => {
-    setSelectedDate('');
-    fetchCallDetails(1);
-  };
-
-  const handleClearFilters = () => {
-    setDateFrom('');
-    setDateTo('');
-    setSelectedDate(new Date().toISOString().split('T')[0]);
-  };
+  const s = allTimeSummary || {};
+  const initials = (memberInfo?.name || '?').charAt(0).toUpperCase();
+  const peakDay = dailyChart.reduce((best, d) => d.calls > (best?.calls || 0) ? d : best, null);
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(`/team/member/${memberId}`)} className="h-8 w-8 rounded-lg">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="page-title text-xl flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
-                <span className="text-sm font-bold text-violet-700">
-                  {memberInfo?.name?.charAt(0)?.toUpperCase() || '?'}
-                </span>
-              </div>
-              {memberInfo?.name || 'Member'} — Call Analytics
-            </h1>
-            <p className="page-subtitle mt-0.5">
-              {memberInfo?.email} • Detailed call logs & daily breakdown
-            </p>
+    <div className="space-y-4 pb-8">
+
+      {/* ── Hero Banner ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-indigo-600 to-blue-700 p-4 shadow-md">
+        {/* Back + Refresh row */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => navigate(`/team/member/${memberId}`)}
+            className="h-8 w-8 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center active:bg-white/25 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4 text-white" />
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="h-8 w-8 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center active:bg-white/25 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-white ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {/* Member identity */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="h-14 w-14 rounded-2xl bg-white/20 border border-white/30 flex items-center justify-center shrink-0">
+            {memberInfo?.profile_photo ? (
+              <img src={memberInfo.profile_photo} alt={memberInfo.name} className="w-full h-full rounded-2xl object-cover" />
+            ) : (
+              <span className="text-2xl font-extrabold text-white">{loading ? '?' : initials}</span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            {loading ? (
+              <>
+                <Skeleton className="h-5 w-32 rounded bg-white/20 mb-1.5" />
+                <Skeleton className="h-3 w-24 rounded bg-white/15" />
+              </>
+            ) : (
+              <>
+                <p className="text-[17px] font-extrabold text-white leading-tight truncate">
+                  {memberInfo?.name || 'Member'}
+                </p>
+                <p className="text-[11px] text-blue-100/80 font-medium mt-0.5 truncate">
+                  {memberInfo?.email || 'Call Analytics'}
+                </p>
+              </>
+            )}
           </div>
         </div>
-        <Button onClick={() => fetchCallDetails(page, true)} variant="outline" size="sm"
-          className="gap-1.5 text-sm" disabled={refreshing}>
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+
+        {/* Today + Total highlight */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white/15 border border-white/20 rounded-2xl p-3 text-center">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Flame className="h-3.5 w-3.5 text-orange-300" />
+              <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Today</p>
+            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-10 rounded mx-auto bg-white/20" />
+            ) : (
+              <p className="text-[32px] font-extrabold text-white leading-none tabular-nums">{fmtNum(s.today_calls)}</p>
+            )}
+          </div>
+          <div className="bg-white/15 border border-white/20 rounded-2xl p-3 text-center">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Phone className="h-3.5 w-3.5 text-blue-200" />
+              <p className="text-[10px] font-bold text-white/70 uppercase tracking-wider">Total</p>
+            </div>
+            {loading ? (
+              <Skeleton className="h-8 w-10 rounded mx-auto bg-white/20" />
+            ) : (
+              <p className="text-[32px] font-extrabold text-white leading-none tabular-nums">{fmtNum(s.total_calls)}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Decorative wave */}
+        <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="20" viewBox="0 0 400 20" preserveAspectRatio="none">
+          <path d="M0,12 C80,2 200,18 320,6 C380,0 400,8 400,8 L400,20 L0,20 Z" fill="#fff" opacity="0.05" />
+        </svg>
       </div>
 
-      <Separator />
-
-      {/* All-time Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard loading={!allTimeSummary} label="Total Calls" value={fmtNum(allTimeSummary?.total_calls)}
-          icon={Phone} accent="border-l-indigo-500" iconBg="bg-indigo-50" iconColor="text-indigo-600"
-          sub={`Today: ${fmtNum(allTimeSummary?.today_calls)}`} />
-        <StatCard loading={!allTimeSummary} label="This Week" value={fmtNum(allTimeSummary?.week_calls)}
-          icon={CalendarDays} accent="border-l-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600" />
-        <StatCard loading={!allTimeSummary} label="Avg Duration" value={formatDuration(allTimeSummary?.avg_duration)}
-          icon={Clock} accent="border-l-amber-500" iconBg="bg-amber-50" iconColor="text-amber-600"
-          sub={`Total: ${formatDuration(allTimeSummary?.total_duration)}`} />
-        <StatCard loading={!allTimeSummary} label="Unique Leads" value={fmtNum(allTimeSummary?.unique_leads_called)}
-          icon={Users} accent="border-l-violet-500" iconBg="bg-violet-50" iconColor="text-violet-600"
-          sub={`Assigned: ${fmtNum(allTimeSummary?.assigned_leads)}`} />
-        <StatCard loading={!allTimeSummary} label="Visits Scheduled" value={fmtNum(allTimeSummary?.visits_scheduled)}
-          icon={Target} accent="border-l-cyan-500" iconBg="bg-cyan-50" iconColor="text-cyan-600" />
-        <StatCard loading={!allTimeSummary} label="Closings" value={fmtNum(allTimeSummary?.closed)}
-          icon={CheckCircle} accent="border-l-rose-500" iconBg="bg-rose-50" iconColor="text-rose-600" />
+      {/* ── Stat Grid ── */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatTile loading={!allTimeSummary} label="This Week" value={fmtNum(s.week_calls)}
+          icon={CalendarDays} bg="bg-emerald-50" iconColor="text-emerald-600" valueColor="text-emerald-700"
+          sub="calls in last 7 days" />
+        <StatTile loading={!allTimeSummary} label="Avg Duration" value={formatDuration(s.avg_duration)}
+          icon={Clock} bg="bg-amber-50" iconColor="text-amber-600" valueColor="text-amber-700"
+          sub={`Total: ${formatDuration(s.total_duration)}`} />
+        <StatTile loading={!allTimeSummary} label="Unique Leads" value={fmtNum(s.unique_leads_called)}
+          icon={Users} bg="bg-blue-50" iconColor="text-blue-600" valueColor="text-blue-700"
+          sub={`Assigned: ${fmtNum(s.assigned_leads)}`} />
+        <StatTile loading={!allTimeSummary} label="Visits Booked" value={fmtNum(s.visits_scheduled)}
+          icon={Target} bg="bg-cyan-50" iconColor="text-cyan-600" valueColor="text-cyan-700" />
+        <StatTile loading={!allTimeSummary} label="Closings" value={fmtNum(s.closed)}
+          icon={CheckCircle2} bg="bg-rose-50" iconColor="text-rose-600" valueColor="text-rose-700" />
+        <StatTile loading={!allTimeSummary} label="Peak Day" value={peakDay?.calls ?? '—'}
+          icon={TrendingUp} bg="bg-indigo-50" iconColor="text-indigo-600" valueColor="text-indigo-700"
+          sub={peakDay?.date || 'no data'} />
       </div>
 
-      {/* Daily Calls Chart */}
-      <Card className="card-elevated border-0">
-        <CardHeader className="pb-3 border-b border-border/40">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-indigo-500" />
-            Calls Per Day — Last 30 Days
-            <span className="text-xs font-normal text-muted-foreground ml-1">(tap a bar to view that day)</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4 px-2 md:px-5">
+      {/* ── Daily Chart ── */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 px-4 pt-4 pb-3 border-b border-slate-100">
+          <div className="h-8 w-8 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
+            <BarChart3 className="h-4 w-4 text-indigo-600" />
+          </div>
+          <div>
+            <p className="text-[13px] font-bold text-slate-800 leading-tight">Calls Per Day</p>
+            <p className="text-[10px] text-slate-400 font-medium">Last 30 days</p>
+          </div>
+        </div>
+        <div className="px-2 py-4">
           {dailyChart.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyChart} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" opacity={0.5} vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} axisLine={false}
-                  interval={Math.max(0, Math.floor(dailyChart.length / 8))} />
-                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="calls" name="Calls" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={20}
-                  cursor="pointer"
-                  onClick={(data) => data?.sortKey && handleDateClick(data.sortKey)} />
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={dailyChart} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 8, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={Math.max(0, Math.floor(dailyChart.length / 7))}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#94a3b8' }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: '#eef2ff', radius: 4 }} />
+                <Bar dataKey="calls" name="Calls" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={18} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-              No daily data available
+            <div className="h-40 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="h-8 w-8 text-slate-200" />
+              <p className="text-[12px] text-slate-400 font-medium">No call data in last 30 days</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Date Filter */}
-      <Card className="card-elevated border-0">
-        <CardContent className="py-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Calendar className="h-3.5 w-3.5" /> Filter by Date
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold uppercase text-muted-foreground">Select Date</Label>
-              <Input type="date" className="h-9 w-[155px] text-xs" value={selectedDate}
-                onChange={(e) => { setDateFrom(''); setDateTo(''); setSelectedDate(e.target.value); }} />
-            </div>
-
-            <div className="text-xs text-muted-foreground self-center px-1">or</div>
-
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold uppercase text-muted-foreground">From</Label>
-              <Input type="date" className="h-9 w-[140px] text-xs" value={dateFrom}
-                onChange={(e) => { setSelectedDate(''); setDateFrom(e.target.value); }} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold uppercase text-muted-foreground">To</Label>
-              <Input type="date" className="h-9 w-[140px] text-xs" value={dateTo}
-                onChange={(e) => { setSelectedDate(''); setDateTo(e.target.value); }} />
-            </div>
-            <Button size="sm" onClick={handleRangeApply}
-              className="h-9 gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-xs">
-              Apply
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleClearFilters} className="h-9 text-xs">
-              Today
-            </Button>
-          </div>
-
-          <div className="mt-2 text-xs text-muted-foreground">
-            {selectedDate ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                <CalendarDays className="h-3 w-3" />
-                Showing: {formatDate(selectedDate)}
-              </span>
-            ) : dateFrom || dateTo ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                <CalendarDays className="h-3 w-3" />
-                Range: {dateFrom ? formatDate(dateFrom) : 'Start'} → {dateTo ? formatDate(dateTo) : 'End'}
-              </span>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Call counts */}
-      {!loading && (
-        <div className="flex items-center gap-3 flex-wrap">
-          <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1.5">
-            <Hash className="h-3 w-3" /> {pagination.total} calls found
-          </Badge>
-          {calls.length > 0 && (
-            <Badge variant="outline" className="text-xs gap-1.5 px-3 py-1.5">
-              <Timer className="h-3 w-3" />
-              Total: {formatDuration(calls.reduce((s, c) => s + Number(c.duration_seconds || 0), 0))}
-            </Badge>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Call History Table */}
-      <Card className="card-elevated border-0 overflow-hidden">
-        <CardHeader className="pb-3 border-b border-border/40">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Phone className="h-4 w-4 text-muted-foreground" />
-            Call Logs
-            {!loading && <Badge variant="secondary" className="text-[10px] ml-auto">{pagination.total} total</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider w-10 pl-4">#</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Lead / Contact</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Phone</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Date & Time</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Duration</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Type</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Source</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider">Outcome</TableHead>
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider pr-4">Next Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array(8).fill(0).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array(9).fill(0).map((_, j) => (
-                        <TableCell key={j}><Skeleton className="h-5 w-full rounded" /></TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : calls.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
-                      <Phone className="h-10 w-10 mx-auto mb-3 text-slate-300" />
-                      <p className="text-sm font-medium">No calls found for this date</p>
-                      <p className="text-xs mt-1">Try a different date from the calendar</p>
-                    </TableCell>
-                  </TableRow>
-                ) : calls.map((call, idx) => (
-                  <TableRow key={call.id} className="hover:bg-muted/20 transition-colors">
-                    <TableCell className="text-xs text-muted-foreground tabular-nums pl-4">
-                      {(page - 1) * 25 + idx + 1}
-                    </TableCell>
-                    <TableCell className="py-3">
-                      <p className="text-sm font-medium truncate max-w-[150px]">{call.lead_name || '—'}</p>
-                      {call.lead_status && (
-                        <Badge variant="outline" className="text-[9px] mt-0.5">{call.lead_status}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs font-mono text-muted-foreground">
-                        {call.lead_phone || call.phone_number_dialed || '—'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs font-medium">{formatDate(call.call_start)}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatTime(call.call_start)}</p>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`text-sm font-semibold tabular-nums ${
-                        Number(call.duration_seconds) > 0 ? 'text-slate-800' : 'text-muted-foreground'
-                      }`}>
-                        {formatDuration(call.duration_seconds)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <CallTypeIcon type={call.call_type} />
-                        <span className="text-xs">{call.call_type}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`text-[10px] ${sourceColor[call.call_source] || sourceColor.MANUAL}`}>
-                        {call.call_source || 'MANUAL'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs">{call.outcome_label || '—'}</span>
-                    </TableCell>
-                    <TableCell className="pr-4">
-                      <Badge variant="outline" className={`text-[10px] ${
-                        call.next_action === 'VISIT' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' :
-                        call.next_action === 'CLOSE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        ''
-                      }`}>
-                        {call.next_action || 'NONE'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination */}
-          {!loading && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-border/40">
-              <p className="text-xs text-muted-foreground">
-                Page {pagination.page} of {pagination.totalPages} • {pagination.total} calls
-              </p>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0"
-                  disabled={page <= 1} onClick={() => fetchCallDetails(page - 1)}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {Array.from({ length: Math.min(pagination.totalPages, 5) }, (_, i) => {
-                  const startPage = Math.max(1, Math.min(page - 2, pagination.totalPages - 4));
-                  const p = startPage + i;
-                  if (p > pagination.totalPages) return null;
-                  return (
-                    <Button key={p} variant={p === page ? 'default' : 'outline'} size="sm"
-                      className="h-8 w-8 p-0 text-xs" onClick={() => fetchCallDetails(p)}>
-                      {p}
-                    </Button>
-                  );
-                })}
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0"
-                  disabled={page >= pagination.totalPages} onClick={() => fetchCallDetails(page + 1)}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 };

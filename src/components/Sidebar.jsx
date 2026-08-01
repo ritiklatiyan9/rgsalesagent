@@ -87,7 +87,6 @@ const getNavItems = (isTeamHead) => {
       id: 'contacts-menu', icon: List, label: 'Contacts', iconColor: 'text-cyan-500',
       subItems: [
         { to: '/all-contacts', icon: List, label: 'All Contacts' },
-        { to: '/all-contacts/bulk', icon: FileSpreadsheet, label: 'Bulk Import' },
         { to: '/contacts/shift-to-call', icon: PhoneOutgoing, label: 'Shift to Call' },
         { to: '/calls/dialer', icon: Phone, label: 'Dialer' },
       ]
@@ -130,10 +129,9 @@ const getNavItems = (isTeamHead) => {
     items.push({
       id: 'team-lead-menu', icon: Crown, label: 'Team Leader', iconColor: 'text-violet-500',
       subItems: [
-        { to: '/team', icon: UsersRound, label: 'Team Members' },
+        { to: '/team/performance', icon: TrendingUp, label: 'Team Dashboard' },
         { to: '/team/manage', icon: Settings, label: 'Team Management' },
         { to: '/team/manage/register-agent', icon: UserPlus, label: 'Agent Register' },
-        { to: '/team/performance', icon: TrendingUp, label: 'Performance' },
       ]
     });
   } else {
@@ -159,7 +157,6 @@ const PREFETCH_MAP = {
   '/calls/missed': ['/calls?call_type=MISSED&limit=20'],
   '/calls/analytics': ['/calls/analytics'],
   '/all-contacts': ['/contacts?page=1&limit=25'],
-  '/all-contacts/bulk': [],
   '/contacts/shift-to-call': ['/calls/shift-to-call?page=1&limit=100'],
   '/reminders': ['/followups/counts'],
   '/content-share': ['/content-share'],

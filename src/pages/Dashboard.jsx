@@ -1,576 +1,391 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { parseISO } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
 import { useOffline } from '@/context/OfflineContext';
-import { useNavigate } from 'react-router-dom';
 import LeadSearchWidget from '@/components/LeadSearchWidget';
 import { cachedGet, invalidateCache } from '@/lib/queryCache';
-import api from '@/lib/axios';
-import { format, isToday, parseISO } from 'date-fns';
+import { onMutation } from '@/lib/mutationBus';
 import {
-  Target, PhoneCall, Plus, ArrowRight,
-  CheckCircle2, Clock,
-  Check, AlarmClock, Phone,
-  MessageSquare, UsersRound, Sparkles, Star,
-  Search, ChevronRight, Calendar, TrendingUp,
-  Clock1, RefreshCw,
-  ListTodo, ShieldCheck, BookOpen, CreditCard, CalendarCheck,
+  ArrowRight,
+  BookOpen,
+  Calendar,
+  CalendarCheck,
+  CheckCircle2,
+  ChevronRight,
+  Clock1,
+  ContactRound,
+  CreditCard,
+  MessageSquare,
+  PhoneCall,
+  PhoneMissed,
+  PhoneOutgoing,
+  RefreshCw,
+  ShieldCheck,
+  UsersRound,
+  Zap,
 } from 'lucide-react';
 
 const fmtNum = (v) => (v == null ? '—' : Number(v).toLocaleString('en-IN'));
-const LEAD_STATUSES = ['NEW', 'CONTACTED', 'INTERESTED', 'SITE_VISIT', 'NEGOTIATION', 'BOOKED', 'LOST'];
-
-const FlowCurve = ({ color = '#0ea5e9', opacity = 0.1 }) => (
-  <svg className="absolute bottom-0 left-0 w-full pointer-events-none" height="34" viewBox="0 0 400 34" preserveAspectRatio="none">
-    <path d="M0,22 C50,10 110,34 180,18 C250,2 320,30 400,14 L400,38 L0,38 Z" fill={color} opacity={opacity} />
-    <path d="M0,28 C70,14 140,36 220,22 C300,8 360,30 400,20 L400,38 L0,38 Z" fill={color} opacity={opacity * 0.6} />
-  </svg>
-);
-
-const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
-
-/* ── Mini trend sparkline for stat cards ── */
-const SPARK_PATTERNS = {
-  line:    [3, 5, 4, 6, 5, 8, 7, 9],
-  bars:    [3, 6, 4, 7, 5, 8, 6, 9],
-  down:    [9, 7, 8, 5, 6, 3, 4, 2],
-  rise:    [2, 4, 3, 5, 6, 7, 8, 9],
+const fmtCompact = (v) => {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (n >= 100_000) return `${(n / 100_000).toFixed(1)}L`;
+  if (n >= 10_000)  return `${Math.round(n / 1_000)}K`;
+  if (n >= 1_000)   return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString('en-IN');
 };
-const MiniSpark = ({ color = '#6366f1', pattern = 'line', variant = 'line', uid = 'x' }) => {
-  const data = SPARK_PATTERNS[pattern] || SPARK_PATTERNS.line;
-  const w = 56, h = 28, max = 10, step = w / (data.length - 1);
-  if (variant === 'bars') {
-    const bw = (w - (data.length * 2)) / data.length;
-    return (
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-7 shrink-0 opacity-85" preserveAspectRatio="none">
-        {data.map((v, i) => {
-          const bh = (v / max) * h;
-          return <rect key={i} x={i * (bw + 2)} y={h - bh} width={bw} height={bh} rx="1" fill={color} opacity={0.55 + (v / max) * 0.45} />;
-        })}
-      </svg>
-    );
-  }
-  const pts = data.map((v, i) => `${i * step},${h - (v / max) * h}`).join(' ');
-  const area = `0,${h} ${pts} ${w},${h}`;
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-7 shrink-0" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id={`sf-${uid}`} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polyline points={area} fill={`url(#sf-${uid})`} stroke="none" />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+
+const CATS = [
+  { key: 'ALL',    label: 'All',    active: 'bg-slate-900 text-white shadow-sm',  inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+  { key: 'PRIME',  label: 'Prime',  active: 'bg-amber-500 text-white shadow-sm',  inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+  { key: 'HOT',    label: 'Hot',    active: 'bg-rose-500 text-white shadow-sm',   inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+  { key: 'NORMAL', label: 'Normal', active: 'bg-sky-500 text-white shadow-sm',    inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+  { key: 'COLD',   label: 'Cold',   active: 'bg-teal-500 text-white shadow-sm',   inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+  { key: 'DEAD',   label: 'Dead',   active: 'bg-slate-500 text-white shadow-sm',  inactive: 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white' },
+];
+
+const PERIODS = [
+  { key: 'today',  label: 'Today' },
+  { key: 'week',   label: 'Week'  },
+  { key: 'month',  label: 'Month' },
+  { key: 'custom', label: 'Date'  },
+];
+
+const getCallPeriodRange = (period, customDate = '') => {
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  if (period === 'today')  { const t = fmt(today); return { date_from: t, date_to: t }; }
+  if (period === 'week')   { const mon = new Date(today); mon.setDate(today.getDate() - ((today.getDay() + 6) % 7)); return { date_from: fmt(mon), date_to: fmt(today) }; }
+  if (period === 'custom' && customDate) return { date_from: customDate, date_to: customDate };
+  return { date_from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)), date_to: fmt(today) };
 };
 
 const Dashboard = () => {
-  const { user } = useAuth();
-  const { flushNow, isSyncing: queueSyncing } = useOffline();
-  const navigate = useNavigate();
+  const { user }                               = useAuth();
+  const { flushNow, isSyncing: queueSyncing }  = useOffline();
+  const navigate                               = useNavigate();
   const isTeamHead = String(user?.role || '').toUpperCase() === 'TEAM_HEAD';
-  const roleLabel = isTeamHead ? 'Team Head' : 'Agent';
+  const roleLabel  = isTeamHead ? 'Team Head' : 'Agent';
 
-  const [leadTotal, setLeadTotal] = useState(null);
-  const [pipeline, setPipeline] = useState(Object.fromEntries(LEAD_STATUSES.map(s => [s, 0])));
-  const [matterLeadsTotal, setMatterLeadsTotal] = useState(null);
-  const [freshLeadsTotal, setFreshLeadsTotal] = useState(null);
-  const [freshLeads, setFreshLeads] = useState([]);
-  const [freshLoading, setFreshLoading] = useState(false);
-  const [callAnalytics, setCallAnalytics] = useState(null);
-  const [followupCounts, setFollowupCounts] = useState({ scheduled: 0, today: 0, missed: 0 });
-  const [todayFollowups, setTodayFollowups] = useState([]);
-  const [allFollowups, setAllFollowups] = useState([]);
-  const [fupActionLoading, setFupActionLoading] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [browseCat, setBrowseCat] = useState('ALL');
-  const [refreshing, setRefreshing] = useState(false);
+  const [matterLeadsTotal,  setMatterLeadsTotal]  = useState(null);
+  const [freshLeadsTotal,   setFreshLeadsTotal]   = useState(null);
+  const [callAnalytics,     setCallAnalytics]     = useState(null);
+  const [callPeriod,        setCallPeriod]        = useState('today');
+  const [callPeriodData,    setCallPeriodData]    = useState(null);
+  const [callPeriodLoading, setCallPeriodLoading] = useState(false);
+  const [customDate, setCustomDate] = useState(() => {
+    const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  });
+  const [contactsTotal, setContactsTotal] = useState(null);
+  const [followupCount, setFollowupCount] = useState(0);
+  const [browseCat,     setBrowseCat]     = useState('ALL');
+  const [refreshing,    setRefreshing]    = useState(false);
 
-  const CATS = [
-   
-    { key: 'PRIME',  label: 'Prime',  bg: 'from-amber-400 to-orange-500',      active: 'text-white',    inactive: 'bg-amber-50 text-amber-700 ring-amber-200' },
-    { key: 'HOT',    label: 'Hot',    bg: 'from-rose-500 to-red-500',          active: 'text-white',    inactive: 'bg-rose-50 text-rose-700 ring-rose-200' },
-    { key: 'NORMAL', label: 'Normal', bg: 'from-sky-400 to-blue-500',          active: 'text-white',    inactive: 'bg-sky-50 text-sky-700 ring-sky-200' },
-    { key: 'COLD',   label: 'Cold',   bg: 'from-cyan-400 to-teal-500',         active: 'text-white',    inactive: 'bg-cyan-50 text-cyan-700 ring-cyan-200' },
-    { key: 'DEAD',   label: 'Dead',   bg: 'from-slate-400 to-slate-500',       active: 'text-white',    inactive: 'bg-slate-100 text-slate-500 ring-slate-200' },
-  ];
-
-  const loadFollowupsSections = async ({ force = false } = {}) => {
+  const loadFollowupCount = useCallback(async ({ force = false } = {}) => {
     try {
       const res = await cachedGet('/followups?limit=200', { staleTime: 30_000, cacheTime: 120_000, force });
       if (res?.success) {
-        const allFups = res.followups || res.data || [];
-        setAllFollowups(allFups);
-        const endOfToday = new Date();
-        endOfToday.setHours(23, 59, 59, 999);
-        const todayItems = allFups.filter((f) => {
+        const allFups    = res.followups || res.data || [];
+        const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+        const count = allFups.filter((f) => {
           if (!f.scheduled_at || (f.status !== 'PENDING' && f.status !== 'SNOOZED')) return false;
           try { return parseISO(f.scheduled_at) <= endOfToday; } catch { return false; }
-        });
-        todayItems.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
-        setTodayFollowups(todayItems);
+        }).length;
+        setFollowupCount(count);
       }
     } catch {}
-  };
+  }, []);
 
-  const loadDashboardStats = async ({ force = false, showLoading = false } = {}) => {
-    if (showLoading) setLoading(true);
+  const loadDashboardStats = useCallback(async ({ force = false } = {}) => {
     try {
-      const [calls, counts, pipelineRes] = await Promise.allSettled([
-        cachedGet('/calls/analytics', { staleTime: 60_000, cacheTime: 180_000, force }),
-        cachedGet('/followups/counts', { staleTime: 30_000, cacheTime: 120_000, force }),
-        cachedGet('/leads/counts', { staleTime: 60_000, cacheTime: 180_000, force }),
+      const [calls, pipelineRes, contactsRes] = await Promise.allSettled([
+        cachedGet('/calls/analytics',         { staleTime: 60_000, cacheTime: 180_000, force }),
+        cachedGet('/leads/counts',            { staleTime: 60_000, cacheTime: 180_000, force }),
+        cachedGet('/contacts?page=1&limit=1', { staleTime: 60_000, cacheTime: 180_000, force }),
       ]);
-      if (calls.status === 'fulfilled' && calls.value?.success) setCallAnalytics(calls.value);
-      if (counts.status === 'fulfilled' && counts.value?.success) {
-        const countsData = counts.value.counts || counts.value.data || {};
-        setFollowupCounts({
-          scheduled: countsData.scheduled ?? 0,
-          today: countsData.today ?? 0,
-          missed: countsData.missed ?? 0,
-        });
-      }
-      if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.success) {
-        setPipeline(prev => ({ ...prev, ...pipelineRes.value.counts }));
-        if (pipelineRes.value.total != null) setLeadTotal(pipelineRes.value.total);
+      if (calls.status === 'fulfilled' && calls.value?.success)
+        setCallAnalytics(calls.value);
+      if (pipelineRes.status === 'fulfilled' && pipelineRes.value?.success)
         if (pipelineRes.value.matterCount != null) setMatterLeadsTotal(pipelineRes.value.matterCount);
-      }
+      if (contactsRes.status === 'fulfilled' && contactsRes.value?.success)
+        setContactsTotal(contactsRes.value.pagination?.total ?? null);
     } catch {}
-    setLoading(false);
-  };
+  }, []);
 
-  const loadFreshLeads = async ({ force = false, showLoading = false } = {}) => {
-    if (showLoading) setFreshLoading(true);
+  const loadFreshCount = useCallback(async ({ force = false } = {}) => {
     try {
-      const data = await cachedGet('/leads?status=NEW&page=1&limit=20', { staleTime: 60_000, cacheTime: 180_000, force });
-      if (data?.success) {
-        setFreshLeads(data.leads ?? []);
-        setFreshLeadsTotal(data.pagination?.total ?? data.leads?.length ?? 0);
-      }
-    } catch {} finally {
-      if (showLoading || freshLoading) setFreshLoading(false);
-    }
-  };
+      const data = await cachedGet('/leads?status=NEW&page=1&limit=1', { staleTime: 60_000, cacheTime: 180_000, force });
+      if (data?.success) setFreshLeadsTotal(data.pagination?.total ?? 0);
+    } catch {}
+  }, []);
+
+  const loadCallPeriodData = useCallback(async (period, { force = false, date } = {}) => {
+    const { date_from, date_to } = getCallPeriodRange(period, date ?? customDate);
+    if (!date_from) return;
+    setCallPeriodLoading(true);
+    try {
+      const data = await cachedGet(`/calls/analytics?date_from=${date_from}&date_to=${date_to}`, { staleTime: 60_000, cacheTime: 180_000, force });
+      if (data?.success) setCallPeriodData(data);
+    } catch {}
+    setCallPeriodLoading(false);
+  }, [customDate]);
 
   const refreshDashboard = async () => {
     if (refreshing || queueSyncing) return;
     setRefreshing(true);
     try {
-      // Push queued offline writes first so refreshed stats reflect latest server state.
       await flushNow();
       invalidateCache('/calls/analytics');
-      invalidateCache('/followups/counts');
       invalidateCache('/leads/counts');
       invalidateCache('/followups?limit=200');
-      invalidateCache('/leads?status=NEW&page=1&limit=20');
+      invalidateCache('/leads?status=NEW&page=1&limit=1');
+      invalidateCache('/contacts?page=1&limit=1');
       await Promise.allSettled([
         loadDashboardStats({ force: true }),
-        loadFollowupsSections({ force: true }),
-        loadFreshLeads({ force: true }),
+        loadFollowupCount({ force: true }),
+        loadFreshCount({ force: true }),
+        loadCallPeriodData(callPeriod, { force: true }),
       ]);
-    } finally {
-      setRefreshing(false);
-    }
+    } finally { setRefreshing(false); }
   };
 
   useEffect(() => {
-    loadDashboardStats({ showLoading: true });
-    loadFollowupsSections();
-    loadFreshLeads({ showLoading: true });
-  }, []);
+    loadDashboardStats();
+    loadFollowupCount();
+    loadFreshCount();
+  }, [loadDashboardStats, loadFollowupCount, loadFreshCount]);
 
-  const completeFollowup = async (id) => {
-    setFupActionLoading(id + '_complete');
-    try {
-      await api.put(`/followups/${id}`, { status: 'COMPLETED' });
-      invalidateCache('/followups?limit=100');
-      invalidateCache('/followups/counts');
-      setTodayFollowups((prev) => prev.filter((f) => f.id !== id));
-      setFollowupCounts((prev) => ({
-        ...prev,
-        today: Math.max(0, (prev.today || 0) - 1),
-        scheduled: Math.max(0, (prev.scheduled || 0) - 1),
-      }));
-    } catch {}
-    setFupActionLoading(null);
-  };
+  useEffect(() => { loadCallPeriodData(callPeriod, { date: customDate }); }, [callPeriod, customDate, loadCallPeriodData]);
 
-  const snoozeFollowup = async (id) => {
-    setFupActionLoading(id + '_snooze');
-    try {
-      const snooze_until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      await api.put(`/followups/${id}/snooze`, { status: 'SNOOZED', snooze_until });
-      invalidateCache('/followups?limit=100');
-      setTodayFollowups((prev) => prev.filter((f) => f.id !== id));
-      setFollowupCounts((prev) => ({ ...prev, today: Math.max(0, (prev.today || 0) - 1) }));
-    } catch {}
-    setFupActionLoading(null);
-  };
+  const loadersRef = useRef({ loadDashboardStats, loadFollowupCount, loadFreshCount });
+  loadersRef.current = { loadDashboardStats, loadFollowupCount, loadFreshCount };
 
-  const now = new Date();
-  const hour = now.getHours();
-  const minutes = now.getMinutes();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-  const callMetrics = callAnalytics?.metrics ?? {};
-  const todayCalls = callMetrics?.today_calls ?? 0;
-  const weekCalls = callMetrics?.week_calls ?? 0;
-  const maxPipeline = Math.max(...Object.values(pipeline), 1);
+  useEffect(() => onMutation((entities) => {
+    const { loadDashboardStats: lds, loadFollowupCount: lfc, loadFreshCount: lfl } = loadersRef.current;
+    if (entities.some((e) => ['leads', 'followups', 'calls'].includes(e))) lds({ force: true });
+    if (entities.includes('followups')) lfc({ force: true });
+    if (entities.includes('leads'))     lfl({ force: true });
+  }), []);
 
-  /* ── Hero derived values ── */
-  const firstName = user?.name?.split(' ')[0] || roleLabel;
-  const currentTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-  const dayProgress = Math.min(100, Math.max(0, Math.round(((hour + minutes / 60 - 8) / 10) * 100)));
-  const descriptiveLine = (() => {
-    const parts = [];
-    if (todayFollowups.length > 0) parts.push(`${todayFollowups.length} follow-up${todayFollowups.length > 1 ? 's' : ''} ahead`);
-    if (todayCalls > 0) parts.push(`${todayCalls} call${todayCalls > 1 ? 's' : ''} today`);
-    if ((freshLeadsTotal ?? 0) > 0) parts.push(`${freshLeadsTotal} fresh lead${freshLeadsTotal > 1 ? 's' : ''}`);
-    if (parts.length === 0) return 'All caught up — enjoy your day.';
-    return parts.slice(0, 2).join(' · ') + '.';
-  })();
+  /* ── Derived ── */
+  const now         = new Date();
+  const hour        = now.getHours();
+  const greeting    = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName   = user?.name?.split(' ')[0] || roleLabel;
+  const currentTime = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const todayCalls   = callAnalytics?.metrics?.today_calls ?? 0;
+  const periodTotal  = callPeriodData?.metrics?.total_calls ?? 0;
+  const periodPicked = callPeriodData?.metrics?.successful_calls ?? 0;
+  const periodMissed = Math.max(0, periodTotal - periodPicked);
+  const connectRate  = periodTotal > 0 ? Math.round((periodPicked / periodTotal) * 100) : 0;
 
-  /* ── Stat card configs ── */
-  const statCards = [
-    {
-      label: 'Matter Leads', short: 'MATTER',
-      value: matterLeadsTotal, hint: 'Leads you\'ve called',
-      icon: Star, nav: '/matter-leads',
-      gradient: 'from-rose-50 via-pink-50 to-fuchsia-50',
-      iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
-      ring: 'ring-rose-100',
-      ribbon: 'from-rose-500 via-pink-500 to-fuchsia-500',
-      flow: '#e11d48', spark: 'rise', variant: 'line',
-    },
-    {
-      label: 'Today Calls', short: 'CALLS',
-      value: todayCalls, hint: `${fmtNum(weekCalls)} this week`,
-      icon: PhoneCall, nav: '/calls/analytics',
-      gradient: 'from-orange-50 via-amber-50 to-yellow-50',
-      iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
-      ring: 'ring-orange-100',
-      ribbon: 'from-orange-500 via-amber-500 to-yellow-500',
-      flow: '#f59e0b', spark: 'bars', variant: 'bars',
-    },
-    {
-      label: 'Reminders', short: 'QUEUE',
-      value: followupCounts?.scheduled ?? 0,
-      hint: `${fmtNum(followupCounts?.today ?? 0)} due today`,
-      icon: Clock, nav: '/reminders',
-      gradient: 'from-emerald-50 via-teal-50 to-cyan-50',
-      iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600',
-      ring: 'ring-emerald-100',
-      ribbon: 'from-emerald-500 via-teal-500 to-cyan-500',
-      flow: '#10b981', spark: 'down', variant: 'line',
-    },
-    {
-      label: 'Fresh Leads', short: 'FRESH · 24H',
-      value: freshLeadsTotal, hint: 'New enquiries',
-      icon: Sparkles, nav: '/leads?status=NEW&from=fresh',
-      gradient: 'from-violet-50 via-purple-50 to-fuchsia-50',
-      iconBg: 'bg-violet-100', iconColor: 'text-violet-600',
-      ring: 'ring-violet-100',
-      ribbon: 'from-violet-500 via-purple-500 to-fuchsia-500',
-      flow: '#8b5cf6', spark: 'line', variant: 'line',
-    },
-   
-  ];
-
-  /* ── Quick nav ── */
-  const quickNav = [
-    { icon: Plus,          label: 'Add Lead',  nav: '/leads/add',       gradient: 'from-indigo-500 to-violet-500', text: 'text-white' },
-     { icon: Clock1, label: 'Reminder',      nav: '/reminders',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
-    { icon: MessageSquare, label: 'Chat',      nav: '/chat',            gradient: 'from-sky-50 to-blue-50',        text: 'text-sky-700' },
-    { icon: Calendar,      label: 'Scheduled', nav: '/calls/scheduled', gradient: 'from-amber-50 to-orange-50',    text: 'text-amber-700' },
-    { icon: RefreshCw,     label: (refreshing || queueSyncing) ? 'Syncing' : 'Refresh', action: refreshDashboard, gradient: 'from-emerald-50 to-teal-50', text: 'text-emerald-700', spin: (refreshing || queueSyncing) },
-    { icon: UsersRound,    label: 'Team',      nav: '/team',            gradient: 'from-violet-50 to-purple-50',   text: 'text-violet-700' },
-   
-  ];
-
-  /* ── Pipeline config ── */
-  const pipelineItems = [
-    { key: 'NEW',         label: 'New',         barGrad: 'from-sky-400 to-blue-500',     dotColor: 'bg-sky-400' },
-    { key: 'INTERESTED',  label: 'Interested',  barGrad: 'from-amber-400 to-orange-500', dotColor: 'bg-amber-400' },
-    { key: 'SITE_VISIT',  label: 'Site Visit',  barGrad: 'from-violet-400 to-purple-500',dotColor: 'bg-violet-400' },
-    { key: 'NEGOTIATION', label: 'Negotiation', barGrad: 'from-indigo-400 to-blue-500',  dotColor: 'bg-indigo-400' },
-   
-    { key: 'LOST',        label: 'Lost',        barGrad: 'from-rose-300 to-rose-400',    dotColor: 'bg-rose-400' },
+  const shortcuts = [
+    { icon: Clock1,        label: 'Reminder',  nav: '/reminders',                               cls: 'text-sky-600     bg-sky-50     ring-sky-100'      },
+    { icon: MessageSquare, label: 'Chat',       nav: '/chat',                                    cls: 'text-rose-600    bg-rose-50    ring-rose-100'     },
+    { icon: Calendar,      label: 'Scheduled',  nav: '/calls/scheduled',                         cls: 'text-amber-600   bg-amber-50   ring-amber-100'    },
+    { icon: UsersRound,    label: 'Team',        nav: isTeamHead ? '/team/performance' : '/team', cls: 'text-violet-600  bg-violet-50  ring-violet-100'   },
+    { icon: ShieldCheck,   label: 'Tasks',       nav: '/supervision-tasks',                       cls: 'text-fuchsia-600 bg-fuchsia-50 ring-fuchsia-100' },
+    { icon: BookOpen,      label: 'Bookings',    nav: '/bookings',                                cls: 'text-blue-600    bg-blue-50    ring-blue-100'     },
+    { icon: CreditCard,    label: 'Sales',       nav: '/sales',                                   cls: 'text-emerald-600 bg-emerald-50 ring-emerald-100' },
+    { icon: CalendarCheck, label: 'Attendance',  nav: '/attendance/history',                      cls: 'text-teal-600    bg-teal-50    ring-teal-100'     },
   ];
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="mx-auto w-full max-w-7xl space-y-3">
 
-      {/* ══════ HEADER — editorial, light ══════ */}
-      <header className="space-y-5">
-        {/* Editorial greeting */}
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">
-            {greeting}
-          </p>
-          <h1 className="mt-1 leading-[1.05] tracking-tight flex flex-wrap items-baseline gap-x-2">
-            <span className="text-[32px] font-bold text-slate-900">Hello,</span>
-            <span className="text-[32px] font-normal italic text-indigo-600" style={serif}>
-              {firstName}.
-            </span>
-          </h1>
-          <p className="mt-2 text-[13px] text-slate-500 italic leading-snug max-w-70" style={serif}>
-            {descriptiveLine}
-          </p>
-        </div>
-
-        {/* Workday progress */}
-        <div>
-          <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-linear-to-r from-indigo-500 via-violet-500 to-fuchsia-500 transition-all duration-700"
-              style={{ width: `${dayProgress}%` }}
-            />
-          </div>
-          <div className="mt-2 flex items-center gap-2 text-[10px]">
-            <span className="font-bold text-slate-900 tabular-nums">{dayProgress}%</span>
-            <span className="font-bold tracking-[0.2em] text-slate-400 uppercase">· Workday</span>
-            <span className="ml-auto inline-flex items-center gap-1.5 font-semibold text-slate-500 tabular-nums">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {currentTime}
-            </span>
+      {/* ── Header card ── */}
+      <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-1 bg-linear-to-r from-teal-500 via-sky-400 to-emerald-400" />
+        <div className="px-3.5 pt-3.5 pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-teal-500 shadow-sm shadow-teal-200" />
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {roleLabel} · {currentTime}
+                </p>
+              </div>
+              <h1 className="mt-1 text-[22px] font-semibold leading-tight tracking-tight text-slate-950">
+                {greeting}, <span className="text-teal-600">{firstName}</span>
+              </h1>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+               
+              </div>
+            </div>
+            <button
+              onClick={refreshDashboard}
+              disabled={refreshing || queueSyncing}
+              className="h-9 w-9 shrink-0 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center ring-1 ring-slate-200 transition active:scale-95 disabled:opacity-40"
+            >
+              <RefreshCw className={`h-4 w-4 ${(refreshing || queueSyncing) ? 'animate-spin' : ''}`} strokeWidth={2} />
+            </button>
           </div>
         </div>
-      </header>
 
-      {/* ══════ CATEGORY PILLS + BROWSE ══════ */}
-      <div className="space-y-2.5">
-        <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {CATS.map((cat) => {
-            const isActive = browseCat === cat.key;
+        {/* Stats row — gap-px hairline separators */}
+        <div className="grid grid-cols-3 gap-px border-t border-slate-100 bg-slate-100">
+          {[
+            { label: 'Matter Leads', value: matterLeadsTotal, icon: Zap,          nav: '/matter-leads',    iconCls: 'bg-teal-50 text-teal-600'    },
+            { label: 'Today Calls',  value: todayCalls,        icon: PhoneCall,    nav: '/calls/analytics', iconCls: 'bg-orange-50 text-orange-500' },
+            { label: 'Contacts',     value: contactsTotal,     icon: ContactRound, nav: '/all-contacts',    iconCls: 'bg-sky-50 text-sky-500'       },
+          ].map((item) => {
+            const Icon = item.icon;
             return (
               <button
-                key={cat.key}
-                onClick={() => setBrowseCat(cat.key)}
-                className={`shrink-0 h-9 pl-2.5 pr-3.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
-                  isActive
-                    ? `bg-linear-to-r ${cat.bg} text-white shadow-sm shadow-slate-300/40 ring-transparent`
-                    : `bg-white ${cat.inactive}`
-                }`}
+                key={item.label}
+                onClick={() => navigate(item.nav)}
+                className="bg-white px-2 py-2.5 text-center hover:bg-slate-50/80 transition active:scale-[0.98]"
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-white/90' : 'bg-current opacity-70'}`} />
-                {cat.label}
+                <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-lg ${item.iconCls}`}>
+                  <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                </div>
+                <p className="mt-1 text-lg font-semibold leading-none text-slate-950 tabular-nums">{fmtCompact(item.value)}</p>
+                <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">{item.label}</p>
               </button>
             );
           })}
         </div>
+      </header>
 
-        {/* Browse button — always visible, updates with selected category */}
-        <button
-          onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
-          className="w-full h-10 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-[12px] font-bold ring-1 ring-indigo-100"
-        >
-          Browse {browseCat === 'ALL' ? 'all' : browseCat.toLowerCase()} leads
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* ══════ SEARCH ══════ */}
-      <LeadSearchWidget category={browseCat === 'ALL' ? undefined : browseCat} />
-
-      {/* ══════ QUICK ACTIONS — 3 big cards ══════ */}
-      <div className="grid grid-cols-3 gap-2.5">
-        {quickNav.slice(0, 3).map((item, i) => {
-          const primary = i === 0;
-          return (
+      {/* ── Lead search & browse ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-3">
+        <div className="flex gap-2 mb-2.5">
+          <div className="flex-1 min-w-0">
+            <LeadSearchWidget category={browseCat === 'ALL' ? undefined : browseCat} />
+          </div>
+          <button
+            onClick={() => navigate(browseCat === 'ALL' ? '/leads' : `/leads?lead_category=${browseCat}`)}
+            className="h-10 shrink-0 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 text-[11px] font-semibold flex items-center gap-1.5 ring-1 ring-slate-200 transition active:scale-95"
+          >
+            Browse <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+          {CATS.map((cat) => (
             <button
-              key={item.label}
-              onClick={() => {
-                if (item.action) item.action();
-                else if (item.nav) navigate(item.nav);
-              }}
-              className={`relative h-16 rounded-2xl flex flex-col items-center justify-center gap-1.5 active:scale-[0.96] transition-all duration-150 overflow-hidden ${
-                primary
-                  ? 'bg-linear-to-br from-indigo-600 to-violet-700 text-white shadow-md shadow-indigo-300/40 ring-1 ring-indigo-700/20'
-                  : 'bg-white text-slate-700 ring-1 ring-slate-200 shadow-[0_2px_8px_-2px_rgba(15,23,42,0.05)]'
-              }`}
+              key={cat.key}
+              onClick={() => setBrowseCat(cat.key)}
+              className={`h-7 shrink-0 rounded-full px-3 text-[11px] font-semibold transition active:scale-95 ${browseCat === cat.key ? cat.active : cat.inactive}`}
             >
-              {primary && (
-                <>
-                  <div className="pointer-events-none absolute -top-6 -right-4 h-14 w-14 rounded-full bg-white/15 blur-2xl" />
-                  <div className="pointer-events-none absolute -bottom-8 -left-6 h-12 w-12 rounded-full bg-fuchsia-400/20 blur-2xl" />
-                </>
-              )}
-              <item.icon className={`h-4 w-4 ${item.spin ? 'animate-spin' : ''}`} strokeWidth={primary ? 2.2 : 2} />
-              <span className="text-[10.5px] font-bold leading-none">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Secondary actions — 3-col grid, stays inside viewport */}
-      {quickNav.length > 3 && (
-        <div className="grid grid-cols-3 gap-2">
-          {quickNav.slice(3).map((item) => (
-            <button
-              key={item.label}
-              onClick={() => {
-                if (item.action) item.action();
-                else if (item.nav) navigate(item.nav);
-              }}
-              className="h-11 px-2 rounded-xl bg-white ring-1 ring-slate-200 flex items-center justify-center gap-1.5 text-[11px] font-bold text-slate-700 active:scale-95 transition-all shadow-[0_2px_6px_-2px_rgba(15,23,42,0.05)] min-w-0"
-            >
-              <span className={`h-7 w-7 shrink-0 rounded-full bg-linear-to-br ${item.gradient} flex items-center justify-center`}>
-                <item.icon className={`h-3.5 w-3.5 ${item.text} ${item.spin ? 'animate-spin' : ''}`} strokeWidth={2.2} />
-              </span>
-              <span className="truncate">{item.label}</span>
+              {cat.label}
             </button>
           ))}
         </div>
-      )}
+      </section>
 
-      {/* ══════ WORKSPACE — quick access to new modules ══════ */}
-      <div className="grid grid-cols-4 gap-2.5 pt-1">
-        {[
-        
-          { to: '/supervision-tasks',  icon: ShieldCheck,    label: 'Tasks',      ring: 'ring-violet-100',  bg: 'bg-violet-50',  color: 'text-violet-600' },
-          { to: '/bookings',           icon: BookOpen,       label: 'Bookings',   ring: 'ring-blue-100',    bg: 'bg-blue-50',    color: 'text-blue-600' },
-          { to: '/sales',              icon: CreditCard,     label: 'Sales',      ring: 'ring-emerald-100', bg: 'bg-emerald-50', color: 'text-emerald-600' },
-          { to: '/attendance/history', icon: CalendarCheck,  label: 'Attendance', ring: 'ring-amber-100',   bg: 'bg-amber-50',   color: 'text-amber-600' },
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.to}
-              onClick={() => navigate(item.to)}
-              className={`group rounded-2xl bg-white ring-1 ${item.ring} p-2.5 flex flex-col items-center gap-1.5 active:scale-95 transition-all hover:shadow-[0_8px_20px_-8px_rgba(15,23,42,0.12)]`}
-            >
-              <div className={`h-9 w-9 rounded-xl ${item.bg} flex items-center justify-center`}>
-                <Icon className={`h-4.5 w-4.5 ${item.color}`} strokeWidth={2.2} />
-              </div>
-              <span className="text-[10.5px] font-bold text-slate-700 leading-none">{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ══════ TODAY AT A GLANCE ══════ */}
-      <div className="flex items-end justify-between pt-2">
-        <h2 className="text-[18px] font-bold text-slate-900 tracking-tight" style={serif}>
-          Today
-          <span className="italic text-slate-500 ml-1.5 font-normal">at a glance</span>
-        </h2>
-        <span className="text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase tabular-nums pb-1">
-          {currentTime}
-        </span>
-      </div>
-
-      {/* ══════ STAT CARDS — editorial ══════ */}
-      <div className="grid grid-cols-2 gap-3">
-        {statCards.slice(0, 4).map((card, idx) => {
-          const Icon = card.icon;
-          return (
-            <button
-              key={card.label}
-              onClick={() => navigate(card.nav)}
-              className="group relative overflow-hidden rounded-[22px] bg-white ring-1 ring-slate-100 p-3.5 pt-4 text-left shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] active:scale-[0.97] transition-all duration-150 hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]"
-            >
-              {/* Top accent bar */}
-              <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${card.ribbon}`} />
-
-              {/* Category label */}
-              <div className="flex items-center justify-between">
-                <p className={`text-[9px] font-bold uppercase tracking-[0.22em] ${card.iconColor}`}>
-                  {card.short}
-                </p>
-                <div className={`h-6 w-6 rounded-lg ${card.iconBg} flex items-center justify-center`}>
-                  <Icon className={`h-3.5 w-3.5 ${card.iconColor}`} strokeWidth={2.2} />
-                </div>
-              </div>
-
-              {/* Value + sparkline */}
-              <div className="mt-3 flex items-end justify-between gap-2">
-                <p className="text-[34px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>
-                  {fmtNum(card.value)}
-                </p>
-                <MiniSpark color={card.flow} pattern={card.spark} variant={card.variant} uid={`s${idx}`} />
-              </div>
-
-              {/* Label + hint */}
-              <p className="text-[12px] font-semibold text-slate-800 mt-3">{card.label}</p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{card.hint}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ══════ MATTER LEADS — wide editorial card ══════ */}
-      {statCards[4] && (() => {
-        const card = statCards[4];
-        const Icon = card.icon;
-        return (
-          <button
-            onClick={() => navigate(card.nav)}
-            className="relative w-full overflow-hidden rounded-[22px] bg-white ring-1 ring-slate-100 p-4 pt-5 text-left shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] active:scale-[0.98] transition-all duration-150 flex items-center gap-3.5 hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]"
-          >
-            <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${card.ribbon}`} />
-            <div className={`h-12 w-12 rounded-2xl ${card.iconBg} flex items-center justify-center shrink-0 ring-1 ring-slate-100`}>
-              <Icon className={`h-5.5 w-5.5 ${card.iconColor}`} strokeWidth={2.2} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`text-[9px] font-bold uppercase tracking-[0.22em] ${card.iconColor}`}>{card.short}</p>
-              <p className="text-[28px] font-bold text-slate-900 leading-none tabular-nums tracking-tight mt-1" style={serif}>{fmtNum(card.value)}</p>
-              <p className="text-[11px] font-semibold text-slate-700 mt-1">{card.label} · <span className="font-medium text-slate-400">{card.hint}</span></p>
-            </div>
-            <MiniSpark color={card.flow} pattern="rise" variant="line" uid="s4" />
-            <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
-          </button>
-        );
-      })()}
-
-
-
-      {/* ══════ PIPELINE ══════ */}
-      <section className="rounded-[24px] bg-white border border-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.05)] p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-9 w-9 rounded-2xl bg-emerald-50 flex items-center justify-center ring-1 ring-emerald-100">
-              <TrendingUp className="h-4.5 w-4.5 text-emerald-600" strokeWidth={2} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-[15px] font-bold text-slate-900 leading-tight tracking-tight" style={serif}>
-                Your <span className="italic font-normal text-slate-500">pipeline</span>
-              </h2>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">{fmtNum(leadTotal)} total leads</p>
-            </div>
-          </div>
-          <button onClick={() => navigate('/leads?status=ALL')} className="text-[11px] font-semibold text-emerald-600 flex items-center gap-0.5 px-2.5 py-1.5 rounded-full bg-emerald-50 active:bg-emerald-100 transition-colors shrink-0">
-            All leads <ChevronRight className="h-3 w-3" />
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {pipelineItems.map((item) => {
-              const count = pipeline[item.key] || 0;
-              const pct = maxPipeline > 0 ? (count / maxPipeline) * 100 : 0;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => navigate(`/leads?status=${item.key}`)}
-                  className="w-full text-left active:scale-[0.98] transition-transform"
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="flex items-center gap-2 text-[11px] font-semibold text-slate-700">
-                      <span className={`h-2 w-2 rounded-full ${item.dotColor}`} />
-                      {item.label}
-                    </span>
-                    <span className="text-[12px] font-bold text-slate-900 tabular-nums">{fmtNum(count)}</span>
-                  </div>
-                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full bg-linear-to-r ${item.barGrad} transition-all duration-700`}
-                      style={{ width: `${Math.max(pct, count > 0 ? 4 : 0)}%` }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
+      {/* ── Quick access shortcuts ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-2.5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 px-1 pb-2">Quick Access</p>
+        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+          {shortcuts.map((s) => {
+            const Icon = s.icon;
+            return (
+              <button
+                key={s.label}
+                onClick={() => navigate(s.nav)}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 py-3 px-2 transition active:scale-95 ring-1 ring-inset ring-slate-200/80"
+              >
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ring-1 ${s.cls}`}>
+                  <Icon className="h-4 w-4" strokeWidth={2.2} />
+                </span>
+                <span className="text-[10px] font-semibold text-slate-600 truncate max-w-full leading-none">{s.label}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
+
+      {/* ── Call analytics ── */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-1 bg-linear-to-r from-orange-400 via-amber-400 to-yellow-300" />
+        <div className="p-3.5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2.5">
+              <span className="h-9 w-9 rounded-xl bg-orange-50 ring-1 ring-orange-100 flex items-center justify-center shrink-0">
+                <PhoneCall className="h-4 w-4 text-orange-500" strokeWidth={2.2} />
+              </span>
+              <div>
+                <p className="text-[14px] font-semibold text-slate-950 leading-tight tracking-tight">Call Analytics</p>
+                <p className="text-[10px] font-medium text-slate-500 mt-0.5">
+                  {callPeriodLoading ? 'Loading…' : `${fmtNum(periodTotal)} made · ${fmtNum(periodPicked)} picked`}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/calls/analytics')}
+              className="h-8 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold flex items-center gap-1 transition active:scale-95 shadow-sm"
+            >
+              Full view <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {/* Period tabs */}
+          <div className="grid grid-cols-4 gap-1.5 mb-3">
+            {PERIODS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setCallPeriod(key)}
+                className={`h-9 rounded-xl text-[11px] font-semibold transition active:scale-95 ${
+                  callPeriod === key
+                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-200'
+                    : 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {callPeriod === 'custom' && (
+            <input
+              type="date"
+              value={customDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="mb-3 h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+            />
+          )}
+
+          {/* 3 metric tiles */}
+          <div className="grid grid-cols-3 gap-2">
+            {callPeriodLoading ? (
+              [0, 1, 2].map((i) => <div key={i} className="h-28 rounded-xl bg-slate-100 animate-pulse" />)
+            ) : (
+              [
+                { label: 'Made',   sub: 'Total dialed',  value: periodTotal,  Icon: PhoneOutgoing, bg: 'bg-orange-50',  ring: 'ring-orange-100',  numCls: 'text-orange-700',  iconBg: 'bg-orange-100',  ico: 'text-orange-500'  },
+                { label: 'Picked', sub: 'Connected',      value: periodPicked, Icon: CheckCircle2,  bg: 'bg-emerald-50', ring: 'ring-emerald-100', numCls: 'text-emerald-700', iconBg: 'bg-emerald-100', ico: 'text-emerald-500' },
+                { label: 'Missed', sub: 'No answer',      value: periodMissed, Icon: PhoneMissed,   bg: 'bg-rose-50',    ring: 'ring-rose-100',    numCls: 'text-rose-700',    iconBg: 'bg-rose-100',    ico: 'text-rose-500'    },
+              ].map(({ label, sub, value, Icon, bg, ring, numCls, iconBg, ico }) => (
+                <div key={label} className={`rounded-xl ${bg} ring-1 ${ring} p-3`}>
+                  <div className={`h-8 w-8 rounded-lg ${iconBg} flex items-center justify-center mb-3`}>
+                    <Icon className={`h-4 w-4 ${ico}`} strokeWidth={2.2} />
+                  </div>
+                  <p className={`text-[28px] font-semibold leading-none tabular-nums ${numCls}`}>{fmtCompact(value)}</p>
+                  <p className={`mt-1 text-[10px] font-semibold uppercase tracking-[0.15em] ${numCls} opacity-70`}>{label}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">{sub}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Connect rate strip */}
+          {!callPeriodLoading && periodTotal > 0 && (
+            <div className="mt-2.5 flex items-center gap-3">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-linear-to-r from-emerald-500 to-teal-400 transition-all duration-700"
+                  style={{ width: `${connectRate}%` }}
+                />
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500 shrink-0 tabular-nums">{connectRate}% connect rate</span>
+            </div>
+          )}
+        </div>
+      </section>
+
     </div>
   );
 };

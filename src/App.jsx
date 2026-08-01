@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import { OfflineProvider } from '@/context/OfflineContext';
@@ -7,6 +7,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 import Layout from '@/components/Layout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import OfflineIndicator from '@/components/OfflineIndicator';
+import PermissionsModal from '@/components/PermissionsModal';
 
 // Lazy load all pages
 import Login from '@/pages/Login';
@@ -14,7 +15,7 @@ import Dashboard from '@/pages/Dashboard';
 import Leads from '@/pages/Leads';
 import CallDashboard from '@/pages/CallDashboard';
 import AllContacts from '@/pages/AllContacts';
-import Chat from '@/pages/Chat';
+import ChatLayout from '@/pages/ChatLayout';
 import MissedCalls from '@/pages/MissedCalls';
 import DialerPage from '@/pages/DialerPage';
 import CallHistory from '@/pages/CallHistory';
@@ -52,9 +53,10 @@ const LeadsDialer = lazy(() => import('@/pages/LeadsDialer'));
 // CallHistory is eagerly loaded above
 const ContentShare = lazy(() => import('@/pages/ContentShare'));
 const ContactsLayout = lazy(() => import('@/pages/ContactsLayout'));
-const BulkImportContacts = lazy(() => import('@/pages/BulkImportContacts'));
 const ShiftToCallQueue = lazy(() => import('@/pages/ShiftToCallQueue'));
 const MatterLeads = lazy(() => import('@/pages/MatterLeads'));
+const ChatList = lazy(() => import('@/pages/ChatList'));
+const ChatRoom = lazy(() => import('@/pages/ChatRoom'));
 const CallDrawer = lazy(() => import('@/components/CallDrawer'));
 
 const CallDetectorBridge = lazy(() =>
@@ -81,7 +83,6 @@ const SupervisionTasks = lazy(() => import('@/pages/SupervisionTasks'));
 const MarkAttendance = lazy(() => import('@/pages/MarkAttendance'));
 const MyAttendance = lazy(() => import('@/pages/MyAttendance'));
 
-// Chat is eagerly loaded above
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen bg-[#f8fafc]">
@@ -95,8 +96,28 @@ const PageLoader = () => (
 );
 
 export default function App() {
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+
+  useEffect(() => {
+    // Check if permissions have been requested before
+    const permissionsRequested = localStorage.getItem('permissionsRequested');
+    
+    // Show permissions modal on first launch
+    if (!permissionsRequested) {
+      setShowPermissionsModal(true);
+    }
+  }, []);
+
+  const handlePermissionsClose = () => {
+    setShowPermissionsModal(false);
+    localStorage.setItem('permissionsRequested', 'true');
+  };
+
   return (
     <ErrorBoundary>
+      {showPermissionsModal && (
+        <PermissionsModal onClose={handlePermissionsClose} />
+      )}
       <AuthProvider>
         <OfflineProvider>
         <CallDrawerProvider>
@@ -107,10 +128,10 @@ export default function App() {
             <Route path="/share/plot/:plotId" element={<SharedPlot />} />
             <Route path="/share/map/:mapId" element={<SharedMap />} />
 
-            {/* Protected — AGENT & TEAM_HEAD */}
+            {/* Protected — AGENT, TEAM_HEAD & SUB_AGENT */}
             <Route
               element={
-                <ProtectedRoute allowedRoles={['AGENT', 'TEAM_HEAD']}>
+                <ProtectedRoute allowedRoles={['AGENT', 'TEAM_HEAD', 'SUB_AGENT']}>
                   <Layout />
                 </ProtectedRoute>
               }
@@ -186,12 +207,14 @@ export default function App() {
               <Route path="attendance/history" element={<MyAttendance />} />
 
               {/* Chat */}
-              <Route path="chat" element={<Chat />} />
+              <Route path="chat" element={<ChatLayout />}>
+                <Route index element={<ChatList />} />
+                <Route path=":conversationId" element={<ChatRoom />} />
+              </Route>
 
               {/* Contacts */}
               <Route path="all-contacts" element={<ContactsLayout />}>
                 <Route index element={<AllContacts />} />
-                <Route path="bulk" element={<BulkImportContacts />} />
               </Route>
               <Route path="contacts" element={<ContactsLayout />}>
                 <Route path="shift-to-call" element={<ShiftToCallQueue />} />

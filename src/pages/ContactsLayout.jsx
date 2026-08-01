@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Users, PhoneOutgoing, History, FileSpreadsheet } from 'lucide-react';
+import { Users, PhoneOutgoing, History } from 'lucide-react';
 
 const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
 
@@ -7,7 +7,6 @@ const TABS = [
   { to: '/all-contacts',            label: 'Contacts',     Icon: Users },
   { to: '/contacts/shift-to-call',  label: 'Shift to Call',Icon: PhoneOutgoing },
   { to: '/calls/history',           label: 'Call History', Icon: History },
-  { to: '/all-contacts/bulk',       label: 'Import',       Icon: FileSpreadsheet },
 ];
 
 export default function ContactsLayout() {

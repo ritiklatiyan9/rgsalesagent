@@ -1,24 +1,18 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import {
-  ArrowLeft, RefreshCw, Phone, Target, Users, CheckCircle2,
-  Flame, Calendar, Clock, TrendingUp, Crown, Activity,
-  PhoneCall, AlertCircle, BarChart3, Award, Zap, List,
+  ArrowLeft, RefreshCw, Phone, Target, CheckCircle2,
+  Flame, TrendingUp, Crown, Activity, PhoneCall,
+  AlertCircle, Award, Users, Zap,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, RadialBarChart, RadialBar, Legend,
+  ResponsiveContainer, Cell,
 } from 'recharts';
 import api from '@/lib/axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
-
-const MEMBER_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
 
 const fmtNum = (n) => Number(n || 0).toLocaleString('en-IN');
 const fmtDur = (sec) => {
@@ -28,14 +22,14 @@ const fmtDur = (sec) => {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 };
 
-const CustomTooltip = ({ active, payload, label }) => {
+const ChartTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-border/40 rounded-xl p-3 shadow-lg text-xs min-w-[120px]">
-      <p className="font-medium text-slate-700 mb-1.5">{label}</p>
+    <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-md text-xs">
+      <p className="text-slate-500 mb-1">{label}</p>
       {payload.map((p, i) => (
-        <div key={i} className="flex items-center justify-between gap-3">
-          <span style={{ color: p.color }}>{p.name}</span>
+        <div key={i} className="flex items-center gap-2 justify-between">
+          <span className="text-slate-600">{p.name}</span>
           <span className="font-semibold text-slate-800">{fmtNum(p.value)}</span>
         </div>
       ))}
@@ -43,113 +37,91 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Horizontal progress bar with label
-const ProgressBar = ({ label, value, max, color = '#6366f1', description }) => {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+/* compact stat tile */
+const Stat = ({ label, value, sub, icon: Icon, loading }) => (
+  <div className="bg-white border border-slate-100 rounded-xl px-3 py-3">
+    <div className="flex items-center justify-between mb-2">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <Icon className="h-3.5 w-3.5 text-slate-300" />
+    </div>
+    {loading
+      ? <Skeleton className="h-5 w-14 rounded" />
+      : <p className="text-[17px] font-bold text-slate-800 tabular-nums leading-none">{value}</p>}
+    {sub && !loading && <p className="text-[10px] text-slate-400 mt-1">{sub}</p>}
+  </div>
+);
+
+/* thin labeled bar */
+const MiniBar = ({ label, value, max, pct: forcePct }) => {
+  const pct = forcePct ?? (max > 0 ? Math.min((value / max) * 100, 100) : 0);
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-slate-700">{label}</span>
-        <span className="tabular-nums text-slate-500">{fmtNum(value)}{description && <span className="text-slate-400 ml-1">/ {fmtNum(max)} {description}</span>}</span>
+    <div className="flex items-center gap-3">
+      <p className="text-[11px] text-slate-500 w-20 shrink-0">{label}</p>
+      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-full bg-indigo-400 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
-      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{ width: `${pct}%`, backgroundColor: color }}
-        />
-      </div>
+      <p className="text-[11px] font-semibold text-slate-600 tabular-nums w-10 text-right">{fmtNum(value)}</p>
     </div>
   );
 };
 
-// Big stat card with accent left-border
-const StatCard = ({ label, value, icon: Icon, accent, iconBg, iconColor, sub, loading }) => (
-  <div className={`stat-card border-l-4 ${accent} hover:shadow-md transition-shadow`}>
-    <div className="flex items-start justify-between mb-2">
-      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider leading-tight">{label}</p>
-      <div className={`h-7 w-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
-        <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
-      </div>
-    </div>
-    {loading ? (
-      <Skeleton className="h-7 w-16 rounded" />
-    ) : (
-      <>
-        <p className="text-xl font-bold tabular-nums truncate">{value}</p>
-        {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
-      </>
-    )}
-  </div>
-);
-
+/* ══════════════════════════════════════════════════════ */
 const MemberPerformance = () => {
   const { memberId } = useParams();
   const navigate = useNavigate();
   const { user, isTeamHead } = useAuth();
+  const isAgent = String(user?.role || '').toUpperCase() === 'AGENT';
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [member, setMember] = useState(null);
+  const [member, setMember]       = useState(null);
   const [allMembers, setAllMembers] = useState([]);
-  const [teamName, setTeamName] = useState('');
+  const [teamName, setTeamName]   = useState('');
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (!user?.team_id) { setLoading(false); return; }
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-
+    if (isRefresh) setRefreshing(true); else setLoading(true);
     try {
       const [teamRes, perfRes] = await Promise.all([
         api.get(`/teams/${user.team_id}`),
         api.get(`/teams/${user.team_id}/members-performance`),
       ]);
-
       if (teamRes.data.success) setTeamName(teamRes.data.team?.name || '');
-
       if (perfRes.data.success) {
         const members = perfRes.data.members || [];
         setAllMembers(members);
         const found = members.find((m) => String(m.id) === String(memberId));
         if (!found) {
-          toast.error('Member not found in your team');
-          navigate('/team/performance');
+          toast.error('Member not found');
+          navigate(isTeamHead ? '/team/performance' : '/team');
         } else {
           setMember(found);
         }
       }
-    } catch {
-      toast.error('Failed to load member performance');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user, memberId, navigate]);
+    } catch { toast.error('Failed to load'); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, [user, memberId, navigate, isTeamHead]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Team-wide max values for progress bars
   const teamMaxes = useMemo(() => ({
-    leads: Math.max(...allMembers.map((m) => Number(m.total_leads || 0)), 1),
-    calls: Math.max(...allMembers.map((m) => Number(m.total_calls || 0)), 1),
+    leads:    Math.max(...allMembers.map((m) => Number(m.total_leads    || 0)), 1),
+    calls:    Math.max(...allMembers.map((m) => Number(m.total_calls    || 0)), 1),
     bookings: Math.max(...allMembers.map((m) => Number(m.total_bookings || 0)), 1),
-    followups: Math.max(...allMembers.map((m) => Number(m.total_followups || 0)), 1),
+    followups:Math.max(...allMembers.map((m) => Number(m.total_followups|| 0)), 1),
   }), [allMembers]);
 
-  // vs-team comparison chart
-  const comparisonData = useMemo(() => {
+  const compData = useMemo(() => {
     if (!member || allMembers.length < 2) return [];
-    const agents = allMembers.filter((m) => String(m.id) !== String(memberId));
-    const teamAvgLeads = agents.reduce((s, m) => s + Number(m.total_leads || 0), 0) / Math.max(agents.length, 1);
-    const teamAvgCalls = agents.reduce((s, m) => s + Number(m.total_calls || 0), 0) / Math.max(agents.length, 1);
-    const teamAvgBookings = agents.reduce((s, m) => s + Number(m.total_bookings || 0), 0) / Math.max(agents.length, 1);
+    const others = allMembers.filter((m) => String(m.id) !== String(memberId));
+    const avg = (k) => others.reduce((s, m) => s + Number(m[k] || 0), 0) / Math.max(others.length, 1);
     return [
-      { metric: 'Leads', member: Number(member.total_leads || 0), teamAvg: Math.round(teamAvgLeads) },
-      { metric: 'Calls', member: Number(member.total_calls || 0), teamAvg: Math.round(teamAvgCalls) },
-      { metric: 'Bookings', member: Number(member.total_bookings || 0), teamAvg: Math.round(teamAvgBookings) },
+      { label: 'Leads',    me: Number(member.total_leads    || 0), avg: Math.round(avg('total_leads'))    },
+      { label: 'Calls',    me: Number(member.total_calls    || 0), avg: Math.round(avg('total_calls'))    },
+      { label: 'Bookings', me: Number(member.total_bookings || 0), avg: Math.round(avg('total_bookings')) },
     ];
   }, [member, allMembers, memberId]);
 
-  // Rank in team
   const rank = useMemo(() => {
     if (!member) return null;
     const sorted = [...allMembers].sort((a, b) => Number(b.total_leads || 0) - Number(a.total_leads || 0));
@@ -157,404 +129,215 @@ const MemberPerformance = () => {
     return idx >= 0 ? idx + 1 : null;
   }, [allMembers, member, memberId]);
 
-  // Guard
-  if (!loading && !isTeamHead) {
+  if (!loading && !isTeamHead && !isAgent) {
     return (
-      <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-slate-200">
-        <AlertCircle className="h-10 w-10 mx-auto mb-3 text-slate-300" />
-        <p className="text-slate-500 font-medium">Access denied.</p>
-        <p className="text-sm text-slate-400 mt-1">Only team heads can view member performance.</p>
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="h-8 w-8 mb-3 text-slate-300" />
+        <p className="text-sm font-medium text-slate-500">Access denied</p>
       </div>
     );
   }
 
-  const followupPct = member?.total_followups > 0
+  const convRate    = parseFloat(member?.conversion_rate || 0);
+  const fuPct       = member?.total_followups > 0
     ? ((Number(member.completed_followups) / Number(member.total_followups)) * 100).toFixed(0)
     : 0;
-
-  const convRate = parseFloat(member?.conversion_rate || 0);
+  const initials    = (member?.name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const firstName   = member?.name?.split(' ')[0] || 'Member';
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/team/performance')}
-            className="h-8 w-8 rounded-lg"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            {loading ? (
-              <div className="space-y-1.5">
-                <Skeleton className="h-6 w-40 rounded" />
-                <Skeleton className="h-3.5 w-28 rounded" />
-              </div>
-            ) : (
-              <>
-                <h1 className="page-title text-xl flex items-center gap-2">
-                  {member?.is_active
-                    ? <Activity className="h-5 w-5 text-emerald-500" />
-                    : <AlertCircle className="h-5 w-5 text-rose-400" />}
-                  {member?.name || 'Member'} — Performance
-                </h1>
-                <p className="page-subtitle mt-0.5 flex items-center gap-2">
-                  {teamName}
-                  {rank && (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium">
-                      <Award className="h-3 w-3" /> #{rank} in team
-                    </span>
-                  )}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
+    <div className="space-y-3 pb-10">
 
+      {/* ── top bar ── */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate(isTeamHead ? '/team/performance' : '/team')}
+          className="h-8 w-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4 text-slate-600" />
+        </button>
         <div className="flex items-center gap-2">
           {!loading && member && (
-            <>
-              <Button
-                onClick={() => navigate(`/team/member/${memberId}/calls`)}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-sm text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-              >
-                <Phone className="h-3.5 w-3.5" />
-                Call Logs
-              </Button>
-              <Badge
-                variant="outline"
-                className={`text-xs ${member.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}
-              >
-                {member.is_active ? '● Active' : '● Inactive'}
-              </Badge>
-              {member.isTeamHead && (
-                <Badge variant="outline" className="text-xs bg-violet-50 text-violet-700 border-violet-200 gap-1">
-                  <Crown className="h-2.5 w-2.5" /> Team Head
-                </Badge>
-              )}
-            </>
+            <button
+              onClick={() => navigate(`/team/member/${memberId}/calls`)}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+            >
+              <Phone className="h-3 w-3" /> Calls
+            </button>
           )}
-          <Button
+          <button
             onClick={() => fetchData(true)}
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-sm"
             disabled={refreshing}
+            className="h-8 w-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+            <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard loading={loading} label="Total Leads" value={fmtNum(member?.total_leads)} icon={Target}
-          accent="border-l-blue-500" iconBg="bg-blue-50" iconColor="text-blue-600"
-          sub={`${fmtNum(member?.booked_leads)} booked`} />
-        <StatCard loading={loading} label="Total Calls" value={fmtNum(member?.total_calls)} icon={Phone}
-          accent="border-l-violet-500" iconBg="bg-violet-50" iconColor="text-violet-600"
-          sub={fmtDur(member?.avg_call_duration) + ' avg'} />
-        <StatCard loading={loading} label="Calls Today" value={fmtNum(member?.calls_today)} icon={Flame}
-          accent="border-l-rose-500" iconBg="bg-rose-50" iconColor="text-rose-600"
-          sub={`${fmtNum(member?.calls_this_week)} this week`} />
-        <StatCard loading={loading} label="Bookings" value={fmtNum(member?.total_bookings)} icon={CheckCircle2}
-          accent="border-l-emerald-500" iconBg="bg-emerald-50" iconColor="text-emerald-600"
-          sub={`${fmtNum(member?.completed_bookings)} completed`} />
-        <StatCard loading={loading} label="Conversion" value={`${convRate}%`} icon={TrendingUp}
-          accent="border-l-indigo-500" iconBg="bg-indigo-50" iconColor="text-indigo-600"
-          sub="leads → bookings" />
-        <StatCard loading={loading} label="Follow-ups" value={fmtNum(member?.total_followups)} icon={PhoneCall}
-          accent="border-l-amber-500" iconBg="bg-amber-50" iconColor="text-amber-600"
-          sub={`${fmtNum(member?.completed_followups)} done`} />
+      {/* ── profile strip ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
+        {loading ? (
+          <>
+            <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
+            <div className="space-y-2 flex-1">
+              <Skeleton className="h-4 w-32 rounded" />
+              <Skeleton className="h-3 w-24 rounded" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+              <span className="text-base font-bold text-slate-600">{initials}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-bold text-slate-800 truncate leading-tight">{member?.name || '—'}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">{teamName}</p>
+            </div>
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                member?.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
+              }`}>
+                {member?.is_active ? 'Active' : 'Inactive'}
+              </span>
+              {rank && (
+                <span className="text-[10px] font-semibold text-amber-600 flex items-center gap-0.5">
+                  <Award className="h-2.5 w-2.5" /> #{rank} in team
+                </span>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-        {/* LEFT — Performance Breakdown */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Progress Bars vs Team */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-indigo-500" /> Activity vs Team Best
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              {loading ? (
-                [...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded" />)
-              ) : (
-                <>
-                  <ProgressBar label="Leads" value={Number(member?.total_leads || 0)} max={teamMaxes.leads} color="#6366f1" description="team best" />
-                  <ProgressBar label="Calls" value={Number(member?.total_calls || 0)} max={teamMaxes.calls} color="#8b5cf6" description="team best" />
-                  <ProgressBar label="Bookings" value={Number(member?.total_bookings || 0)} max={teamMaxes.bookings} color="#10b981" description="team best" />
-                  <ProgressBar label="Follow-ups" value={Number(member?.total_followups || 0)} max={teamMaxes.followups} color="#f59e0b" description="team best" />
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Conversion Rate Ring */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" /> Conversion & Follow-up Rate
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {loading ? (
-                <div className="h-48 bg-muted/20 rounded-lg animate-pulse" />
-              ) : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <RadialBarChart
-                    cx="50%"
-                    cy="50%"
-                    innerRadius="30%"
-                    outerRadius="90%"
-                    barSize={14}
-                    data={[
-                      { name: 'Conversion', value: Math.min(convRate, 100), fill: '#6366f1' },
-                      { name: 'Follow-up Done', value: Math.min(Number(followupPct), 100), fill: '#10b981' },
-                    ]}
-                  >
-                    <RadialBar minAngle={5} background dataKey="value" cornerRadius={6} />
-                    <Legend
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
-                      formatter={(value, entry) => (
-                        <span style={{ color: '#64748b' }}>
-                          {value}: <strong style={{ color: entry?.payload?.fill }}>{Number(entry?.payload?.value || 0).toFixed(1)}%</strong>
-                        </span>
-                      )}
-                    />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 11 }}
-                      formatter={(val) => [`${Number(val).toFixed(1)}%`]}
-                    />
-                  </RadialBarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Stats Summary */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <List className="h-4 w-4 text-slate-500" /> Quick Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {loading ? (
-                <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-5 w-full rounded" />)}</div>
-              ) : (
-                <dl className="space-y-3">
-                  {[
-                    { label: 'Avg Call Duration', value: fmtDur(member?.avg_call_duration) },
-                    { label: 'Calls This Week', value: fmtNum(member?.calls_this_week) },
-                    { label: 'Booked Leads', value: fmtNum(member?.booked_leads) },
-                    { label: 'Completed Bookings', value: fmtNum(member?.completed_bookings) },
-                    { label: 'Follow-up Completion', value: `${followupPct}%` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="flex items-center justify-between text-sm">
-                      <dt className="text-muted-foreground">{label}</dt>
-                      <dd className="font-semibold text-slate-700 tabular-nums">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* RIGHT — Charts */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* vs Team Average */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Users className="h-4 w-4 text-violet-500" /> {loading ? 'Member vs Team Average' : `${member?.name?.split(' ')[0]} vs Team Average`}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 px-2 md:px-5">
-              {loading ? (
-                <div className="h-64 bg-muted/20 rounded-lg animate-pulse" />
-              ) : comparisonData.length === 0 ? (
-                <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">Not enough data</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={comparisonData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="metric" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="member" name={member?.name?.split(' ')[0] || 'Member'} fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                    <Bar dataKey="teamAvg" name="Team Avg" fill="#cbd5e1" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* All members comparison */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Activity className="h-4 w-4 text-indigo-500" /> Leads — All Members Comparison
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 px-2 md:px-5">
-              {loading ? (
-                <div className="h-52 bg-muted/20 rounded-lg animate-pulse" />
-              ) : allMembers.length === 0 ? (
-                <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">No data</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={allMembers.map((m, i) => ({
-                      name: m.name?.split(' ')[0] || `M${i + 1}`,
-                      leads: Number(m.total_leads || 0),
-                      calls: Number(m.total_calls || 0),
-                      isThis: String(m.id) === String(memberId),
-                    }))}
-                    margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="leads" name="Leads" radius={[4, 4, 0, 0]} maxBarSize={36}>
-                      {allMembers.map((m, i) => (
-                        <Cell
-                          key={i}
-                          fill={String(m.id) === String(memberId) ? '#6366f1' : '#cbd5e1'}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Call Activity Comparison */}
-          <Card className="card-elevated border-0">
-            <CardHeader className="pb-3 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Phone className="h-4 w-4 text-violet-500" /> Calls — All Members Comparison
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 px-2 md:px-5">
-              {loading ? (
-                <div className="h-52 bg-muted/20 rounded-lg animate-pulse" />
-              ) : allMembers.length === 0 ? (
-                <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">No data</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart
-                    data={allMembers.map((m, i) => ({
-                      name: m.name?.split(' ')[0] || `M${i + 1}`,
-                      calls: Number(m.total_calls || 0),
-                      today: Number(m.calls_today || 0),
-                    }))}
-                    margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
-                    layout="vertical"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} width={65} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Bar dataKey="calls" name="Total Calls" radius={[0, 4, 4, 0]} maxBarSize={20}>
-                      {allMembers.map((m, i) => (
-                        <Cell
-                          key={i}
-                          fill={String(m.id) === String(memberId) ? '#8b5cf6' : '#e2e8f0'}
-                        />
-                      ))}
-                    </Bar>
-                    <Bar dataKey="today" name="Today" radius={[0, 4, 4, 0]} maxBarSize={20} fill="#f59e0b" fillOpacity={0.7} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      {/* ── KPI tiles 3-col ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <Stat loading={loading} label="Leads"     value={fmtNum(member?.total_leads)}    sub={`${fmtNum(member?.booked_leads)} booked`}    icon={Target}      />
+        <Stat loading={loading} label="Calls"     value={fmtNum(member?.total_calls)}    sub={fmtDur(member?.avg_call_duration)}            icon={Phone}       />
+        <Stat loading={loading} label="Today"     value={fmtNum(member?.calls_today)}    sub={`${fmtNum(member?.calls_this_week)} wk`}      icon={Flame}       />
+        <Stat loading={loading} label="Bookings"  value={fmtNum(member?.total_bookings)} sub={`${fmtNum(member?.completed_bookings)} done`} icon={CheckCircle2}/>
+        <Stat loading={loading} label="Conv."     value={`${convRate}%`}                 sub="lead → booking"                               icon={TrendingUp}  />
+        <Stat loading={loading} label="Follow-ups"value={fmtNum(member?.total_followups)}sub={`${fuPct}% done`}                             icon={PhoneCall}   />
       </div>
 
-      <Separator />
+      {/* ── vs team best ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl px-4 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-3">vs Team Best</p>
+        {loading ? (
+          <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-4 w-full rounded" />)}</div>
+        ) : (
+          <div className="space-y-3">
+            <MiniBar label="Leads"      value={Number(member?.total_leads    || 0)} max={teamMaxes.leads}    />
+            <MiniBar label="Calls"      value={Number(member?.total_calls    || 0)} max={teamMaxes.calls}    />
+            <MiniBar label="Bookings"   value={Number(member?.total_bookings || 0)} max={teamMaxes.bookings} />
+            <MiniBar label="Follow-ups" value={Number(member?.total_followups|| 0)} max={teamMaxes.followups}/>
+          </div>
+        )}
+      </div>
 
-      {/* All members at a glance */}
-      <Card className="card-elevated border-0">
-        <CardHeader className="pb-3 border-b border-border/40">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Users className="h-4 w-4 text-indigo-500" /> Full Team Overview
-            <Badge variant="secondary" className="ml-auto text-[10px]">{allMembers.length} members</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-4">
-          {loading ? (
-            <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
-          ) : (
-            <div className="space-y-2">
-              {[...allMembers]
+      {/* ── me vs avg chart ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl px-3 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2 px-1">
+          {loading ? 'vs Team Avg' : `${firstName} vs Team Avg`}
+        </p>
+        {loading ? (
+          <div className="h-44 animate-pulse bg-slate-50 rounded-lg" />
+        ) : compData.length === 0 ? (
+          <p className="text-center text-xs text-slate-400 py-10">Not enough data</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={170}>
+            <BarChart data={compData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip content={<ChartTip />} />
+              <Bar dataKey="me"  name={firstName}  fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={32} />
+              <Bar dataKey="avg" name="Team Avg" fill="#e2e8f0" radius={[4, 4, 0, 0]} maxBarSize={32} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* ── rates ── */}
+      {!loading && member && (
+        <div className="bg-white border border-slate-100 rounded-2xl px-4 py-3 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Rates</p>
+          <MiniBar label="Conversion"   value={Number(convRate.toFixed(1))} max={100} pct={convRate} />
+          <MiniBar label="Follow-up %"  value={Number(fuPct)} max={100} pct={Number(fuPct)} />
+        </div>
+      )}
+
+      {/* ── quick facts ── */}
+      {!loading && member && (
+        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 px-4 pt-3 pb-2">Quick Facts</p>
+          <dl className="divide-y divide-slate-50">
+            {[
+              { label: 'Avg Call Duration',    value: fmtDur(member.avg_call_duration)  },
+              { label: 'Calls This Week',      value: fmtNum(member.calls_this_week)    },
+              { label: 'Successful Calls',     value: fmtNum(member.successful_calls)   },
+              { label: 'Booked Leads',         value: fmtNum(member.booked_leads)       },
+              { label: 'Completed Bookings',   value: fmtNum(member.completed_bookings) },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex items-center justify-between px-4 py-2.5">
+                <dt className="text-[12px] text-slate-500">{label}</dt>
+                <dd className="text-[12px] font-semibold text-slate-700 tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {/* ── leaderboard ── */}
+      <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Team Leaderboard</p>
+          <span className="text-[10px] text-slate-400">{allMembers.length} members</span>
+        </div>
+        <div className="divide-y divide-slate-50">
+          {loading
+            ? [...Array(4)].map((_, i) => <Skeleton key={i} className="h-12 mx-4 my-1.5 rounded-lg" />)
+            : [...allMembers]
                 .sort((a, b) => Number(b.total_leads || 0) - Number(a.total_leads || 0))
                 .map((m, idx) => {
                   const isThis = String(m.id) === String(memberId);
-                  const maxLeads = teamMaxes.leads;
-                  const pct = maxLeads > 0 ? (Number(m.total_leads || 0) / maxLeads) * 100 : 0;
+                  const isMe   = String(m.id) === String(user?.id);
+                  const pct    = teamMaxes.leads > 0 ? (Number(m.total_leads || 0) / teamMaxes.leads) * 100 : 0;
                   return (
                     <div
                       key={m.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer ${
-                        isThis
-                          ? 'bg-indigo-50 border border-indigo-200 shadow-sm'
-                          : 'bg-muted/20 hover:bg-muted/40 border border-transparent'
+                      className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
+                        isThis ? 'bg-indigo-50/60' : 'hover:bg-slate-50 cursor-pointer'
                       }`}
                       onClick={() => !isThis && navigate(`/team/member/${m.id}`)}
                     >
-                      <span className="text-xs font-mono text-muted-foreground w-5 text-center shrink-0">{idx + 1}</span>
-                      <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
-                        isThis ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                      <span className="text-[11px] font-mono text-slate-300 w-4 shrink-0 text-center">{idx + 1}</span>
+                      <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold ${
+                        isThis ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
                       }`}>
                         {m.name?.charAt(0)?.toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <span className={`text-sm font-medium truncate ${isThis ? 'text-indigo-700' : 'text-slate-700'}`}>
-                            {m.name}
-                          </span>
-                          {isThis && <Badge className="text-[9px] px-1.5 py-0 bg-indigo-100 text-indigo-700 border-indigo-200">Viewing</Badge>}
-                          {String(m.id) === String(user?.id) && !isThis && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-600">(You)</span>
-                          )}
+                          <span className={`text-[12px] font-medium truncate ${isThis ? 'text-indigo-700' : 'text-slate-700'}`}>{m.name}</span>
+                          {isThis && <span className="text-[9px] font-semibold text-indigo-400">viewing</span>}
+                          {isMe && !isThis && <span className="text-[9px] text-slate-400">you</span>}
                         </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: isThis ? '#6366f1' : MEMBER_COLORS[idx % MEMBER_COLORS.length] + '80' }}
-                          />
+                        <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: isThis ? '#818cf8' : '#cbd5e1' }} />
                         </div>
                       </div>
-                      <div className="text-right shrink-0 space-y-0.5">
-                        <p className="text-xs font-semibold tabular-nums text-slate-700">{fmtNum(m.total_leads)} leads</p>
-                        <p className="text-[10px] text-muted-foreground tabular-nums">{fmtNum(m.total_calls)} calls</p>
+                      <div className="text-right shrink-0">
+                        <p className="text-[12px] font-bold tabular-nums text-slate-700">{fmtNum(m.total_leads)}</p>
+                        <p className="text-[9px] text-slate-400 tabular-nums">{fmtNum(m.total_calls)} calls</p>
                       </div>
                     </div>
                   );
-                })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                })
+          }
+        </div>
+      </div>
+
     </div>
   );
 };

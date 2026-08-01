@@ -4,12 +4,16 @@ import {
   Delete, PhoneCall, PhoneOff, Search, X,
   ArrowDownLeft, ArrowUpRight, PhoneMissed,
   Clock, Keyboard, Loader2, User, RefreshCw,
-  ChevronDown, Pencil, MessageSquare, Eye,
+  ChevronDown, Pencil, MessageSquare, Eye, BellPlus, AlertCircle,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import api from '@/lib/axios';
 import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
+import { broadcastMutation } from '@/lib/mutationBus';
 import {
   useRecents,
   upsertRecent as storeUpsertRecent,
@@ -54,7 +58,8 @@ const STATUS_OPTIONS = [
   { value: 'LOST', label: 'Lost', color: 'bg-slate-50 text-slate-700 ring-slate-200' },
   { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-50 text-orange-700 ring-orange-200' },
   { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-50 text-red-700 ring-red-200' },
-  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  { value: 'NOT_ANSWERING',  label: 'Not Answering',  color: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  { value: 'NOT_INTERESTED', label: 'Not Interested', color: 'bg-gray-100 text-gray-600 ring-gray-200' },
 ];
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
@@ -185,7 +190,8 @@ const SuggestionChip = memo(({ s, onSelect, onCall }) => {
 SuggestionChip.displayName = 'SuggestionChip';
 
 /* ── History row — expandable accordion ─────────────────────────────────── */
-const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
+const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView, onSchedule }) => {
+  const callCount = call.callCount || 1;
   const [open, setOpen] = useState(false);
 
   const { Icon, color, bg } = typeMeta(call.call_type);
@@ -233,7 +239,9 @@ const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
       >
         <Icon className={`h-3.5 w-3.5 shrink-0 ${directionTint}`} />
         <div className="flex-1 min-w-0">
-          <p className={`text-[12.5px] font-medium truncate leading-tight ${isMissed ? 'text-rose-600' : 'text-slate-900'}`}>{name}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className={`text-[12.5px] font-medium truncate leading-tight ${isMissed ? 'text-rose-600' : 'text-slate-900'}`}>{name}</p>
+          </div>
           <p className="text-[10.5px] text-slate-500 truncate leading-tight mt-0.5">
             {fmtDate(call.call_start)}{dur ? ` · ${dur}` : ''}
             {hasRealName ? ` · ${phone}` : ''}
@@ -246,8 +254,16 @@ const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
         </div>
         <button
           type="button"
+          onClick={openDrawerFor}
+          title="Edit"
+          className="h-7 w-7 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center shrink-0 transition-colors"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
           onClick={viewFor}
-          title="View details"
+          title="View timeline"
           className="h-7 w-7 rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center shrink-0 transition-colors"
         >
           <Eye className="h-3.5 w-3.5" />
@@ -315,6 +331,16 @@ const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
+              {call.lead_id && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onSchedule?.({ id: call.lead_id, name: call.lead_name || phone || 'Lead' }); }}
+                  title="Schedule follow-up"
+                  className="h-7 w-7 flex items-center justify-center rounded-md border border-slate-200 text-amber-500 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                >
+                  <BellPlus className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -323,6 +349,103 @@ const HistoryRow = memo(({ call, onCall, onOpenDrawer, onView }) => {
   );
 });
 HistoryRow.displayName = 'HistoryRow';
+
+/* ── Schedule Follow-up ───────────────────────────────────────────────── */
+const FOLLOWUP_TYPES = [
+  { value: 'CALL',       label: 'Call' },
+  { value: 'FOLLOWUP',  label: 'Follow-up' },
+  { value: 'SITE_VISIT', label: 'Site Visit' },
+  { value: 'MEETING',   label: 'Meeting' },
+  { value: 'OTHER',     label: 'Other' },
+];
+const EMPTY_SCHED = { followup_type: 'CALL', scheduled_date: '', scheduled_time: '', notes: '' };
+
+const ScheduleFollowupDrawer = ({ lead, open, onClose }) => {
+  const [form, setForm] = useState(EMPTY_SCHED);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setForm({ ...EMPTY_SCHED, scheduled_date: new Date().toISOString().slice(0, 10) });
+      setError('');
+    }
+  }, [open]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.scheduled_date) { setError('Please pick a date.'); return; }
+    setSaving(true);
+    try {
+      await api.post('/followups', {
+        lead_id: lead.id,
+        followup_type: form.followup_type,
+        scheduled_date: form.scheduled_date,
+        ...(form.scheduled_time ? { scheduled_time: form.scheduled_time } : {}),
+        ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
+      });
+      broadcastMutation(['followups']);
+      toast.success(`Follow-up scheduled for ${lead.name}`);
+      onClose();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to schedule follow-up.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Drawer open={open} onOpenChange={onClose}>
+      <DrawerContent className="max-h-[85vh]">
+        <DrawerHeader className="pb-2 border-b border-slate-200">
+          <DrawerTitle className="flex items-center gap-2 text-[13px] font-medium text-slate-900">
+            <BellPlus className="h-4 w-4 text-amber-500" />
+            Schedule Follow-up
+          </DrawerTitle>
+          <DrawerDescription className="text-[11px] text-slate-500 mt-0.5">{lead?.name}</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="px-4 pt-3 pb-4 space-y-3 overflow-y-auto">
+          {error && (
+            <div className="flex items-center gap-2 text-[11px] text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-md">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}
+            </div>
+          )}
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Type</Label>
+            <Select value={form.followup_type} onValueChange={(v) => setForm(p => ({ ...p, followup_type: v }))}>
+              <SelectTrigger className="h-9 text-[12px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FOLLOWUP_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value} className="text-sm">{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Date *</Label>
+              <Input type="date" value={form.scheduled_date} onChange={(e) => setForm(p => ({ ...p, scheduled_date: e.target.value }))} className="h-9 text-[12px]" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Time</Label>
+              <Input type="time" value={form.scheduled_time} onChange={(e) => setForm(p => ({ ...p, scheduled_time: e.target.value }))} className="h-9 text-[12px]" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Notes</Label>
+            <Textarea placeholder="Optional note…" rows={2} value={form.notes} onChange={(e) => setForm(p => ({ ...p, notes: e.target.value }))} className="text-[12px] resize-none" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button type="button" variant="outline" className="flex-1 h-9 text-[12px]" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="flex-1 h-9 text-[12px] bg-amber-500 hover:bg-amber-600 text-white shadow-none">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><BellPlus className="h-3.5 w-3.5 mr-1.5" />Schedule</>}
+            </Button>
+          </div>
+        </form>
+      </DrawerContent>
+    </Drawer>
+  );
+};
 
 /* ── Loading dots (no skeleton) ───────────────────────────────────────── */
 const LoadingDots = () => (
@@ -371,6 +494,11 @@ const DialerPage = () => {
   /* ── Call outcomes (for edit dropdown) ── */
   const [outcomes, setOutcomes]             = useState([]);
 
+  /* ── Schedule follow-up drawer ── */
+  const [scheduleOpen, setScheduleOpen]       = useState(false);
+  const [scheduleLead, setScheduleLead]       = useState(null);
+  const openSchedule = useCallback((lead) => { setScheduleLead(lead); setScheduleOpen(true); }, []);
+
   /* ── Lead view drawer state (matches Leads page Eye behavior) ── */
   const [viewOpen, setViewOpen]               = useState(false);
   const [viewTarget, setViewTarget]           = useState(null);
@@ -379,45 +507,67 @@ const DialerPage = () => {
   const [viewLoading, setViewLoading]         = useState(false);
 
   const handleViewCall = useCallback(async (call) => {
-    const phone = call?.phone_number_dialed || call?.lead_phone || '';
+    const phone     = call?.phone_number_dialed || call?.lead_phone || '';
+    const phoneTail = cleanNumber(phone).slice(-10);
     setViewOpen(true);
-    // Seed current call into timeline immediately so the drawer shows history
-    // even for unlinked rows — avoids the "nothing to show + slow spinner" feel.
-    const seedCall = call?.id != null && !String(call.id).startsWith('local-') ? [{
-      id: call.id,
-      call_type: call.call_type,
-      call_start: call.call_start,
-      call_end: null,
-      duration_seconds: call.duration_seconds || 0,
-      customer_notes: call.customer_notes || null,
-      outcome_label: call.outcome_label || null,
-    }] : [];
-    setViewCallHistory(seedCall);
+
+    // ── Step 1: seed timeline instantly from ALL matching calls in local history ──
+    // This is why the "Nx" badge matches — we pull every call for this
+    // phone/lead out of the in-memory store, not just the clicked row.
+    const allHistory = historyRef.current || [];
+    const seen = new Set();
+    const seedRows = [];
+    const addToSeed = (c) => {
+      if (!c) return;
+      const key = c.id != null ? String(c.id) : `ts-${c.call_start}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      seedRows.push(c);
+    };
+    addToSeed(call);
+    for (const c of allHistory) {
+      if (!c || c === call) continue;
+      const matchesLead  = call?.lead_id && c.lead_id && String(c.lead_id) === String(call.lead_id);
+      const cTail        = cleanNumber(c.phone_number_dialed || c.lead_phone || '').slice(-10);
+      const matchesPhone = phoneTail.length >= 7 && cTail === phoneTail;
+      if (matchesLead || matchesPhone) addToSeed(c);
+    }
+    // Sort newest first
+    seedRows.sort((a, b) => new Date(b.call_start || 0) - new Date(a.call_start || 0));
+
+    setViewCallHistory(seedRows);
     setViewTarget({
       id: call?.lead_id || null,
-      name: call?.lead_name || (phone ? phone : 'Unknown'),
+      name: call?.lead_name || (phone || 'Unknown'),
       phone,
-      email: '',
-      address: '',
-      profession: '',
+      email: '', address: '', profession: '',
       status: call?.lead_status || null,
       lead_category: call?.lead_category || null,
-      lead_source: null,
-      notes: '',
-      photo_url: null,
-      created_at: null,
-      calls_dialed: null,
+      lead_source: null, notes: '',
+      photo_url: null, created_at: null,
+      calls_dialed: seedRows.length,
     });
 
+    // ── Step 2: resolve lead id (prefer local linked row before API search) ──
     const resolveLeadId = async () => {
       if (call?.lead_id) return call.lead_id;
+      // Check if any local history row for same phone is already linked
+      const linked = allHistory.find((c) => {
+        if (!c?.lead_id) return false;
+        const cTail = cleanNumber(c.phone_number_dialed || c.lead_phone || '').slice(-10);
+        return phoneTail.length >= 7 && cTail === phoneTail;
+      });
+      if (linked?.lead_id) return linked.lead_id;
       if (!phone) return null;
       try {
-        // Fast, cached phone lookup so timeline works for unlinked calls too.
-        const search = encodeURIComponent(phone);
-        const data = await cachedGet(`/leads?search=${search}&limit=5`, { staleTime: 120_000, cacheTime: 600_000 });
-        const tail = String(phone).replace(/\D/g, '').slice(-10);
-        const match = (data?.leads || []).find((l) => String(l.phone || '').replace(/\D/g, '').slice(-10) === tail);
+        const data = await cachedGet(
+          `/leads?search=${encodeURIComponent(phone)}&limit=5`,
+          { staleTime: 120_000, cacheTime: 600_000 },
+        );
+        const tail  = phone.replace(/\D/g, '').slice(-10);
+        const match = (data?.leads || []).find(
+          (l) => String(l.phone || '').replace(/\D/g, '').slice(-10) === tail,
+        );
         return match?.id || null;
       } catch { return null; }
     };
@@ -426,24 +576,37 @@ const DialerPage = () => {
     setViewCallLoading(true);
     try {
       const leadId = await resolveLeadId();
-      if (!leadId) {
-        // No linked lead — keep the seed data; stop spinners.
-        setViewLoading(false);
-        setViewCallLoading(false);
-        return;
-      }
-      // Parallel fetch — cache-backed so repeat clicks are instant.
+      if (!leadId) { setViewLoading(false); setViewCallLoading(false); return; }
+
+      // ── Step 3: fetch server timeline and merge with local-only rows ──
       const [leadData, callsData] = await Promise.all([
         cachedGet(`/leads/${leadId}`, { staleTime: 60_000, cacheTime: 600_000 }).catch(() => null),
-        cachedGet(`/calls/lead/${leadId}`, { staleTime: 30_000, cacheTime: 300_000 }).catch(() => null),
+        cachedGet(`/calls/lead/${leadId}`, { force: true }).catch(() => null),
       ]);
       if (leadData?.success && leadData?.lead) setViewTarget(leadData.lead);
-      if (callsData?.success && Array.isArray(callsData.calls)) setViewCallHistory(callsData.calls);
+
+      if (callsData?.success && Array.isArray(callsData.calls)) {
+        // Keep any local rows the server doesn't know about (device-only calls)
+        const serverIds = new Set(callsData.calls.map((c) => String(c.id)));
+        const localOnly = seedRows.filter((c) => {
+          const id = c?.id != null ? String(c.id) : null;
+          return id && !serverIds.has(id);
+        });
+        const merged = [...callsData.calls, ...localOnly].sort(
+          (a, b) => new Date(b.call_start || 0) - new Date(a.call_start || 0),
+        );
+        setViewCallHistory(merged);
+      }
     } finally {
       setViewLoading(false);
       setViewCallLoading(false);
     }
   }, []);
+
+  // Always-current snapshot of history so the memoized handleViewCall can
+  // read all local calls without being added to its dependency array.
+  const historyRef = useRef(history);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
   const timerRef          = useRef(null);
   const timerSecRef       = useRef(0);
@@ -532,19 +695,55 @@ const DialerPage = () => {
     });
   }, [history, recentsSearch]);
 
-  /* ── Filtered device contacts (shown when synced & searching) ── */
+  /* ── Grouped history — one row per unique phone/lead, newest call first ── */
+  const groupedHistory = useMemo(() => {
+    const groups = new Map();
+    for (const call of filteredHistory) {
+      const phoneTail = cleanNumber(call.phone_number_dialed || call.lead_phone || '').slice(-10);
+      // Prefer lead_id as key so the same number under different leads stays separate;
+      // fall back to phone tail for unlinked calls.
+      const key = call.lead_id ? `lead-${call.lead_id}` : (phoneTail ? `phone-${phoneTail}` : `id-${call.id}`);
+      if (!groups.has(key)) {
+        groups.set(key, { ...call, callCount: 1 });
+      } else {
+        const rep = groups.get(key);
+        rep.callCount++;
+        // Keep the most-complete representative: prefer linked over unlinked,
+        // then fall back to most-recent timestamp.
+        const repTs = rep.call_start ? new Date(rep.call_start).getTime() : 0;
+        const callTs = call.call_start ? new Date(call.call_start).getTime() : 0;
+        const repLinked = !!rep.lead_id;
+        const callLinked = !!call.lead_id;
+        const upgradeToLinked = callLinked && !repLinked;
+        const upgradeToNewer = repLinked === callLinked && callTs > repTs;
+        if (upgradeToLinked || upgradeToNewer) {
+          groups.set(key, { ...call, callCount: rep.callCount });
+        }
+      }
+    }
+    return Array.from(groups.values());
+  }, [filteredHistory]);
+
+  /* ── Filtered device contacts (shown when synced & searching) ──
+        Native plugin returns { name, phone }; legacy/web shapes use
+        displayName/phoneNumber/number — accept all so the search and
+        the call button work regardless of source. */
   const filteredDeviceContacts = useMemo(() => {
     if (!contactsSynced || !recentsSearch.trim()) return [];
     const q = recentsSearch.toLowerCase().trim();
+    const getName = (c) => String(c.name || c.displayName || '').toLowerCase();
+    const getPhone = (c) => String(c.phone || c.phoneNumber || c.number || '');
     const historyPhones = new Set(history.map(c => cleanNumber(c.phone_number_dialed || c.lead_phone || '')));
     return syncedContacts
       .filter((c) => {
-        const name = String(c.displayName || c.name || '').toLowerCase();
-        const phone = String(c.phoneNumber || c.number || '');
+        const name = getName(c);
+        const phone = getPhone(c);
         return name.includes(q) || phone.includes(q);
       })
-      .filter(c => !historyPhones.has(cleanNumber(c.phoneNumber || c.number || '')))
-      .slice(0, 15);
+      .filter((c) => {
+        const phone = cleanNumber(getPhone(c));
+        return phone && !historyPhones.has(phone);
+      });
   }, [syncedContacts, contactsSynced, recentsSearch, history]);
 
   /* ── Keypad suggestions: instant lookup from history + pre-loaded contacts index ── */
@@ -844,8 +1043,29 @@ const DialerPage = () => {
 
       // Refresh recents from server so the newly-created call is reflected everywhere.
       reloadHistorySilent();
+
+      // On web, native call events (callEnded) never fire, so activeCall would
+      // stay set forever and block every subsequent call from Recents.
+      // Immediately finalize the DB record and clear the overlay after a brief
+      // visual delay so the user can call again without hitting "End" first.
+      if (!isApp) {
+        if (cid) {
+          api.put(`/calls/${cid}/end`, {
+            next_action: 'NONE', duration_seconds: 0, customer_notes: null,
+          }).catch(() => {});
+        }
+        setTimeout(() => {
+          setActiveCall((cur) => (cur?.localTempId === localTempId ? null : cur));
+          if (callIdRef.current === cid) callIdRef.current = null;
+        }, 1500);
+      }
     }).catch(() => {
       // Even if server failed, keep the optimistic local row — user can retry.
+      // Still clear the overlay on web so the user isn't stuck.
+      if (!isApp) {
+        setActiveCall((cur) => (cur?.localTempId === localTempId ? null : cur));
+        callIdRef.current = null;
+      }
     });
   }, [activeCall, selectedSim, makeCall, openDialer, upsertRecent, reloadHistorySilent]);
 
@@ -1194,9 +1414,32 @@ const DialerPage = () => {
             </button>
           </div>
 
+          {/* Call type filter chips */}
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            {[
+              { key: 'ALL',      label: 'All' },
+              { key: 'MISSED',   label: 'Missed' },
+              { key: 'OUTGOING', label: 'Outgoing' },
+              { key: 'INCOMING', label: 'Incoming' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setHistoryFilter(key)}
+                className={`h-7 px-2.5 rounded-md text-[11px] font-semibold transition-colors ${
+                  historyFilter === key || (!historyFilter && key === 'ALL')
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* History list */}
           <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-            {filteredHistory.length === 0 && filteredDeviceContacts.length === 0 ? (
+            {groupedHistory.length === 0 && filteredDeviceContacts.length === 0 ? (
               <div className="py-10 text-center">
                 <Clock className="h-6 w-6 text-slate-200 mx-auto mb-1.5" />
                 <p className="text-[12px] text-slate-400">
@@ -1205,8 +1448,8 @@ const DialerPage = () => {
               </div>
             ) : (
               <>
-                {filteredHistory.map((call, i) => (
-                  <HistoryRow key={call.id || i} call={call} onCall={startCall} onOpenDrawer={openCallDrawer} onView={handleViewCall} />
+                {groupedHistory.map((call, i) => (
+                  <HistoryRow key={call.id || i} call={call} onCall={startCall} onOpenDrawer={openCallDrawer} onView={handleViewCall} onSchedule={openSchedule} />
                 ))}
 
                 {filteredDeviceContacts.length > 0 && (
@@ -1217,8 +1460,8 @@ const DialerPage = () => {
                       </p>
                     </div>
                     {filteredDeviceContacts.map((c, i) => {
-                      const phone = c.phoneNumber || c.number || '';
-                      const name = c.displayName || c.name || 'Contact';
+                      const phone = c.phone || c.phoneNumber || c.number || '';
+                      const name = c.name || c.displayName || 'Contact';
                       return (
                         <div
                           key={`dc-${c.contactId || c.id || i}`}
@@ -1357,16 +1600,36 @@ const DialerPage = () => {
           )}
 
           <DrawerFooter className="shrink-0 border-t border-slate-200 px-3 sm:px-4 py-2 bg-white">
-            <Button
-              type="button"
-              onClick={() => setViewOpen(false)}
-              className="h-9 w-full max-w-2xl mx-auto text-[12.5px] font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800 shadow-none"
-            >
-              Close
-            </Button>
+            <div className="flex gap-2 w-full max-w-2xl mx-auto">
+              {viewTarget?.id && (
+                <Button
+                  type="button"
+                  onClick={() => { setViewOpen(false); openSchedule({ id: viewTarget.id, name: viewTarget.name || 'Lead' }); }}
+                  className="flex-1 h-9 text-[12px] font-medium rounded-md bg-amber-500 hover:bg-amber-600 text-white shadow-none"
+                >
+                  <BellPlus className="h-3.5 w-3.5 mr-1.5" /> Schedule
+                </Button>
+              )}
+              <Button
+                type="button"
+                onClick={() => setViewOpen(false)}
+                className={`h-9 text-[12.5px] font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800 shadow-none ${viewTarget?.id ? 'flex-1' : 'w-full'}`}
+              >
+                Close
+              </Button>
+            </div>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      {/* Schedule Follow-up Drawer */}
+      {scheduleLead && (
+        <ScheduleFollowupDrawer
+          lead={scheduleLead}
+          open={scheduleOpen}
+          onClose={() => setScheduleOpen(false)}
+        />
+      )}
     </div>
   );
 };

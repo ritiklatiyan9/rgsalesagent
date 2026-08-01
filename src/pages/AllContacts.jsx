@@ -12,6 +12,10 @@ import {
     Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
     Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
 } from '@/components/ui/drawer';
 import {
@@ -20,10 +24,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import api from '@/lib/axios';
 import { cachedGet, getCachedSync } from '@/lib/queryCache';
+import { broadcastMutation, onMutation } from '@/lib/mutationBus';
 import { toast } from 'sonner';
 import {
     Search, Users, UserPlus, ChevronLeft, ChevronRight, Trash2,
     Plus, Loader2, X, PhoneOutgoing, Pencil, Smartphone, Eye,
+    RefreshCw, AlertTriangle, MoreHorizontal,
 } from 'lucide-react';
 import CallTimeline from '@/components/CallTimeline';
 import { useDeviceContacts } from '@/hooks/useDeviceContacts';
@@ -38,35 +44,38 @@ const STATUS_OPTIONS = [
     { value: 'LOST', label: 'Lost' },
     { value: 'INCOMING_OFF', label: 'Incoming Off' },
     { value: 'SWITCH_OFF', label: 'Switch Off' },
-    { value: 'NOT_ANSWERING', label: 'Not Answering' },
+    { value: 'NOT_ANSWERING',  label: 'Not Answering'  },
+    { value: 'NOT_INTERESTED', label: 'Not Interested' },
 ];
 const LEAD_CATEGORY_OPTIONS = ['PRIME', 'HOT', 'NORMAL', 'COLD', 'DEAD'];
 
 const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
 
 const STATUS_COLOR_MAP = {
-    NEW: 'bg-blue-50 text-blue-700 ring-blue-200',
-    CONTACTED: 'bg-amber-50 text-amber-700 ring-amber-200',
-    INTERESTED: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-    SITE_VISIT: 'bg-violet-50 text-violet-700 ring-violet-200',
-    NEGOTIATION: 'bg-purple-50 text-purple-700 ring-purple-200',
-    BOOKED: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    LOST: 'bg-slate-50 text-slate-600 ring-slate-200',
-    INCOMING_OFF: 'bg-orange-50 text-orange-700 ring-orange-200',
-    SWITCH_OFF: 'bg-red-50 text-red-700 ring-red-200',
+    NEW:           'bg-blue-50 text-blue-700 ring-blue-200',
+    CONTACTED:     'bg-amber-50 text-amber-700 ring-amber-200',
+    INTERESTED:    'bg-indigo-50 text-indigo-700 ring-indigo-200',
+    NOT_INTERESTED:'bg-gray-100 text-gray-600 ring-gray-200',
+    SITE_VISIT:    'bg-violet-50 text-violet-700 ring-violet-200',
+    NEGOTIATION:   'bg-purple-50 text-purple-700 ring-purple-200',
+    BOOKED:        'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    LOST:          'bg-slate-50 text-slate-600 ring-slate-200',
+    INCOMING_OFF:  'bg-orange-50 text-orange-700 ring-orange-200',
+    SWITCH_OFF:    'bg-red-50 text-red-700 ring-red-200',
     NOT_ANSWERING: 'bg-yellow-50 text-yellow-700 ring-yellow-200',
 };
 
 const STATUS_ACCENT_MAP = {
-    NEW: '#3b82f6',
-    CONTACTED: '#f59e0b',
-    INTERESTED: '#6366f1',
-    SITE_VISIT: '#8b5cf6',
-    NEGOTIATION: '#a855f7',
-    BOOKED: '#10b981',
-    LOST: '#64748b',
-    INCOMING_OFF: '#f97316',
-    SWITCH_OFF: '#ef4444',
+    NEW:           '#3b82f6',
+    CONTACTED:     '#f59e0b',
+    INTERESTED:    '#6366f1',
+    NOT_INTERESTED:'#6b7280',
+    SITE_VISIT:    '#8b5cf6',
+    NEGOTIATION:   '#a855f7',
+    BOOKED:        '#10b981',
+    LOST:          '#64748b',
+    INCOMING_OFF:  '#f97316',
+    SWITCH_OFF:    '#ef4444',
     NOT_ANSWERING: '#eab308',
 };
 
@@ -76,100 +85,126 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
     </svg>
 );
 
-// Memoised mobile card — only re-renders when its own data or selection changes
-const ContactCard = memo(({ c, selected, isCalling, onSelect, onCall, onWhatsApp, onView, onEdit, onDelete }) => {
+// Memoised row — only re-renders when its own data or selection changes
+const ContactRow = memo(({ c, selected, selectionMode, isCalling, onSelect, onCall, onWhatsApp, onView, onEdit, onDelete }) => {
     const statusCls = STATUS_COLOR_MAP[c.status] || 'bg-slate-50 text-slate-600 ring-slate-200';
     const statusLabel = STATUS_OPTIONS.find(s => s.value === c.status)?.label;
     const accent = STATUS_ACCENT_MAP[c.status] || '#6366f1';
     return (
-        <div className={`relative overflow-hidden rounded-[22px] bg-white transition-all duration-150 ${
-            selected
-                ? 'ring-2 ring-indigo-300 shadow-[0_10px_26px_-12px_rgba(99,102,241,0.35)]'
-                : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
-        }`}>
-            {/* Top accent strip */}
-            <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: accent }} />
+        <div
+            className={`flex items-center gap-2 px-3 py-2.5 transition-colors duration-100 ${
+                selected ? 'bg-indigo-50/60' : 'hover:bg-slate-50/60'
+            }`}
+            onClick={selectionMode ? () => onSelect(c.id) : undefined}
+        >
+            {/* Checkbox — only in selection mode */}
+            {selectionMode && (
+                <Checkbox
+                    checked={selected}
+                    onCheckedChange={() => onSelect(c.id)}
+                    className="h-4 w-4 shrink-0 rounded border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                />
+            )}
 
-            {/* Top: avatar + info + checkbox */}
-            <div className="flex items-start gap-3 px-3.5 pt-4 pb-2.5">
-                <div className="h-12 w-12 rounded-2xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-indigo-100 flex items-center justify-center shrink-0">
-                    <span className="text-base font-bold text-indigo-600" style={serif}>{c.name?.charAt(0)?.toUpperCase()}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 text-[14px] leading-snug truncate" style={serif}>{c.name}</p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {c.status && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide ring-1 ring-inset ${statusCls}`}>
-                                {statusLabel || c.status}
-                            </span>
-                        )}
-                        {c.lead_category && (
-                            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50 ring-1 ring-inset ring-slate-200 px-1.5 py-0.5 rounded-full">{c.lead_category}</span>
-                        )}
-                        {c.is_converted && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200">Converted</span>
-                        )}
-                    </div>
-                    {c.phone && (
-                        <p className="text-[11px] text-slate-500 mt-1 font-mono">{c.phone}</p>
+            {/* Status dot */}
+            <div className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: accent }} />
+
+            {/* Avatar */}
+            <div className="h-7 w-7 rounded-lg bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center shrink-0">
+                <span className="text-[10px] font-bold text-indigo-700">{c.name?.charAt(0)?.toUpperCase()}</span>
+            </div>
+
+            {/* Name + phone */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="text-[13px] font-semibold text-slate-900 truncate leading-tight" style={serif}>{c.name}</p>
+                    {c.status && (
+                        <span className={`inline-flex shrink-0 items-center text-[8px] uppercase tracking-wider px-1 py-[1px] rounded-full font-bold ring-1 ring-inset ${statusCls}`}>
+                            {statusLabel || c.status}
+                        </span>
+                    )}
+                    {c.is_converted && (
+                        <span className="hidden sm:inline-flex shrink-0 text-[8px] uppercase tracking-wider px-1 py-[1px] rounded-full font-bold ring-1 ring-inset bg-emerald-50 text-emerald-700 ring-emerald-200">
+                            ✓
+                        </span>
                     )}
                 </div>
-                {/* Checkbox far right */}
-                <div className="shrink-0 pt-0.5">
-                    <input
-                        type="checkbox" checked={selected} onChange={() => onSelect(c.id)}
-                        className="h-5 w-5 rounded-md border-slate-300 accent-indigo-600 cursor-pointer"
-                        aria-label={`Select ${c.name}`}
-                    />
-                </div>
+                {c.phone && (
+                    <p className="text-[11px] text-slate-400 font-mono tracking-tight leading-tight mt-0.5">{c.phone}</p>
+                )}
             </div>
-            {/* Action row */}
-            <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1 border-t border-slate-100">
-                <Button
-                    size="sm"
-                    className="flex-1 h-9 text-[11px] font-bold bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl gap-1.5 shadow-sm shadow-emerald-200/40"
-                    onClick={() => onCall(c)} disabled={isCalling}>
+
+            {/* Primary: Call + View, secondary: ⋯ */}
+            <div className="flex items-center gap-1 shrink-0">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onCall(c); }}
+                    disabled={isCalling}
+                    className="h-7 w-7 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white flex items-center justify-center active:scale-95 transition-all duration-150 shadow-sm shadow-emerald-200/50"
+                    title="Call"
+                >
                     {isCalling
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         : <PhoneOutgoing className="h-3.5 w-3.5" />}
-                    Call
-                </Button>
-                <Button
-                    variant="ghost" size="sm"
-                    className="h-9 w-9 p-0 text-[11px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                    onClick={() => onWhatsApp(c.phone)}>
-                    <WhatsAppIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="ghost" size="sm"
-                    className="h-9 w-9 p-0 text-[11px] font-bold text-indigo-600 hover:bg-indigo-50 rounded-xl"
-                    onClick={() => onView(c)}>
-                    <Eye className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="ghost" size="sm"
-                    className="h-9 w-9 p-0 text-[11px] font-bold text-blue-600 hover:bg-blue-50 rounded-xl"
-                    onClick={() => onEdit(c)}>
-                    <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                    variant="ghost" size="sm"
-                    className="h-9 w-9 p-0 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-xl"
-                    onClick={() => onDelete(c)}>
-                    <Trash2 className="h-4 w-4" />
-                </Button>
+                </button>
+                <button
+                    onClick={(e) => { e.stopPropagation(); onView(c); }}
+                    className="h-7 w-7 rounded-lg bg-white ring-1 ring-inset ring-slate-200 text-indigo-600 hover:bg-indigo-50 hover:ring-indigo-200 flex items-center justify-center active:scale-95 transition-all duration-150"
+                    title="View"
+                >
+                    <Eye className="h-3.5 w-3.5" />
+                </button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-7 w-7 rounded-lg bg-white ring-1 ring-inset ring-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center active:scale-95 transition-all duration-150"
+                            title="More actions"
+                        >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg border-0 ring-1 ring-slate-200 p-1">
+                        <DropdownMenuItem
+                            onClick={() => onWhatsApp(c.phone)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-green-700 hover:bg-green-50 cursor-pointer"
+                        >
+                            <WhatsAppIcon className="h-3.5 w-3.5 shrink-0" />
+                            WhatsApp
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={() => onEdit(c)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-blue-700 hover:bg-blue-50 cursor-pointer"
+                        >
+                            <Pencil className="h-3.5 w-3.5 shrink-0" />
+                            Edit Contact
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                        <DropdownMenuItem
+                            onClick={() => onDelete(c)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        >
+                            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                            Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </div>
     );
 });
-ContactCard.displayName = 'ContactCard';
+ContactRow.displayName = 'ContactRow';
+
+const PAGE_SIZE_OPTIONS = ['15', '25', '50', '100', 'all'];
+const DEFAULT_PAGE_SIZE = '25';
 
 const AllContacts = () => {
     const navigate = useNavigate();
     const { synced, syncing, syncContacts, searchDeviceContacts, clearCache, count: deviceCount } = useDeviceContacts();
 
+    const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
     // Probe memory cache synchronously to skip skeleton on navigation back
-    const _initCached = getCachedSync('/contacts?page=1&limit=25');
+    const _initCached = getCachedSync(`/contacts?page=1&limit=${DEFAULT_PAGE_SIZE}`);
 
     const [contacts, setContacts] = useState(() => _initCached?.contacts ?? []);
     const [loading, setLoading] = useState(() => !_initCached);
@@ -181,6 +216,7 @@ const AllContacts = () => {
     const [isSearching, setIsSearching] = useState(false);
     const [statusFilter, setStatusFilter] = useState('ALL');
     const [categoryFilter, setCategoryFilter] = useState('ALL');
+    const [fetchError, setFetchError] = useState(null);
 
     // Track whether we already have data
     const hasDataRef = useRef(Boolean(_initCached));
@@ -245,8 +281,9 @@ const AllContacts = () => {
                 lead_category: editForm.lead_category || undefined,
             });
             toast.success('Contact updated');
+            setContacts(prev => prev.map(c => c.id === editTarget.id ? { ...c, ...editForm } : c));
             setEditOpen(false);
-            fetchContacts(currentPage, searchQuery, statusFilter, categoryFilter);
+            broadcastMutation(['contacts']);
         } catch (err) {
             setEditError(err?.response?.data?.message || 'Failed to update contact');
         } finally {
@@ -258,28 +295,37 @@ const AllContacts = () => {
     const [callingId, setCallingId] = useState(null);
 
     // Shift-to-call selection
+    const [selectionMode, setSelectionMode] = useState(false);
     const [selectedContactIds, setSelectedContactIds] = useState([]);
     const [shiftLoading, setShiftLoading] = useState(false);
 
-    const fetchContacts = useCallback(async (page, search, status, category) => {
+    const fetchContacts = useCallback(async (page, search, status, category, limit, { force = false } = {}) => {
         const hasData = hasDataRef.current;
         if (!hasData) setLoading(true);
         else setRefreshing(true);
         if (search) setIsSearching(true);
+        setFetchError(null);
         try {
-            let url = `/contacts?page=${page}&limit=25`;
+            let url = `/contacts?page=${page}&limit=${limit}`;
             if (search) url += `&search=${encodeURIComponent(search)}`;
             if (status && status !== 'ALL') url += `&status=${encodeURIComponent(status)}`;
             if (category && category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
-            const data = await cachedGet(url, { staleTime: 600_000, cacheTime: 900_000 });
+            const data = await cachedGet(url, { staleTime: 600_000, cacheTime: 900_000, force });
             if (data.success) {
                 setContacts(data.contacts);
                 setTotalPages(data.pagination.totalPages);
                 setTotalCount(data.pagination.total);
                 hasDataRef.current = true;
             }
-        } catch {
-            if (!hasDataRef.current) toast.error('Failed to load contacts');
+        } catch (err) {
+            const status = err?.response?.status;
+            const msg = err?.response?.data?.message
+                || (status === 401 ? 'Session expired — please log in again'
+                    : status === 403 ? 'You do not have permission to view contacts'
+                    : err?.message?.includes('Network') || !err?.response ? 'Network error — check your connection'
+                    : 'Failed to load contacts');
+            setFetchError(msg);
+            if (!hasDataRef.current) toast.error(msg);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -290,21 +336,27 @@ const AllContacts = () => {
     // Keep stable refs so callbacks/effects always see latest values without re-creating
     const fetchContactsRef = useRef(fetchContacts);
     fetchContactsRef.current = fetchContacts;
-    const filtersRef = useRef({ searchQuery, statusFilter, categoryFilter, currentPage });
-    filtersRef.current = { searchQuery, statusFilter, categoryFilter, currentPage };
+    const filtersRef = useRef({ searchQuery, statusFilter, categoryFilter, currentPage, pageSize });
+    filtersRef.current = { searchQuery, statusFilter, categoryFilter, currentPage, pageSize };
+
+    useEffect(() => onMutation((entities) => {
+        if (entities.includes('contacts')) {
+            const f = filtersRef.current;
+            fetchContactsRef.current(f.currentPage, f.searchQuery, f.statusFilter, f.categoryFilter, f.pageSize, { force: true });
+        }
+    }), []);
+
+    const handleManualRefresh = useCallback(() => {
+        broadcastMutation(['contacts']); // invalidates cache + triggers subscription re-fetch
+    }, []);
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            fetchContactsRef.current(1, searchQuery, statusFilter, categoryFilter);
+            fetchContactsRef.current(1, searchQuery, statusFilter, categoryFilter, pageSize);
             setCurrentPage(1);
         }, 300);
         return () => clearTimeout(timer);
-    }, [searchQuery, statusFilter, categoryFilter]);
-
-    useEffect(() => {
-        const currentIds = new Set(contacts.map((c) => c.id));
-        setSelectedContactIds((prev) => prev.filter((id) => currentIds.has(id)));
-    }, [contacts]);
+    }, [searchQuery, statusFilter, categoryFilter, pageSize]);
 
     const handleAddContact = async () => {
         if (!addForm.name.trim() || !addForm.phone.trim()) {
@@ -314,11 +366,14 @@ const AllContacts = () => {
         setAddLoading(true);
         setAddError('');
         try {
-            await api.post('/contacts', addForm);
+            const { data: res } = await api.post('/contacts', addForm);
             toast.success('Contact added');
+            const newContact = { id: res?.contact?.id || `temp-${Date.now()}`, ...addForm, status: 'NEW', lead_category: 'NORMAL', is_converted: false, created_at: new Date().toISOString() };
+            setContacts(prev => [newContact, ...prev]);
+            setTotalCount(prev => prev + 1);
             setAddOpen(false);
             setAddForm({ name: '', phone: '' });
-            fetchContacts(currentPage, searchQuery, statusFilter, categoryFilter);
+            broadcastMutation(['contacts']);
         } catch (err) {
             setAddError(err?.response?.data?.message || 'Failed to add contact');
         } finally {
@@ -333,8 +388,10 @@ const AllContacts = () => {
         try {
             await api.delete(`/contacts/${deleteTarget.id}`);
             toast.success('Contact deleted');
+            setContacts(prev => prev.filter(c => c.id !== deleteTarget.id));
+            setTotalCount(prev => Math.max(0, prev - 1));
             setDeleteOpen(false);
-            fetchContacts(currentPage, searchQuery, statusFilter, categoryFilter);
+            broadcastMutation(['contacts']);
         } catch {
             toast.error('Failed to delete contact');
         } finally {
@@ -367,8 +424,8 @@ const AllContacts = () => {
             if (!leadId) { toast.error('Lead conversion succeeded but lead id is missing'); return; }
             openDialerForContact(contact, leadId);
             toast.success('Contact converted to lead — opening dialer');
-            const f = filtersRef.current;
-            fetchContactsRef.current(f.currentPage, f.searchQuery, f.statusFilter, f.categoryFilter);
+            setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, is_converted: true, converted_lead_id: leadId } : c));
+            broadcastMutation(['contacts', 'leads']);
         } catch (err) {
             toast.error(err?.response?.data?.message || 'Failed to call');
         } finally {
@@ -411,6 +468,7 @@ const AllContacts = () => {
                 return;
             }
             setSelectedContactIds([]);
+            setSelectionMode(false);
             toast.success(data?.message || 'Contacts shifted to call queue');
             navigate('/contacts/shift-to-call');
         } catch (err) {
@@ -438,25 +496,42 @@ const AllContacts = () => {
 
     return (
         <>
-            {/* ══════ Selection action bar — editorial pill ══════ */}
-            {selectedContactIds.length > 0 && (
-                <div className="flex items-center justify-between rounded-[20px] bg-linear-to-r from-indigo-600 to-violet-600 px-3.5 py-2.5 shadow-md shadow-indigo-300/40">
-                    <span className="text-[12px] text-white font-bold tabular-nums">{selectedContactIds.length} selected</span>
+            {/* ══════ Selection action bar ══════ */}
+            {selectionMode && (
+                <div className="flex items-center justify-between gap-2 bg-linear-to-r from-indigo-600 to-violet-600 rounded-[18px] px-3.5 py-2 shadow-sm shadow-indigo-300/40">
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => { setSelectionMode(false); setSelectedContactIds([]); }}
+                            className="h-6 w-6 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
+                            title="Cancel selection"
+                        >
+                            <X className="h-3 w-3" />
+                        </button>
+                        <span className="text-[11px] text-white font-bold uppercase tracking-wider">
+                            {selectedContactIds.length > 0
+                                ? <>{selectedContactIds.length} <span className="text-white/70 font-normal italic normal-case" style={serif}>selected</span></>
+                                : <span className="text-white/70 font-normal italic normal-case" style={serif}>Tap rows to select</span>
+                            }
+                        </span>
+                    </div>
                     <div className="flex items-center gap-1">
-                        <Button size="sm" variant="ghost"
-                            className="h-8 text-[11px] font-bold text-white bg-white/15 hover:bg-white/25 rounded-lg px-2.5"
-                            disabled={shiftLoading} onClick={() => handleShiftToCall()}>
+                        <button
+                            disabled={shiftLoading || selectedContactIds.length === 0}
+                            onClick={() => handleShiftToCall()}
+                            className="h-7 px-2.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 rounded-full flex items-center gap-1.5 active:scale-95 transition-all duration-150 disabled:opacity-50"
+                        >
                             {shiftLoading
-                                ? <span className="h-3 w-3 border-2 border-white/40 border-t-white rounded-full animate-spin mr-1" />
-                                : <PhoneOutgoing className="h-3.5 w-3.5 mr-1" />}
+                                ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                                : <PhoneOutgoing className="h-3.5 w-3.5" />}
                             Shift to Queue
-                        </Button>
-                        <Button size="sm" variant="ghost"
-                            className="h-8 text-[11px] font-bold text-white bg-white/15 hover:bg-white/25 rounded-lg px-2.5"
+                        </button>
+                        <button
                             disabled={shiftLoading || totalCount === 0}
-                            onClick={() => handleShiftToCall({ selectAllFiltered: true })}>
+                            onClick={() => handleShiftToCall({ selectAllFiltered: true })}
+                            className="h-7 px-2.5 text-[11px] font-bold text-white/90 hover:text-white bg-white/15 hover:bg-white/25 rounded-full flex items-center gap-1.5 active:scale-95 transition-all duration-150 disabled:opacity-50"
+                        >
                             Shift All
-                        </Button>
+                        </button>
                     </div>
                 </div>
             )}
@@ -506,6 +581,14 @@ const AllContacts = () => {
                             Sync
                         </Button>
                     )}
+                    <Button size="sm" variant="outline"
+                        className="h-10 w-10 p-0 rounded-xl shrink-0 text-slate-600 ring-1 ring-slate-200 bg-white hover:bg-slate-50 shadow-none"
+                        onClick={handleManualRefresh}
+                        disabled={loading || refreshing}
+                        title="Refresh contacts"
+                        aria-label="Refresh contacts">
+                        <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-indigo-500' : ''}`} />
+                    </Button>
                     <Button size="sm" className="h-10 text-[11px] font-bold gap-1 rounded-xl px-3 shrink-0 bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-md shadow-indigo-200/50"
                         onClick={() => { setAddOpen(true); setAddForm({ name: '', phone: '' }); setAddError(''); }}>
                         <Plus className="h-3.5 w-3.5" />Add
@@ -538,135 +621,247 @@ const AllContacts = () => {
                 </div>
             </div>
 
-            {/* ══════ Count + Select All row ══════ */}
-            {!loading && contacts.length > 0 && (
-                <div className="flex items-end justify-between px-0.5 pt-1">
-                    <div>
-                        <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Results</p>
-                        <p className="text-[13px] font-bold text-slate-800 tabular-nums" style={serif}>
-                            {totalCount.toLocaleString('en-IN')} <span className="italic font-normal text-slate-500">contact{totalCount !== 1 ? 's' : ''}</span>
-                            {selectedContactIds.length > 0 && (
-                                <span className="ml-1.5 text-indigo-600 font-bold text-[11px] not-italic">· {selectedContactIds.length} selected</span>
-                            )}
-                        </p>
+            {/* ══════ Error banner ══════ */}
+            {fetchError && (
+                <div className="mt-2 rounded-2xl bg-rose-50 ring-1 ring-rose-200 px-3.5 py-2.5 flex items-start gap-2.5">
+                    <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-bold text-rose-800" style={serif}>Couldn't load contacts</p>
+                        <p className="text-[11px] text-rose-700 mt-0.5">{fetchError}</p>
                     </div>
-                    <button
-                        className="text-[11px] text-indigo-600 font-bold hover:text-indigo-800 transition-colors pb-0.5"
-                        onClick={toggleSelectAllOnPage}
-                    >
-                        {allSelectedOnPage ? 'Deselect All' : 'Select All'}
-                    </button>
+                    <Button
+                        size="sm"
+                        className="h-8 px-2.5 text-[11px] font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shrink-0"
+                        onClick={handleManualRefresh}
+                        disabled={loading || refreshing}>
+                        <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+                        Retry
+                    </Button>
                 </div>
             )}
 
-            {/* ══════ Contact Cards ══════ */}
-            <div className="space-y-2.5">
-                {loading ? (
-                    [...Array(5)].map((_, i) => (
-                        <div key={i} className="bg-white rounded-[22px] ring-1 ring-slate-100 p-3.5 pt-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] space-y-2.5">
-                            <div className="flex items-start gap-3">
-                                <Skeleton className="h-12 w-12 rounded-2xl shrink-0" />
-                                <div className="flex-1 space-y-2">
-                                    <Skeleton className="h-4 w-36" />
-                                    <Skeleton className="h-3 w-20 rounded-full" />
-                                    <Skeleton className="h-3 w-28" />
-                                </div>
-                                <Skeleton className="h-5 w-5 rounded-md shrink-0" />
-                            </div>
-                            <Skeleton className="h-9 w-full rounded-xl" />
-                        </div>
-                    ))
-                ) : contacts.length === 0 && deviceContactMatches.length === 0 ? (
-                    <div className="rounded-[22px] bg-linear-to-br from-indigo-50/60 to-violet-50/40 py-14 flex flex-col items-center ring-1 ring-indigo-100/60">
-                        <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
-                            <Users className="h-6 w-6 text-indigo-400" strokeWidth={2} />
-                        </div>
-                        <p className="text-sm font-bold text-slate-800" style={serif}>No contacts found</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Try adjusting your filters.</p>
+            {/* ══════ Count + Select toggle row ══════ */}
+            {!loading && contacts.length > 0 && (
+                <div className="flex items-center justify-between px-1 pt-1">
+                    <div className="flex items-baseline gap-1.5">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Results</p>
+                        <span className="text-[15px] font-bold text-slate-900" style={serif}>{totalCount.toLocaleString('en-IN')}</span>
+                        <span className="text-[11px] italic text-slate-500" style={serif}>contact{totalCount !== 1 ? 's' : ''}</span>
                     </div>
-                ) : (
-                    <>
-                        {contacts.map((c) => (
-                            <ContactCard
-                                key={c.id}
-                                c={c}
-                                selected={selectedSet.has(c.id)}
-                                isCalling={callingId === c.id}
-                                onSelect={toggleSelect}
-                                onCall={handleCallAndConvert}
-                                onWhatsApp={handleOpenWhatsApp}
-                                onView={openView}
-                                onEdit={openEdit}
-                                onDelete={openDelete}
-                            />
-                        ))}
+                    <div className="flex items-center gap-2">
+                        {selectionMode && (
+                            <button
+                                className="text-[10px] uppercase tracking-wider text-slate-500 font-bold hover:text-slate-700 transition-colors"
+                                onClick={toggleSelectAllOnPage}
+                            >
+                                {allSelectedOnPage ? 'Deselect All' : 'Select All'}
+                            </button>
+                        )}
+                        <button
+                            className={`text-[10px] uppercase tracking-wider font-bold transition-colors ${
+                                selectionMode ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-400 hover:text-indigo-600'
+                            }`}
+                            onClick={() => { setSelectionMode((v) => !v); if (selectionMode) setSelectedContactIds([]); }}
+                        >
+                            {selectionMode ? 'Done' : 'Select'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
-                        {/* Device contacts matching search */}
-                        {deviceContactMatches.length > 0 && (
-                            <>
-                                <div className="flex items-center gap-3 pt-3 pb-1">
-                                    <div className="flex-1 h-px bg-amber-200/70" />
-                                    <span className="text-[9px] font-bold text-amber-700 uppercase tracking-[0.22em] flex items-center gap-1.5">
-                                        <Smartphone className="h-3 w-3" /> Device · {deviceContactMatches.length}
-                                    </span>
-                                    <div className="flex-1 h-px bg-amber-200/70" />
-                                </div>
+            {/* ══════ Contact List ══════ */}
+            {loading ? (
+                <div className="bg-white rounded-2xl ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] overflow-hidden divide-y divide-slate-50">
+                    {[...Array(10)].map((_, i) => (
+                        <div key={i} className="flex items-center gap-2 px-3 py-2.5">
+                            <Skeleton className="h-1.5 w-1.5 rounded-full shrink-0" />
+                            <Skeleton className="h-7 w-7 rounded-lg shrink-0" />
+                            <div className="flex-1 space-y-1.5 min-w-0">
+                                <Skeleton className="h-3.5 w-32" />
+                                <Skeleton className="h-2.5 w-20" />
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                                {[...Array(3)].map((_, j) => <Skeleton key={j} className="h-7 w-7 rounded-lg" />)}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : contacts.length === 0 && deviceContactMatches.length === 0 ? (
+                <div className="rounded-2xl bg-linear-to-br from-indigo-50/60 to-violet-50/40 py-14 flex flex-col items-center ring-1 ring-indigo-100/60">
+                    <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
+                        <Users className="h-6 w-6 text-indigo-400" strokeWidth={2} />
+                    </div>
+                    <p className="text-sm font-bold text-slate-800" style={serif}>No contacts found</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Try adjusting your filters.</p>
+                </div>
+            ) : (
+                <>
+                    {contacts.length > 0 && (
+                        <div className="bg-white rounded-2xl ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] overflow-hidden divide-y divide-slate-50">
+                            {contacts.map((c) => (
+                                <ContactRow
+                                    key={c.id}
+                                    c={c}
+                                    selected={selectedSet.has(c.id)}
+                                    selectionMode={selectionMode}
+                                    isCalling={callingId === c.id}
+                                    onSelect={toggleSelect}
+                                    onCall={handleCallAndConvert}
+                                    onWhatsApp={handleOpenWhatsApp}
+                                    onView={openView}
+                                    onEdit={openEdit}
+                                    onDelete={openDelete}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Device contacts matching search */}
+                    {deviceContactMatches.length > 0 && (
+                        <>
+                            <div className="flex items-center gap-3 pt-3 pb-1">
+                                <div className="flex-1 h-px bg-amber-200/70" />
+                                <span className="text-[9px] font-bold text-amber-700 uppercase tracking-[0.22em] flex items-center gap-1.5">
+                                    <Smartphone className="h-3 w-3" /> Device · {deviceContactMatches.length}
+                                </span>
+                                <div className="flex-1 h-px bg-amber-200/70" />
+                            </div>
+                            <div className="bg-amber-50/60 rounded-2xl ring-1 ring-amber-100 overflow-hidden divide-y divide-amber-100/60">
                                 {deviceContactMatches.map((dc) => (
-                                    <div key={`dev-${dc.phone}`} className="relative overflow-hidden rounded-[22px] bg-linear-to-br from-amber-50/80 to-orange-50/50 ring-1 ring-amber-100 shadow-[0_2px_10px_-2px_rgba(245,158,11,0.15)]">
-                                        <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-amber-500 to-orange-500" />
-                                        <div className="flex items-start gap-3 px-3.5 pt-4 pb-2.5">
-                                            <div className="h-12 w-12 rounded-2xl bg-white ring-1 ring-amber-200 flex items-center justify-center shrink-0">
-                                                <span className="text-base font-bold text-amber-600" style={serif}>{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-slate-900 text-[14px] leading-snug" style={serif}>{dc.name || 'Unknown'}</p>
-                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide bg-white ring-1 ring-inset ring-amber-200 text-amber-700 inline-block mt-1">Device</span>
-                                                {dc.phone && <p className="text-[11px] text-slate-500 mt-1 font-mono">{dc.phone}</p>}
-                                            </div>
+                                    <div key={`dev-${dc.phone}`} className="flex items-center gap-2 px-3 py-2.5 hover:bg-amber-50/80 transition-colors">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                                        <div className="h-7 w-7 rounded-lg bg-white ring-1 ring-amber-200 flex items-center justify-center shrink-0">
+                                            <span className="text-[10px] font-bold text-amber-600">{dc.name?.charAt(0)?.toUpperCase() || '?'}</span>
                                         </div>
-                                        <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-1 border-t border-amber-100/80">
-                                            <Button
-                                                size="sm"
-                                                className="flex-1 h-9 text-[11px] font-bold bg-linear-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl gap-1.5 shadow-sm shadow-emerald-200/40"
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[13px] font-semibold text-slate-900 truncate leading-tight" style={serif}>{dc.name || 'Unknown'}</p>
+                                            {dc.phone && <p className="text-[11px] text-slate-400 font-mono tracking-tight leading-tight mt-0.5">{dc.phone}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                className="h-7 w-7 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center active:scale-95 transition-all duration-150 shadow-sm shadow-emerald-200/50"
                                                 onClick={() => {
                                                     const params = new URLSearchParams({ number: dc.phone, name: dc.name || 'Unknown', autoCall: 'true' });
                                                     navigate(`/calls/dialer?${params.toString()}`);
-                                                }}>
-                                                <PhoneOutgoing className="h-3.5 w-3.5" /> Call
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="sm"
-                                                className="h-9 w-9 p-0 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                                                onClick={() => handleOpenWhatsApp(dc.phone)}>
-                                                <WhatsAppIcon className="h-4 w-4" />
-                                            </Button>
+                                                }}
+                                                title="Call"
+                                            >
+                                                <PhoneOutgoing className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                                className="h-7 w-7 rounded-lg bg-white ring-1 ring-inset ring-amber-200 text-green-600 hover:bg-green-50 flex items-center justify-center active:scale-95 transition-all duration-150"
+                                                onClick={() => handleOpenWhatsApp(dc.phone)}
+                                                title="WhatsApp"
+                                            >
+                                                <WhatsAppIcon className="h-3.5 w-3.5" />
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
-                            </>
-                        )}
-                    </>
-                )}
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && !loading && (
-                <div className="flex items-center justify-between pt-1 pb-2">
-                    <p className="text-xs text-muted-foreground font-medium">Page {currentPage} of {totalPages}</p>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" className="h-9 px-3 text-xs rounded-xl font-semibold"
-                            disabled={currentPage <= 1}
-                            onClick={() => { const p = Math.max(1, currentPage - 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
-                            <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
-                        </Button>
-                        <Button variant="outline" size="sm" className="h-9 px-3 text-xs rounded-xl font-semibold"
-                            disabled={currentPage >= totalPages}
-                            onClick={() => { const p = Math.min(totalPages, currentPage + 1); setCurrentPage(p); fetchContacts(p, searchQuery, statusFilter, categoryFilter); }}>
-                            Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                        </Button>
-                    </div>
-                </div>
+                            </div>
+                        </>
+                    )}
+                </>
             )}
+
+            {/* ══════ Pagination ══════ */}
+            {!loading && totalCount > 0 && (() => {
+                const isAll = pageSize === 'all';
+                const numericLimit = isAll ? totalCount : parseInt(pageSize, 10);
+                const rangeStart = isAll ? 1 : (currentPage - 1) * numericLimit + 1;
+                const rangeEnd = isAll ? totalCount : Math.min(currentPage * numericLimit, totalCount);
+
+                // Build a compact page-number window: 1 … (p-1) p (p+1) … N
+                const pages = [];
+                if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                } else {
+                    pages.push(1);
+                    if (currentPage > 3) pages.push('…');
+                    const start = Math.max(2, currentPage - 1);
+                    const end = Math.min(totalPages - 1, currentPage + 1);
+                    for (let i = start; i <= end; i++) pages.push(i);
+                    if (currentPage < totalPages - 2) pages.push('…');
+                    pages.push(totalPages);
+                }
+
+                const goToPage = (p) => {
+                    const target = Math.min(Math.max(1, p), totalPages);
+                    setCurrentPage(target);
+                    fetchContacts(target, searchQuery, statusFilter, categoryFilter, pageSize);
+                };
+
+                return (
+                    <div className="mt-3 rounded-[20px] bg-white ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] px-3 py-2.5 space-y-2">
+                        {/* Range + page size */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <p className="text-[11px] text-slate-600 font-medium tabular-nums" style={serif}>
+                                Showing <span className="font-bold text-slate-900">{rangeStart.toLocaleString('en-IN')}–{rangeEnd.toLocaleString('en-IN')}</span>
+                                <span className="italic text-slate-500"> of </span>
+                                <span className="font-bold text-slate-900">{totalCount.toLocaleString('en-IN')}</span>
+                            </p>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Per page</span>
+                                <Select value={pageSize} onValueChange={(v) => { setPageSize(v); setCurrentPage(1); }}>
+                                    <SelectTrigger className="h-7 w-[70px] text-[11px] font-bold rounded-lg bg-slate-50 ring-1 ring-slate-200 border-0 shadow-none">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {PAGE_SIZE_OPTIONS.map((opt) => (
+                                            <SelectItem key={opt} value={opt} className="text-xs">
+                                                {opt === 'all' ? 'All' : opt}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* Page number buttons */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-1 flex-wrap">
+                                <Button
+                                    variant="ghost" size="sm"
+                                    className="h-8 w-8 p-0 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                                    disabled={currentPage <= 1}
+                                    onClick={() => goToPage(currentPage - 1)}
+                                    aria-label="Previous page"
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                {pages.map((p, idx) => (
+                                    p === '…' ? (
+                                        <span key={`gap-${idx}`} className="text-[11px] text-slate-400 px-1 select-none">…</span>
+                                    ) : (
+                                        <Button
+                                            key={p}
+                                            variant={p === currentPage ? 'default' : 'ghost'}
+                                            size="sm"
+                                            className={`h-8 min-w-8 px-2 rounded-lg text-[11px] font-bold tabular-nums ${
+                                                p === currentPage
+                                                    ? 'bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-sm shadow-indigo-200/50'
+                                                    : 'text-slate-700 hover:bg-slate-100'
+                                            }`}
+                                            onClick={() => goToPage(p)}
+                                        >
+                                            {p}
+                                        </Button>
+                                    )
+                                ))}
+                                <Button
+                                    variant="ghost" size="sm"
+                                    className="h-8 w-8 p-0 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                                    disabled={currentPage >= totalPages}
+                                    onClick={() => goToPage(currentPage + 1)}
+                                    aria-label="Next page"
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* Edit Contact Drawer */}
             <Drawer open={editOpen} onOpenChange={setEditOpen}>

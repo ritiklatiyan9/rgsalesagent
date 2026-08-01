@@ -138,7 +138,7 @@ const TeamManagement = () => {
           </Button>
           <Button
             onClick={() => navigate('/team/performance')}
-            className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white gap-1.5 text-sm shadow-sm hover:shadow-md transition-shadow"
+            className="bg-linear-to-r from-indigo-600 to-blue-700 text-white gap-1.5 text-sm shadow-sm hover:shadow-md transition-shadow"
             size="sm"
           >
             <TrendingUp className="h-4 w-4" /> View Performance

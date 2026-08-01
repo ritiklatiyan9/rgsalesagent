@@ -13,18 +13,23 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter,
 } from '@/components/ui/drawer';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import api from '@/lib/axios';
-import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
+import { broadcastMutation, onMutation } from '@/lib/mutationBus';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   Plus, Pencil, Search, Users,
   AlertCircle, Eye,
-  BellPlus, Camera, X, ImageIcon, PhoneOutgoing,
+  BellPlus, Camera, X, ImageIcon, PhoneOutgoing, Trash2,
+  ChevronLeft, ChevronRight, RefreshCw, AlertTriangle, MoreHorizontal,
 } from 'lucide-react';
 import CallTimeline from '@/components/CallTimeline';
 
@@ -74,8 +79,7 @@ const ScheduleFollowupDialog = ({ lead, open, onClose }) => {
         ...(form.scheduled_time ? { scheduled_time: form.scheduled_time } : {}),
         ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
       });
-      invalidateCache('/followups?limit=100');
-      invalidateCache('/followups/counts');
+      broadcastMutation(['followups']);
       toast.success(`Follow-up scheduled for ${lead.name}`);
       onClose();
     } catch (err) {
@@ -161,13 +165,15 @@ const STATUS_OPTIONS = [
   { value: 'LOST', label: 'Lost', color: 'bg-slate-50 text-slate-700 ring-slate-200' },
   { value: 'INCOMING_OFF', label: 'Incoming Off', color: 'bg-orange-50 text-orange-700 ring-orange-200' },
   { value: 'SWITCH_OFF', label: 'Switch Off', color: 'bg-red-50 text-red-700 ring-red-200' },
-  { value: 'NOT_ANSWERING', label: 'Not Answering', color: 'bg-rose-50 text-rose-700 ring-rose-200' },
+  { value: 'NOT_ANSWERING',  label: 'Not Answering',  color: 'bg-rose-50 text-rose-700 ring-rose-200'  },
+  { value: 'NOT_INTERESTED', label: 'Not Interested', color: 'bg-gray-100 text-gray-600 ring-gray-200' },
 ];
 
 const STATUS_ACCENT_MAP = {
   NEW: '#3b82f6',
   CONTACTED: '#f59e0b',
   INTERESTED: '#6366f1',
+  NOT_INTERESTED: '#6b7280',
   SITE_VISIT: '#8b5cf6',
   NEGOTIATION: '#a855f7',
   BOOKED: '#10b981',
@@ -187,113 +193,132 @@ const EMPTY_FORM = {
 // O(1) status lookup — avoids .find() on every row render
 const STATUS_MAP = Object.fromEntries(STATUS_OPTIONS.map((s) => [s.value, s]));
 
+const PAGE_SIZE_OPTIONS = ['15', '25', '50', '100', 'all'];
+const DEFAULT_PAGE_SIZE = '15';
+
 // Builds the canonical API URL for a given filter set — used both in fetchLeads and cache probe
-function buildLeadsUrl(page, search, status, category, importJobId) {
-  let url = `/leads?page=${page}&limit=15`;
+function buildLeadsUrl(page, search, status, category, importJobId, limit = DEFAULT_PAGE_SIZE, freshOnly = false) {
+  let url = `/leads?page=${page}&limit=${limit}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
   if (status === 'ACTIVE') url += `&exclude_status=NEW`;
   else if (status !== 'ALL') url += `&status=${status}`;
   if (category !== 'ALL') url += `&lead_category=${encodeURIComponent(category)}`;
   if (importJobId && importJobId !== 'ALL') url += `&import_job_id=${encodeURIComponent(importJobId)}`;
+  if (freshOnly) url += `&fresh_only=true`;
   return url;
 }
 
-// Memoised card — only re-renders when its own data or selection changes
-const LeadCard = memo(({ lead, selected, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule }) => {
+// Memoised row — only re-renders when its own data or selection changes
+const LeadRow = memo(({ lead, selected, selectionMode, onSelect, onCall, onWhatsApp, onView, onEdit, onSchedule, onDelete, showDelete }) => {
   const statusObj = STATUS_MAP[lead.status] || STATUS_OPTIONS[0];
   const accent = STATUS_ACCENT_MAP[lead.status] || '#94a3b8';
   return (
     <div
-      className={`relative bg-white rounded-[22px] overflow-hidden transition-all duration-200 ring-1 ${
+      className={`group relative flex items-center gap-3 rounded-2xl border bg-white px-3.5 py-3 shadow-sm transition-all duration-150 sm:px-4 ${
         selected
-          ? 'ring-indigo-300 shadow-[0_4px_18px_-4px_rgba(99,102,241,0.25)]'
-          : 'ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]'
+          ? 'border-indigo-200 bg-indigo-50/70 shadow-indigo-100'
+          : 'border-slate-200 hover:border-indigo-100 hover:bg-slate-50/50 hover:shadow-md'
       }`}
+      onClick={selectionMode ? () => onSelect(lead.id) : undefined}
     >
-      {/* Top accent bar */}
-      <div className="h-[2px] w-full" style={{ backgroundColor: accent }} />
+      <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full" style={{ backgroundColor: accent }} />
 
-      {/* Top section: avatar + details + checkbox */}
-      <div className="flex items-start gap-3 px-4 pt-3.5 pb-2.5">
-        {/* Avatar */}
-        <div className="h-12 w-12 rounded-2xl bg-linear-to-br from-indigo-50 to-violet-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
-          {lead.photo_url ? (
-            <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
-          ) : (
-            <span className="text-lg font-bold text-indigo-700" style={serif}>{lead.name?.charAt(0)?.toUpperCase()}</span>
-          )}
-        </div>
+      {/* Checkbox — only visible in selection mode */}
+      {selectionMode && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onSelect(lead.id)}
+          className="h-4.5 w-4.5 shrink-0 rounded border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+        />
+      )}
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-bold text-slate-900 leading-snug truncate pr-1" style={serif}>{lead.name}</p>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className={`inline-flex items-center text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full font-bold ring-1 ring-inset ${statusObj.color}`}>
-              {statusObj.label}
-            </span>
-            {lead.lead_category && (
-              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold bg-slate-50 ring-1 ring-inset ring-slate-200 px-1.5 py-0.5 rounded-full">
-                {lead.lead_category}
-              </span>
-            )}
-          </div>
+      {/* Avatar */}
+      <div className="h-10 w-10 rounded-xl bg-linear-to-br from-indigo-50 to-sky-100 ring-1 ring-inset ring-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
+        {lead.photo_url ? (
+          <img src={lead.photo_url} alt={lead.name} className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <span className="text-sm font-semibold text-indigo-700">{lead.name?.charAt(0)?.toUpperCase()}</span>
+        )}
+      </div>
+
+      {/* Name + phone — flex-1 truncates naturally */}
+      <div className="flex-1 min-w-0">
+        <p className="truncate text-[14px] font-semibold leading-tight text-slate-950 sm:text-[15px]">{lead.name}</p>
+        <div className="mt-1 flex min-w-0 items-center gap-2">
+          <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ring-1 ring-inset ${statusObj.color}`}>
+            {statusObj.label}
+          </span>
           {lead.phone && (
-            <p className="text-[11px] text-slate-500 mt-1 font-mono tracking-tight">{lead.phone}</p>
+            <p className="truncate text-xs font-medium tracking-normal text-slate-500">{lead.phone}</p>
           )}
-        </div>
-
-        {/* Checkbox — far right */}
-        <div className="shrink-0 pt-0.5">
-          <Checkbox
-            checked={selected}
-            onCheckedChange={() => onSelect(lead.id)}
-            className="h-5 w-5 rounded-md border-slate-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
-          />
         </div>
       </div>
 
-      {/* Action row */}
-      <div className="flex items-center gap-1.5 px-3 pb-3 pt-1">
-        <Button
-          size="sm"
-          className="flex-1 h-8 text-[11px] font-bold text-white bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 rounded-xl gap-1.5 shadow-sm shadow-emerald-200/50"
-          onClick={() => onCall(lead)}
-        >
-          <PhoneOutgoing className="h-3.5 w-3.5" /> Call
-        </Button>
+      {/* Primary actions: Call + View always visible */}
+      <div className="flex items-center gap-1 shrink-0">
         <button
-          onClick={() => onWhatsApp(lead.phone)}
-          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-green-600 hover:bg-green-50 hover:text-green-700 flex items-center justify-center active:scale-95 transition-all duration-150"
-          title="WhatsApp"
+          onClick={() => onCall(lead)}
+          className="h-9 w-9 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center active:scale-95 transition-all duration-150 shadow-sm shadow-emerald-200/50"
+          title="Call"
         >
-          <WhatsAppIcon className="h-3.5 w-3.5" />
+          <PhoneOutgoing className="h-4 w-4" />
         </button>
         <button
           onClick={() => onView(lead)}
-          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 flex items-center justify-center active:scale-95 transition-all duration-150"
+          className="h-9 w-9 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-indigo-600 hover:bg-indigo-50 hover:ring-indigo-200 flex items-center justify-center active:scale-95 transition-all duration-150"
           title="View"
         >
-          <Eye className="h-3.5 w-3.5" />
+          <Eye className="h-4 w-4" />
         </button>
-        <button
-          onClick={() => onEdit(lead)}
-          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-center active:scale-95 transition-all duration-150"
-          title="Edit"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={() => onSchedule(lead)}
-          className="h-8 w-8 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700 flex items-center justify-center active:scale-95 transition-all duration-150"
-          title="Schedule"
-        >
-          <BellPlus className="h-3.5 w-3.5" />
-        </button>
+
+        {/* More actions: WhatsApp, Edit, Schedule */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="h-9 w-9 rounded-xl bg-white ring-1 ring-inset ring-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center active:scale-95 transition-all duration-150"
+              title="More actions"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44 rounded-xl shadow-lg border-0 ring-1 ring-slate-200 p-1">
+            <DropdownMenuItem
+              onClick={() => onWhatsApp(lead.phone)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-green-700 hover:bg-green-50 cursor-pointer"
+            >
+              <WhatsAppIcon className="h-3.5 w-3.5 shrink-0" />
+              WhatsApp
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onEdit(lead)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-blue-700 hover:bg-blue-50 cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" />
+              Edit Lead
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onSchedule(lead)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-amber-700 hover:bg-amber-50 cursor-pointer"
+            >
+              <BellPlus className="h-3.5 w-3.5 shrink-0" />
+              Schedule Follow-up
+            </DropdownMenuItem>
+            {showDelete && (
+              <DropdownMenuItem
+                onClick={() => onDelete?.(lead)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-red-600 hover:bg-red-50 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                Delete Lead
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
 });
-LeadCard.displayName = 'LeadCard';
+LeadRow.displayName = 'LeadRow';
 
 const Leads = () => {
   const navigate = useNavigate();
@@ -309,18 +334,19 @@ const Leads = () => {
   // stays visible even after the URL is rewritten by the filter-sync effect below.
   const [showBatchStages, setShowBatchStages] = useState(() => searchParams.get('from') === 'fresh');
 
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
   // Probe memory cache synchronously so we can skip skeleton on navigation back
-  const _initCached = getCachedSync(buildLeadsUrl(1, initialSearch, initialStatus, initialCategory, initialImportJobId));
+  const _initCached = getCachedSync(buildLeadsUrl(1, initialSearch, initialStatus, initialCategory, initialImportJobId, DEFAULT_PAGE_SIZE));
 
   const [leads, setLeads] = useState(() => _initCached?.leads ?? []);
   const [loading, setLoading] = useState(() => !_initCached);
   const [refreshing, setRefreshing] = useState(false); // silent background sync indicator
-  const [loadingMore, setLoadingMore] = useState(false); // infinite-scroll fetch indicator
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(() => _initCached?.pagination?.totalPages ?? 1);
-  // Sentinel that triggers the next-page fetch when scrolled into view.
-  const loadMoreRef = useRef(null);
+  const [totalCount, setTotalCount] = useState(() => _initCached?.pagination?.total ?? 0);
+  const [fetchError, setFetchError] = useState(null);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [categoryFilter, setCategoryFilter] = useState(initialCategory);
@@ -357,46 +383,61 @@ const Leads = () => {
   const [scheduleLead, setScheduleLead] = useState(null);
 
   // Shift to Call selection
+  const [selectionMode, setSelectionMode] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [shiftLoading, setShiftLoading] = useState(false);
 
-  // `append=true` means infinite-scroll loaded the next page — concat to the
-  // existing list instead of replacing. Filter/search changes always fetch
-  // page 1 in replace mode so the list resets cleanly.
-  const fetchLeads = useCallback(async (page, search, status, fresh = false, category, importJobId, append = false) => {
+  // Delete lead (only in fresh-leads context)
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchLeads = useCallback(async (page, search, status, fresh = false, category, importJobId, limit, freshOnly = false) => {
     const hasData = hasDataRef.current;
-    if (append) setLoadingMore(true);
-    else if (!hasData) setLoading(true);
+    if (!hasData) setLoading(true);
     else setRefreshing(true);
+    setFetchError(null);
     try {
-      const url = buildLeadsUrl(page, search, status, category, importJobId) + (fresh ? `&_t=${Date.now()}` : '');
-      const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000 });
+      const url = buildLeadsUrl(page, search, status, category, importJobId, limit, freshOnly);
+      const data = await cachedGet(url, { staleTime: 300_000, cacheTime: 600_000, force: fresh });
       if (data.success) {
-        setLeads((prev) => {
-          if (!append) return data.leads;
-          // Defend against double-trigger: drop any incoming row whose id is
-          // already in the list (can happen if the IntersectionObserver fires
-          // twice while the request is in flight).
-          const existing = new Set(prev.map((l) => l.id));
-          const incoming = data.leads.filter((l) => !existing.has(l.id));
-          return [...prev, ...incoming];
-        });
+        setLeads(data.leads);
         setTotalPages(data.pagination.totalPages);
+        setTotalCount(data.pagination.total ?? 0);
         hasDataRef.current = true;
       }
     } catch (err) {
       console.error('Failed to fetch leads', err);
-      if (!hasDataRef.current) toast.error('Failed to load leads');
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message
+        || (status === 401 ? 'Session expired — please log in again'
+          : status === 403 ? 'You do not have permission to view leads'
+          : !err?.response ? 'Network error — check your connection'
+          : 'Failed to load leads');
+      setFetchError(msg);
+      if (!hasDataRef.current) toast.error(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setLoadingMore(false);
     }
   }, []); // stable — all values passed as args, no state deps
 
   // Keep a ref so the debounce effect always sees the latest fetchLeads without it being a dep
   const fetchLeadsRef = useRef(fetchLeads);
   fetchLeadsRef.current = fetchLeads;
+  const filtersRef = useRef({ searchQuery, statusFilter, categoryFilter, importJobFilter, currentPage, pageSize, showBatchStages });
+  filtersRef.current = { searchQuery, statusFilter, categoryFilter, importJobFilter, currentPage, pageSize, showBatchStages };
+
+  // Re-fetch when any page on the app mutates leads, calls or followups.
+  useEffect(() => onMutation((entities) => {
+    if (entities.some(e => e === 'leads' || e === 'followups' || e === 'calls')) {
+      const f = filtersRef.current;
+      fetchLeadsRef.current(f.currentPage, f.searchQuery, f.statusFilter, true, f.categoryFilter, f.importJobFilter, f.pageSize, f.showBatchStages);
+    }
+  }), []);
+
+  const handleManualRefresh = useCallback(() => {
+    broadcastMutation(['leads']); // invalidates cache + triggers subscription re-fetch
+  }, []);
 
   useEffect(() => {
     const nextSearch = searchParams.get('search') || '';
@@ -414,11 +455,11 @@ const Leads = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       // Use ref so fetchLeads is never a dep (prevents double-fetch on filter change)
-      fetchLeadsRef.current(1, searchQuery, statusFilter, false, categoryFilter, importJobFilter);
+      fetchLeadsRef.current(1, searchQuery, statusFilter, false, categoryFilter, importJobFilter, pageSize, showBatchStages);
       setCurrentPage(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery, statusFilter, categoryFilter, importJobFilter]);
+  }, [searchQuery, statusFilter, categoryFilter, importJobFilter, pageSize, showBatchStages]);
 
   // Keep URL in sync with active filters so dashboard quick-search works reliably.
   useEffect(() => {
@@ -431,68 +472,12 @@ const Leads = () => {
     setSearchParams(next, { replace: true });
   }, [searchQuery, statusFilter, categoryFilter, importJobFilter, showBatchStages, setSearchParams]);
 
-  // Pre-fetch next page
+  // Pre-fetch next page so navigation feels instant
   useEffect(() => {
-    if (currentPage < totalPages) {
-      cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter, importJobFilter));
+    if (currentPage < totalPages && pageSize !== 'all') {
+      cachedGet(buildLeadsUrl(currentPage + 1, searchQuery, statusFilter, categoryFilter, importJobFilter, pageSize, showBatchStages));
     }
-  }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter, importJobFilter]);
-
-  // Infinite scroll. Two safety nets so this is reliable across layouts:
-  //   1. IntersectionObserver rooted on the actual scrolling ancestor (the
-  //      app shell uses an internally-scrolling <main overflow-y-auto>, so
-  //      a viewport-rooted IO never fires — the document never scrolls).
-  //   2. A scroll listener on the same ancestor, in case IO misses (some
-  //      mobile WebViews don't fire IO callbacks reliably under
-  //      momentum-scroll). Both share the same trigger function and a
-  //      single in-flight guard.
-  useEffect(() => {
-    if (loading || loadingMore) return;
-    if (currentPage >= totalPages) return;
-    const el = loadMoreRef.current;
-    if (!el) return;
-
-    // Walk up from the sentinel to the nearest scrollable ancestor.
-    const findScrollParent = (node) => {
-      let cur = node?.parentElement;
-      while (cur && cur !== document.body) {
-        const oy = window.getComputedStyle(cur).overflowY;
-        if (oy === 'auto' || oy === 'scroll') return cur;
-        cur = cur.parentElement;
-      }
-      return null;
-    };
-    const scrollParent = findScrollParent(el);
-
-    const triggerNext = () => {
-      if (loadingMore) return;
-      if (currentPage >= totalPages) return;
-      const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
-      fetchLeadsRef.current(nextPage, searchQuery, statusFilter, false, categoryFilter, importJobFilter, true);
-    };
-
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) triggerNext(); },
-      { root: scrollParent || null, rootMargin: '300px' },
-    );
-    observer.observe(el);
-
-    // Belt-and-braces: scroll listener on the same parent.
-    const onScroll = () => {
-      const target = scrollParent || document.scrollingElement;
-      if (!target) return;
-      const dist = target.scrollHeight - target.scrollTop - target.clientHeight;
-      if (dist < 320) triggerNext();
-    };
-    const scrollSrc = scrollParent || window;
-    scrollSrc.addEventListener('scroll', onScroll, { passive: true });
-
-    return () => {
-      observer.disconnect();
-      scrollSrc.removeEventListener('scroll', onScroll);
-    };
-  }, [currentPage, totalPages, loading, loadingMore, searchQuery, statusFilter, categoryFilter, importJobFilter]);
+  }, [currentPage, totalPages, searchQuery, statusFilter, categoryFilter, importJobFilter, pageSize, showBatchStages]);
 
   // Fetch import batches only when the Fresh-Leads stage dropdown should be shown.
   useEffect(() => {
@@ -541,10 +526,6 @@ const Leads = () => {
     }
   };
 
-  useEffect(() => {
-    const currentIds = new Set(leads.map((l) => l.id));
-    setSelectedLeadIds((prev) => prev.filter((id) => currentIds.has(id)));
-  }, [leads]);
 
   const openEdit = useCallback((lead) => {
     console.log('testCallDrawer()');
@@ -594,6 +575,23 @@ const Leads = () => {
     setScheduleOpen(true);
   }, []);
 
+  const confirmDelete = useCallback((lead) => setDeleteTarget(lead), []);
+
+  const handleDeleteLead = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/leads/${deleteTarget.id}`);
+      toast.success(`"${deleteTarget.name}" deleted`);
+      setDeleteTarget(null);
+      broadcastMutation(['leads']);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to delete lead');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const toggleLeadSelection = useCallback((leadId) => {
     setSelectedLeadIds((prev) => (
       prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
@@ -634,6 +632,7 @@ const Leads = () => {
       }
 
       setSelectedLeadIds([]);
+      setSelectionMode(false);
       toast.success(data?.message || 'Leads shifted to call queue');
       navigate('/contacts/shift-to-call');
     } catch (err) {
@@ -661,9 +660,16 @@ const Leads = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Lead updated successfully');
-      invalidateCache('/leads');
-      fetchLeads(currentPage, searchQuery, statusFilter, true, categoryFilter);
+      // Instant optimistic patch so the row updates before the network round-trip.
+      setLeads(prev => prev.map(l => l.id === editId ? {
+        ...l,
+        name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(),
+        status: form.status, lead_category: form.lead_category,
+        profession: form.profession, address: form.address, notes: form.notes,
+      } : l));
       setDialogOpen(false);
+      // Invalidate cache + re-fetch in background (bus notifies this page too).
+      broadcastMutation(['leads']);
     } catch (err) {
       setFormError(err?.response?.data?.message || 'Failed to save lead.');
     } finally {
@@ -703,16 +709,28 @@ const Leads = () => {
 
   return (
     <>
-      {/* Shift action bar — shows when leads are selected */}
-      {selectedLeadIds.length > 0 && (
+      {/* Shift action bar — shows when in selection mode */}
+      {selectionMode && (
         <div className="flex items-center justify-between gap-2 bg-linear-to-r from-indigo-600 to-violet-600 rounded-[18px] px-3.5 py-2 shadow-sm shadow-indigo-300/40">
-          <span className="text-[11px] text-white font-bold uppercase tracking-wider">
-            {selectedLeadIds.length} <span className="text-white/70 font-normal italic normal-case" style={serif}>selected</span>
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setSelectionMode(false); setSelectedLeadIds([]); }}
+              className="h-6 w-6 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
+              title="Cancel selection"
+            >
+              <X className="h-3 w-3" />
+            </button>
+            <span className="text-[11px] text-white font-bold uppercase tracking-wider">
+              {selectedLeadIds.length > 0
+                ? <>{selectedLeadIds.length} <span className="text-white/75 font-medium normal-case">selected</span></>
+                : <span className="text-white/75 font-medium normal-case">Tap rows to select</span>
+              }
+            </span>
+          </div>
           <button
-            disabled={shiftLoading}
+            disabled={shiftLoading || selectedLeadIds.length === 0}
             onClick={() => handleShiftToCall()}
-            className="h-7 px-2.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 rounded-full flex items-center gap-1.5 active:scale-95 transition-all duration-150 disabled:opacity-60"
+            className="h-7 px-2.5 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-50 rounded-full flex items-center gap-1.5 active:scale-95 transition-all duration-150 disabled:opacity-50"
           >
             {shiftLoading
               ? <span className="h-3 w-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
@@ -725,18 +743,17 @@ const Leads = () => {
 
       {/* Import Batch (Stage) dropdown — appears only when user came from Fresh Leads card */}
       {showBatchStages && (
-        <div className="flex items-stretch gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_44px] items-stretch gap-2 rounded-2xl border border-violet-100 bg-violet-50/40 p-2 shadow-sm shadow-violet-100/40">
           <Select value={importJobFilter} onValueChange={setImportJobFilter}>
             <SelectTrigger
-              className="flex-1 h-11 px-3 text-[12px] font-semibold rounded-2xl bg-linear-to-r from-violet-50 via-purple-50 to-fuchsia-50
-                         border-0 ring-1 ring-inset ring-violet-200 text-violet-800 shadow-[0_2px_10px_-6px_rgba(139,92,246,0.35)]"
+              className="h-11 min-w-0 px-3 text-xs font-semibold rounded-xl bg-white border-0 ring-1 ring-inset ring-violet-200 text-violet-800 shadow-none"
             >
               <SelectValue placeholder={importBatchesLoading ? 'Loading imports…' : 'All imports'} />
             </SelectTrigger>
-            <SelectContent className="max-h-[60vh]">
+            <SelectContent className="max-h-[60vh] min-w-[var(--radix-select-trigger-width)]">
               <SelectItem value="ALL" className="text-xs font-semibold text-violet-700">All imports</SelectItem>
               {importBatches.length === 0 && !importBatchesLoading && (
-                <div className="px-3 py-2 text-[11px] text-slate-400 italic">No imports yet</div>
+                <div className="px-3 py-2 text-[11px] text-slate-400">No imports yet</div>
               )}
               {importBatches.map((batch) => (
                 <SelectItem key={batch.id} value={batch.id} className="text-xs">
@@ -758,7 +775,7 @@ const Leads = () => {
             onClick={openRenameBatch}
             disabled={!selectedBatch}
             title={selectedBatch ? `Rename ${selectedBatch.label}` : 'Pick a batch to rename it'}
-            className="h-11 w-11 rounded-2xl bg-white ring-1 ring-inset ring-slate-200 text-violet-600
+            className="h-11 w-11 rounded-xl bg-white ring-1 ring-inset ring-violet-200 text-violet-600
                        hover:bg-violet-50 hover:ring-violet-200 disabled:opacity-40 disabled:hover:bg-white disabled:hover:ring-slate-200
                        flex items-center justify-center transition-colors shrink-0"
           >
@@ -768,24 +785,25 @@ const Leads = () => {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_136px_112px_44px]">
+        <div className="relative col-span-3 sm:col-span-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <Input
             placeholder="Search name, phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-10 text-[13px] rounded-2xl bg-white border-0 ring-1 ring-inset ring-slate-200 focus-visible:ring-indigo-300"
+            className="pl-9 h-11 text-sm rounded-xl bg-slate-50 border-0 ring-1 ring-inset ring-slate-200 focus-visible:bg-white focus-visible:ring-indigo-300"
           />
           {refreshing && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-indigo-400 animate-pulse" title="Syncing…" />
           )}
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[104px] h-10 text-[11px] font-bold uppercase tracking-wider rounded-2xl shrink-0 bg-white border-0 ring-1 ring-inset ring-slate-200">
+          <SelectTrigger className="h-11 min-w-0 text-[11px] font-semibold uppercase tracking-wide rounded-xl shrink-0 bg-slate-50 border-0 ring-1 ring-inset ring-slate-200">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="min-w-[var(--radix-select-trigger-width)]">
             <SelectItem value="ACTIVE" className="text-xs font-medium text-emerald-700">All Active</SelectItem>
             <SelectItem value="ALL" className="text-xs font-medium">All (incl. New)</SelectItem>
             {STATUS_OPTIONS.map((s) => (
@@ -794,114 +812,226 @@ const Leads = () => {
           </SelectContent>
         </Select>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[88px] h-10 text-[11px] font-bold uppercase tracking-wider rounded-2xl shrink-0 bg-white border-0 ring-1 ring-inset ring-slate-200">
+          <SelectTrigger className="h-11 min-w-0 text-[11px] font-semibold uppercase tracking-wide rounded-xl shrink-0 bg-slate-50 border-0 ring-1 ring-inset ring-slate-200">
             <SelectValue placeholder="Cat" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="min-w-[var(--radix-select-trigger-width)]">
             <SelectItem value="ALL" className="text-xs font-medium">All Cat</SelectItem>
             {LEAD_CATEGORY_OPTIONS.map((c) => (
               <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <Button
+          size="sm" variant="outline"
+          className="h-11 w-11 p-0 rounded-xl shrink-0 text-slate-600 ring-1 ring-inset ring-slate-200 bg-slate-50 hover:bg-white shadow-none border-0"
+          onClick={handleManualRefresh}
+          disabled={loading || refreshing}
+          title="Refresh leads"
+          aria-label="Refresh leads"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin text-indigo-500' : ''}`} />
+        </Button>
+        </div>
       </div>
 
-      {/* Count + Select All row */}
-      {!loading && leads.length > 0 && (
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-baseline gap-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Results</p>
-            <span className="text-[15px] font-bold text-slate-900" style={serif}>{leads.length}</span>
-            <span className="text-[11px] italic text-slate-500" style={serif}>
-              lead{leads.length !== 1 ? 's' : ''}
-            </span>
-            {selectedLeadIds.length > 0 && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 ml-1">
-                · {selectedLeadIds.length} selected
-              </span>
-            )}
+      {/* Error banner */}
+      {fetchError && (
+        <div className="rounded-2xl bg-rose-50 ring-1 ring-rose-200 px-3.5 py-2.5 flex items-start gap-2.5">
+          <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-semibold text-rose-800">Couldn't load leads</p>
+            <p className="text-[11px] text-rose-700 mt-0.5">{fetchError}</p>
           </div>
-          <button
-            className="text-[10px] uppercase tracking-wider text-indigo-600 font-bold hover:text-indigo-800 transition-colors"
-            onClick={toggleSelectAllOnPage}
-          >
-            {allSelected ? 'Deselect All' : 'Select All'}
-          </button>
+          <Button
+            size="sm"
+            className="h-8 px-2.5 text-[11px] font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shrink-0"
+            onClick={handleManualRefresh}
+            disabled={loading || refreshing}>
+            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+            Retry
+          </Button>
         </div>
       )}
 
-      {/* Lead Cards */}
-      <div className="space-y-2.5">
-        {loading ? (
-          [...Array(5)].map((_, i) => (
-            <div key={i} className="bg-white rounded-[22px] ring-1 ring-slate-100 overflow-hidden shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)]">
-              <Skeleton className="h-[2px] w-full" />
-              <div className="p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <Skeleton className="h-12 w-12 rounded-2xl shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-36" />
-                    <Skeleton className="h-3 w-20 rounded-full" />
-                    <Skeleton className="h-3 w-28" />
-                  </div>
-                  <Skeleton className="h-5 w-5 rounded-md shrink-0" />
-                </div>
-                <Skeleton className="h-8 w-full rounded-xl" />
+      {/* Count + Select toggle row */}
+      {!loading && leads.length > 0 && (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm">
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Results</p>
+            <span className="text-base font-semibold text-slate-900">{totalCount.toLocaleString('en-IN')}</span>
+            <span className="text-xs font-medium text-slate-500">
+              lead{totalCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectionMode && (
+              <button
+                className="text-[10px] uppercase tracking-wider text-slate-500 font-bold hover:text-slate-700 transition-colors"
+                onClick={toggleSelectAllOnPage}
+              >
+                {allSelected ? 'Deselect All' : 'Select All'}
+              </button>
+            )}
+            <button
+              className={`text-[10px] uppercase tracking-wider font-bold transition-colors ${
+                selectionMode ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-400 hover:text-indigo-600'
+              }`}
+              onClick={() => { setSelectionMode((v) => !v); if (selectionMode) setSelectedLeadIds([]); }}
+            >
+              {selectionMode ? 'Done' : 'Select'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Lead List */}
+      {loading ? (
+        <div className="space-y-2">
+          {[...Array(10)].map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm sm:px-4">
+              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+              <div className="flex-1 space-y-1.5 min-w-0">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {[...Array(3)].map((_, j) => <Skeleton key={j} className="h-9 w-9 rounded-xl" />)}
               </div>
             </div>
-          ))
-        ) : leads.length === 0 ? (
-          <div className="relative overflow-hidden rounded-[22px] bg-linear-to-br from-indigo-50 via-white to-violet-50 ring-1 ring-indigo-100 px-6 py-12 text-center">
-            <div className="mx-auto h-14 w-14 rounded-2xl bg-white ring-1 ring-indigo-100 flex items-center justify-center shadow-sm">
-              <Users className="h-7 w-7 text-indigo-400" />
-            </div>
-            <p className="mt-4 text-[18px] font-bold text-slate-900" style={serif}>
-              No leads <span className="italic text-indigo-600">yet.</span>
-            </p>
-            <p className="mt-1 text-[12px] text-slate-500 italic" style={serif}>
-              Try adjusting your filters or add a new lead.
-            </p>
-            <Link to="/leads/add" className="inline-flex mt-4 h-9 px-4 rounded-full text-[11px] font-bold bg-linear-to-r from-indigo-600 to-violet-600 text-white items-center gap-1.5 shadow-sm shadow-indigo-300/40 active:scale-95 transition-all duration-150">
-              <Plus className="h-3.5 w-3.5" /> Add Lead
-            </Link>
+          ))}
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="relative overflow-hidden rounded-2xl bg-linear-to-br from-indigo-50 via-white to-violet-50 ring-1 ring-indigo-100 px-6 py-12 text-center">
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-white ring-1 ring-indigo-100 flex items-center justify-center shadow-sm">
+            <Users className="h-7 w-7 text-indigo-400" />
           </div>
-        ) : (
-          leads.map((lead) => (
-            <LeadCard
+          <p className="mt-4 text-lg font-semibold text-slate-900">
+            No leads yet
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            Try adjusting your filters or add a new lead.
+          </p>
+          <Link to="/leads/add" className="inline-flex mt-4 h-9 px-4 rounded-full text-[11px] font-bold bg-linear-to-r from-indigo-600 to-violet-600 text-white items-center gap-1.5 shadow-sm shadow-indigo-300/40 active:scale-95 transition-all duration-150">
+            <Plus className="h-3.5 w-3.5" /> Add Lead
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {leads.map((lead) => (
+            <LeadRow
               key={lead.id}
               lead={lead}
               selected={selectedSet.has(lead.id)}
+              selectionMode={selectionMode}
               onSelect={toggleLeadSelection}
               onCall={handleCallLead}
               onWhatsApp={handleOpenWhatsApp}
               onView={openView}
               onEdit={openEdit}
               onSchedule={openSchedule}
+              onDelete={confirmDelete}
+              showDelete={showBatchStages}
             />
-          ))
-        )}
-      </div>
-
-      {/* Infinite-scroll sentinel — when this scrolls into view the effect
-          above triggers the next page fetch. Shows a small spinner while the
-          request is in flight; once we've hit the last page it switches to a
-          subtle "end of list" caption so users know nothing is missing. */}
-      {!loading && leads.length > 0 && (
-        currentPage < totalPages ? (
-          <div ref={loadMoreRef} className="py-6 flex items-center justify-center gap-2">
-            <span className="h-4 w-4 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              {loadingMore ? 'Loading more…' : 'Scroll for more'}
-            </span>
-          </div>
-        ) : (
-          totalPages > 1 && (
-            <p className="text-center text-[11px] italic text-slate-400 py-4" style={serif}>
-              — end of list · {leads.length} leads —
-            </p>
-          )
-        )
+          ))}
+        </div>
       )}
+
+      {/* Pagination */}
+      {!loading && totalCount > 0 && (() => {
+        const isAll = pageSize === 'all';
+        const numericLimit = isAll ? totalCount : parseInt(pageSize, 10);
+        const rangeStart = isAll ? 1 : (currentPage - 1) * numericLimit + 1;
+        const rangeEnd = isAll ? totalCount : Math.min(currentPage * numericLimit, totalCount);
+
+        const pages = [];
+        if (totalPages <= 7) {
+          for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+          pages.push(1);
+          if (currentPage > 3) pages.push('…');
+          const start = Math.max(2, currentPage - 1);
+          const end = Math.min(totalPages - 1, currentPage + 1);
+          for (let i = start; i <= end; i++) pages.push(i);
+          if (currentPage < totalPages - 2) pages.push('…');
+          pages.push(totalPages);
+        }
+
+        const goToPage = (p) => {
+          const target = Math.min(Math.max(1, p), totalPages);
+          setCurrentPage(target);
+          fetchLeadsRef.current(target, searchQuery, statusFilter, false, categoryFilter, importJobFilter, pageSize, showBatchStages);
+        };
+
+        return (
+          <div className="mt-3 rounded-2xl bg-white ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs text-slate-600 font-medium tabular-nums">
+                Showing <span className="font-bold text-slate-900">{rangeStart.toLocaleString('en-IN')}–{rangeEnd.toLocaleString('en-IN')}</span>
+                <span className="text-slate-500"> of </span>
+                <span className="font-bold text-slate-900">{totalCount.toLocaleString('en-IN')}</span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Per page</span>
+                <Select value={pageSize} onValueChange={(v) => { setPageSize(v); setCurrentPage(1); }}>
+                  <SelectTrigger className="h-7 w-[70px] text-[11px] font-bold rounded-lg bg-slate-50 ring-1 ring-slate-200 border-0 shadow-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt} className="text-xs">
+                        {opt === 'all' ? 'All' : opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-1 flex-wrap">
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-8 w-8 p-0 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                  disabled={currentPage <= 1}
+                  onClick={() => goToPage(currentPage - 1)}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                {pages.map((p, idx) => (
+                  p === '…' ? (
+                    <span key={`gap-${idx}`} className="text-[11px] text-slate-400 px-1 select-none">…</span>
+                  ) : (
+                    <Button
+                      key={p}
+                      variant={p === currentPage ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-8 min-w-8 px-2 rounded-lg text-[11px] font-bold tabular-nums ${
+                        p === currentPage
+                          ? 'bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-sm shadow-indigo-200/50'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                      onClick={() => goToPage(p)}
+                    >
+                      {p}
+                    </Button>
+                  )
+                ))}
+                <Button
+                  variant="ghost" size="sm"
+                  className="h-8 w-8 p-0 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => goToPage(currentPage + 1)}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
 
       {/* Edit Lead Drawer */}
@@ -1065,6 +1195,29 @@ const Leads = () => {
         />
       )}
 
+      {/* Delete Lead Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg bg-red-100 flex items-center justify-center">
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </div>
+              Delete Lead
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button onClick={handleDeleteLead} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white">
+              {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Rename Import Batch Dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="max-w-sm">
@@ -1123,7 +1276,7 @@ const Leads = () => {
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Phone</p>
-                  <p className="font-medium font-mono">{viewTarget.phone || '—'}</p>
+                  <p className="font-medium">{viewTarget.phone || '—'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground text-xs uppercase font-semibold">Email</p>

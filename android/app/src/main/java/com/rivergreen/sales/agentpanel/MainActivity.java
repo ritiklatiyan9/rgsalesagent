@@ -1,4 +1,4 @@
-package com.rivergreen.agent;
+package com.rivergreen.sales.agentpanel;
 
 import android.Manifest;
 import android.content.Intent;
@@ -13,9 +13,9 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
-import com.rivergreen.agent.plugins.CallDetectorPlugin;
-import com.rivergreen.agent.plugins.CallDetectorService;
-import com.rivergreen.agent.plugins.DialerPlugin;
+import com.rivergreen.sales.agentpanel.plugins.CallDetectorPlugin;
+import com.rivergreen.sales.agentpanel.plugins.CallDetectorService;
+import com.rivergreen.sales.agentpanel.plugins.DialerPlugin;
 
 public class MainActivity extends BridgeActivity {
 	private static final String TAG = "RG_MainActivity";

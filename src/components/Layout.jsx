@@ -1,10 +1,10 @@
-import { useState, Suspense, useEffect, useRef, useTransition } from 'react';
+import { useState, Suspense, useEffect, useRef, useTransition, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import Sidebar from './Sidebar';
 import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 import { useAuth } from '@/context/AuthContext';
-import { Bell, X, ChevronRight, LogOut, User, Settings, Users, ContactRound, MessageSquare, House, PhoneCall, Calendar, Check, MapPin } from 'lucide-react';
+import { Bell, X, ChevronRight, LogOut, User, Settings, Users, ContactRound, MessageSquare, House, PhoneCall, Calendar, Check, MapPin, Sparkles } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Drawer, DrawerContent, DrawerClose, DrawerTitle } from '@/components/ui/drawer';
 import {
@@ -21,6 +21,7 @@ import { startBackgroundTracking, stopBackgroundTracking } from '@/services/Back
 import usePushNotifications from '@/hooks/usePushNotifications';
 
 const routeNames = {
+  '/': 'Dashboard',
   '/dashboard': 'Dashboard',
   '/leads': 'My Leads',
   '/leads/add': 'Add Lead',
@@ -74,7 +75,7 @@ const timeAgo = (dateStr) => {
 
 const LayoutBody = () => {
   const { openMobile, setOpenMobile } = useSidebar();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { user, logout, activeSiteId, sites, switchSite, siteLoading } = useAuth();
   const handleSiteChange = async (siteId) => {
     await switchSite(siteId);
@@ -118,7 +119,7 @@ const LayoutBody = () => {
     };
   }, [openMobile]);
 
-  const loadChatNotifications = async () => {
+  const loadChatNotifications = useCallback(async () => {
     try {
       const { data } = await api.get('/chat/conversations');
       if (!data?.success || !Array.isArray(data.conversations)) return;
@@ -151,7 +152,7 @@ const LayoutBody = () => {
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
       const total = unreadConversations.reduce((sum, item) => sum + item.unread, 0);
-      const isOnChatPage = /^\/chat\/?$/.test(pathname);
+      const isOnChatPage = /^\/chat(\/|$)/.test(pathname);
       setChatUnreadTotal((prev) => (isOnChatPage ? total : Math.max(prev, total)));
       setChatNotifications((prev) => {
         const next = unreadConversations.slice(0, 6);
@@ -161,13 +162,15 @@ const LayoutBody = () => {
     } catch {
       // Ignore intermittent chat fetch issues for header bell.
     }
-  };
+  }, [pathname]);
 
   useEffect(() => {
     const token = getAccessToken();
     if (!token || !user?.id) return;
 
-    loadChatNotifications();
+    const initialRefresh = setTimeout(() => {
+      loadChatNotifications();
+    }, 0);
 
     const socket = io(SOCKET_URL, {
       auth: { token },
@@ -185,7 +188,7 @@ const LayoutBody = () => {
     socket.on('chat:message', (msg) => {
       const senderId = String(msg?.sender_id ?? msg?.senderId ?? '');
       if (senderId === String(user.id)) return;
-      if (/^\/chat\/?$/.test(pathname)) return;
+      if (/^\/chat(\/|$)/.test(pathname)) return;
 
       const convId = String(msg?.conversation_id ?? msg?.conversationId ?? `temp-${Date.now()}`);
       const senderName = msg?.sender_name || msg?.senderName;
@@ -226,10 +229,11 @@ const LayoutBody = () => {
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
+      clearTimeout(initialRefresh);
       socket?.disconnect();
       stopBackgroundTracking();
     };
-  }, [user?.id, pathname]);
+  }, [user?.id, pathname, loadChatNotifications]);
 
   const pageTitle = routeNames[pathname]
     || (pathname.includes('/calls/lead/') ? 'Call History'
@@ -296,7 +300,7 @@ const LayoutBody = () => {
                                 <button
                                   key={item.id}
                                   className="w-full rounded-lg border border-slate-200 px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 transition-colors"
-                                  onClick={() => { setNotifOpen(false); navigate(`/chat?conversation=${item.id}`); }}
+                                  onClick={() => { setNotifOpen(false); navigate(`/chat/${item.id}`); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
@@ -349,7 +353,7 @@ const LayoutBody = () => {
                                 <button
                                   key={item.id}
                                   className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                                  onClick={() => { setNotifOpen(false); navigate(`/chat?conversation=${item.id}`); }}
+                                  onClick={() => { setNotifOpen(false); navigate(`/chat/${item.id}`); }}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="text-[12px] font-semibold text-slate-800 truncate">{item.title}</p>
@@ -526,30 +530,27 @@ const LayoutBody = () => {
               {/* Center spacer for raised button */}
               <div className="flex-1" />
 
-              {/* Right tabs: Contacts, More */}
-              {[
-                { to: '/all-contacts', icon: ContactRound, label: 'Contacts' },
-              ].map(({ to, icon: Icon, label }) => {
-                const isActive = pathname === to || pathname.startsWith(to + '/');
+              {/* Right tab: Fresh Leads */}
+              {(() => {
+                const freshActive = pathname === '/leads' && search.includes('from=fresh');
                 return (
                   <button
-                    key={to}
-                    onClick={() => navigate(to)}
+                    onClick={() => navigate('/leads?status=NEW&from=fresh')}
                     className="flex-1 flex flex-col items-center justify-center gap-0.5 transition-all duration-150 active:scale-90"
                   >
                     <div className="relative flex items-center justify-center">
-                      {isActive && <div className="absolute inset-0 h-8 w-8 -top-1.5 -left-1.5 rounded-full bg-indigo-500/15 blur-md" />}
-                      <Icon
-                        className={`relative h-5 w-5 transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}
-                        strokeWidth={isActive ? 2.4 : 1.8}
+                      {freshActive && <div className="absolute inset-0 h-8 w-8 -top-1.5 -left-1.5 rounded-full bg-violet-500/15 blur-md" />}
+                      <Sparkles
+                        className={`relative h-5 w-5 transition-colors duration-150 ${freshActive ? 'text-violet-600' : 'text-slate-500'}`}
+                        strokeWidth={freshActive ? 2.4 : 1.8}
                       />
                     </div>
-                    <span className={`text-[9px] font-bold transition-colors duration-150 ${isActive ? 'text-indigo-600' : 'text-slate-500'}`}>
-                      {label}
+                    <span className={`text-[9px] font-bold transition-colors duration-150 ${freshActive ? 'text-violet-600' : 'text-slate-500'}`}>
+                      Fresh
                     </span>
                   </button>
                 );
-              })}
+              })()}
 
               <button
                 onClick={() => navigate('/calls/scheduled')}
@@ -569,10 +570,10 @@ const LayoutBody = () => {
 
           {/* Raised center Home button */}
           {(() => {
-            const homeActive = pathname === '/dashboard';
+            const homeActive = pathname === '/' || pathname === '/dashboard';
             return (
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/')}
                 className="absolute left-1/2 -translate-x-1/2 -top-6 flex flex-col items-center active:scale-90 transition-transform duration-150"
               >
                 <div className={`h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-150 ${

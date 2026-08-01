@@ -1,4 +1,4 @@
-package com.rivergreen.agent.plugins;
+package com.rivergreen.sales.agentpanel.plugins;
 
 import android.app.Service;
 import android.content.Context;

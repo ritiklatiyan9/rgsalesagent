@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -19,7 +18,7 @@ import {
 import {
   Send, Paperclip, MoreVertical, Pencil, Trash2, FileText,
   Download, Search, MessageSquare, X, Loader2, Check, ArrowDown,
-  UserPlus, Users, UsersRound, ChevronLeft,
+  UserPlus, Users, UsersRound, ChevronLeft, Lock,
 } from 'lucide-react';
 
 const ROLE_COLORS = {
@@ -62,26 +61,34 @@ const getMessageSenderLabel = (msg) => {
 };
 
 // ─── File Preview ───
-const FilePreview = memo(function FilePreview({ fileUrl, fileName }) {
+const FilePreview = memo(function FilePreview({ fileUrl, fileName, isOwn }) {
   const isImage = isImageFile(fileName);
   return (
-    <div className="mt-2 rounded-2xl overflow-hidden border border-slate-200/70 bg-white/90 backdrop-blur-sm shadow-sm">
+    <div className={cn(
+      'mt-2 rounded-xl overflow-hidden shadow-sm',
+      isOwn ? 'border border-[#b8deb0]' : 'border border-slate-200/70'
+    )}>
       {isImage ? (
-        <img src={fileUrl} alt={fileName} className="max-w-65 max-h-50 object-cover" loading="lazy" />
+        <img src={fileUrl} alt={fileName} className="max-w-[240px] max-h-[200px] object-cover" loading="lazy" />
       ) : (
-        <div className="flex items-center gap-3 px-3.5 py-3.5">
-          <div className="h-10 w-10 rounded-xl bg-linear-to-br from-emerald-50 to-green-100 flex items-center justify-center shrink-0">
-            <FileText className="h-4.5 w-4.5 text-slate-500" />
+        <div className={cn('flex items-center gap-3 px-3.5 py-3', isOwn ? 'bg-[#c8f0be]' : 'bg-slate-50')}>
+          <div className="h-9 w-9 rounded-xl bg-white/80 flex items-center justify-center shrink-0 shadow-sm">
+            <FileText className="h-4 w-4 text-slate-500" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-slate-700 truncate">{fileName}</p>
-            <p className="text-[11px] text-slate-400">Document</p>
+            <p className="text-[11px] text-slate-500">Document</p>
           </div>
         </div>
       )}
       <a href={fileUrl} target="_blank" rel="noopener noreferrer" download={fileName}
-        className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-50 transition-colors border-t border-slate-100">
-        <Download className="h-3.5 w-3.5" /> Download
+        className={cn(
+          'flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold transition-colors border-t',
+          isOwn
+            ? 'bg-[#c8f0be] text-emerald-700 hover:bg-[#b8e8ae] border-[#b0d8a8]'
+            : 'bg-white text-emerald-700 hover:bg-emerald-50 border-slate-100'
+        )}>
+        <Download className="h-3 w-3" /> Download
       </a>
     </div>
   );
@@ -97,7 +104,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, permissions, onE
   if (msg.is_deleted) {
     return (
       <div className={cn('flex mb-1.5', isOwn ? 'justify-end' : 'justify-start')}>
-        <div className="max-w-[75%] px-3 py-1.5 rounded-xl text-xs italic bg-slate-50 text-slate-400">
+        <div className="max-w-[75%] px-3 py-1.5 rounded-xl text-xs italic bg-white/70 text-slate-400 border border-slate-200/60">
           This message was deleted · <span className="text-[9px] opacity-60">{time}</span>
         </div>
       </div>
@@ -108,21 +115,21 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, permissions, onE
     <div className={cn('flex mb-1 group', isOwn ? 'justify-end' : 'justify-start')}>
       <div className={cn('max-w-[80%] relative')}>
         {!isOwn && (
-          <p className="text-[10px] text-slate-400 mb-px ml-2.5 font-medium">{getMessageSenderLabel(msg)}</p>
+          <p className="text-[11px] text-slate-400 mb-0.5 ml-3 font-medium">{getMessageSenderLabel(msg)}</p>
         )}
         <div className={cn(
-          'px-3 py-2 rounded-2xl text-[13px] relative',
+          'px-3 py-2 text-[13px] relative shadow-sm',
           isOwn
-            ? 'bg-linear-to-br from-green-500 to-emerald-600 text-white rounded-br-sm shadow-sm shadow-green-200/40'
-            : 'bg-white text-slate-700 border border-slate-200/80 rounded-bl-sm',
+            ? 'bg-[#dcf8c6] border border-[#c8efb2] text-slate-800 rounded-2xl rounded-br-sm'
+            : 'bg-white text-slate-700 border border-slate-200/60 rounded-2xl rounded-bl-sm',
           isPending && 'opacity-60'
         )}>
           {msg.message_text && <p className="whitespace-pre-wrap wrap-break-word leading-snug">{msg.message_text}</p>}
-          {msg.file_url && <FilePreview fileUrl={msg.file_url} fileName={msg.file_name} />}
-          <div className={cn('flex items-center gap-1 mt-1', isOwn ? 'justify-end' : 'justify-start')}>
-            <span className={cn('text-[9px]', isOwn ? 'text-green-100/80' : 'text-slate-400')}>{time}</span>
-            {isEdited && <span className={cn('text-[9px]', isOwn ? 'text-green-200/70' : 'text-slate-400')}>· edited</span>}
-            {isPending && <Loader2 className="h-2.5 w-2.5 animate-spin text-green-200/70" />}
+          {msg.file_url && <FilePreview fileUrl={msg.file_url} fileName={msg.file_name} isOwn={isOwn} />}
+          <div className={cn('flex items-center gap-1 mt-0.5', isOwn ? 'justify-end' : 'justify-start')}>
+            <span className="text-[10px] text-slate-400">{time}</span>
+            {isEdited && <span className="text-[10px] text-slate-400">· edited</span>}
+            {isPending && <Loader2 className="h-2.5 w-2.5 animate-spin text-slate-400" />}
           </div>
         </div>
 
@@ -154,7 +161,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, permissions, onE
   );
 });
 
-// ─── Conversation Item (compact mobile-first) ───
+// ─── Conversation Item ───
 const ConversationItem = memo(function ConversationItem({ conv, isActive, onClick, unreadCount = 0 }) {
   const isGroup = !!conv?.is_group;
   const other = conv.other_participants?.[0];
@@ -173,38 +180,50 @@ const ConversationItem = memo(function ConversationItem({ conv, isActive, onClic
     <div
       onClick={onClick}
       className={cn(
-        'flex items-center gap-2.5 px-2.5 py-2 cursor-pointer rounded-xl transition-all duration-150',
+        'flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors duration-100',
         isActive
-          ? 'bg-linear-to-r from-green-50 to-emerald-50 border border-green-200/80'
-          : 'hover:bg-slate-50/80 border border-transparent active:bg-slate-100/60'
+          ? 'bg-emerald-50 ring-1 ring-[#25d366]/35'
+          : 'hover:bg-[#f5f5f5] active:bg-slate-100/80'
       )}
     >
-      <Avatar className="h-9 w-9 shrink-0 ring-1 ring-white shadow-sm">
+      <Avatar className="h-10 w-10 shrink-0 ring-1 ring-white/80 shadow-sm">
         {!isGroup && other?.profile_photo ? <AvatarImage src={other.profile_photo} alt={other.name} /> : null}
         <AvatarFallback className={cn(
-          'text-white font-bold text-xs',
+          'text-white font-bold text-sm',
           isGroup
             ? 'bg-linear-to-br from-green-500 via-emerald-500 to-teal-500'
-            : (ROLE_AVATAR_COLORS[other?.role] || 'from-slate-400 to-slate-600')
+            : (ROLE_AVATAR_COLORS[other?.role]
+              ? `bg-linear-to-br ${ROLE_AVATAR_COLORS[other.role]}`
+              : 'bg-linear-to-br from-slate-400 to-slate-600')
         )}>
-          {isGroup ? <UsersRound className="h-3.5 w-3.5" /> : (otherName?.charAt(0)?.toUpperCase() || '?')}
+          {isGroup ? <UsersRound className="h-4 w-4" /> : (otherName?.charAt(0)?.toUpperCase() || '?')}
         </AvatarFallback>
       </Avatar>
+
       <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="text-[13px] font-semibold text-slate-800 truncate pr-1">{title}</span>
-          <div className="ml-1.5 shrink-0 flex items-center gap-1.5">
-            {time && <span className="text-[10px] text-slate-400">{time}</span>}
-            {!isActive && unreadCount > 0 && (
-              <span className="min-w-4.5 h-4.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+        <div className="flex items-center justify-between gap-1">
+          <span className="text-[13.5px] font-semibold text-slate-800 truncate">{title}</span>
+          <div className="shrink-0 flex flex-col items-end gap-0.5">
+            {time && (
+              <span className={cn('text-[10.5px]', unreadCount > 0 ? 'text-[#25d366] font-semibold' : 'text-slate-400')}>
+                {time}
+              </span>
+            )}
+            {unreadCount > 0 && !isActive && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#25d366] text-white text-[10px] font-bold flex items-center justify-center leading-none">
                 {unreadLabel}
               </span>
             )}
           </div>
         </div>
-        <p className="text-[11px] text-slate-500 truncate mt-px leading-tight">
-          {isGroup && <span className="text-emerald-600 font-medium">Group · </span>}
-          {!isGroup && other?.role && <span className={cn('font-medium', other.role === 'ADMIN' ? 'text-orange-500' : other.role === 'TEAM_HEAD' ? 'text-violet-500' : 'text-blue-500')}>{other.role} · </span>}
+        <p className="text-[11.5px] text-slate-500 truncate mt-0.5 leading-tight">
+          {isGroup && <span className="text-[#25d366] font-medium">Group · </span>}
+          {!isGroup && other?.role && (
+            <span className={cn('font-medium',
+              other.role === 'ADMIN' ? 'text-orange-500' :
+              other.role === 'TEAM_HEAD' ? 'text-violet-500' : 'text-blue-500'
+            )}>{other.role} · </span>
+          )}
           {lastMsg?.is_deleted ? 'Message deleted' : (lastMsg?.message_text || (lastMsg?.file_name ? '📎 File' : 'No messages yet'))}
         </p>
       </div>
@@ -234,12 +253,18 @@ function UserPicker({ users, onSelect }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium rounded-lg border-dashed border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700">
-          <UserPlus className="h-3.5 w-3.5" />
-          New Chat
-        </Button>
+        <button
+          type="button"
+          title="New Chat"
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+        >
+          <UserPlus className="h-4.5 w-4.5" />
+        </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start" sideOffset={8}>
+      <PopoverContent className="w-72 p-0 shadow-xl rounded-xl border-0 ring-1 ring-slate-200" align="end" sideOffset={8}>
+        <div className="bg-[#075e54] px-3 py-2.5 rounded-t-xl">
+          <p className="text-sm font-semibold text-white">New Chat</p>
+        </div>
         <div className="p-2.5 border-b border-slate-100">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -263,11 +288,14 @@ function UserPicker({ users, onSelect }) {
               <button
                 key={u.id}
                 onClick={() => handleSelect(u.id)}
-                className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg hover:bg-green-50/80 transition-colors text-left"
+                className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg hover:bg-[#f0fdf4] transition-colors text-left"
               >
                 <Avatar className="h-8 w-8 shrink-0">
                   {u.profile_photo ? <AvatarImage src={u.profile_photo} alt={u.name} /> : null}
-                  <AvatarFallback className={cn('bg-linear-to-br text-white font-bold text-xs', ROLE_AVATAR_COLORS[u.role] || 'from-slate-400 to-slate-600')}>
+                  <AvatarFallback className={cn(
+                    'text-white font-bold text-xs',
+                    ROLE_AVATAR_COLORS[u.role] ? `bg-linear-to-br ${ROLE_AVATAR_COLORS[u.role]}` : 'bg-linear-to-br from-slate-400 to-slate-600'
+                  )}>
                     {u.name?.charAt(0)?.toUpperCase() || '?'}
                   </AvatarFallback>
                 </Avatar>
@@ -332,10 +360,10 @@ function GroupCreatorDialog({ open, onOpenChange, users, onCreate }) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) resetState(); }}>
-      <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
-        <div className="bg-linear-to-r from-green-600 to-emerald-600 px-5 py-4 text-white">
-          <DialogTitle className="text-base font-semibold">Create New Group</DialogTitle>
-          <p className="text-xs text-emerald-100 mt-1">Pick members and start team chat instantly.</p>
+      <DialogContent className="sm:max-w-lg p-0 overflow-hidden rounded-2xl">
+        <div className="bg-[#075e54] px-5 py-4 text-white">
+          <DialogTitle className="text-base font-semibold text-white">Create New Group</DialogTitle>
+          <p className="text-xs text-[#9debc7] mt-1">Pick members and start team chat instantly.</p>
         </div>
 
         <div className="p-5 space-y-4">
@@ -372,13 +400,16 @@ function GroupCreatorDialog({ open, onOpenChange, users, onCreate }) {
                       className={cn(
                         'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors border',
                         isSelected
-                          ? 'border-green-200 bg-green-50/80'
+                          ? 'border-[#25d366]/40 bg-[#f0fdf4]'
                           : 'border-transparent hover:bg-slate-50'
                       )}
                     >
                       <Avatar className="h-8 w-8 shrink-0">
                         {u.profile_photo ? <AvatarImage src={u.profile_photo} alt={u.name} /> : null}
-                        <AvatarFallback className={cn('bg-linear-to-br text-white font-bold text-xs', ROLE_AVATAR_COLORS[u.role] || 'from-slate-400 to-slate-600')}>
+                        <AvatarFallback className={cn(
+                          'text-white font-bold text-xs',
+                          ROLE_AVATAR_COLORS[u.role] ? `bg-linear-to-br ${ROLE_AVATAR_COLORS[u.role]}` : 'bg-linear-to-br from-slate-400 to-slate-600'
+                        )}>
                           {u.name?.charAt(0)?.toUpperCase() || '?'}
                         </AvatarFallback>
                       </Avatar>
@@ -386,7 +417,7 @@ function GroupCreatorDialog({ open, onOpenChange, users, onCreate }) {
                         <p className="text-sm font-medium text-slate-700 truncate">{u.name}</p>
                         <p className="text-[10px] text-slate-400 truncate">{u.email}</p>
                       </div>
-                      {isSelected && <Check className="h-4 w-4 text-green-600" />}
+                      {isSelected && <Check className="h-4 w-4 text-[#25d366]" />}
                     </button>
                   );
                 })}
@@ -404,7 +435,7 @@ function GroupCreatorDialog({ open, onOpenChange, users, onCreate }) {
           <Button
             onClick={handleCreate}
             disabled={submitting || selected.length === 0}
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-[#25d366] hover:bg-[#1fab5d] text-white"
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <UsersRound className="h-4 w-4 mr-1.5" />}
             Create Group
@@ -471,17 +502,14 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  /* ── Auto-open conversation from URL ?conversation=ID ── */
   useEffect(() => {
     const convId = searchParams.get('conversation');
     if (!convId) return;
-    // Already resolved (from cache or fresh conversations) — clean the URL
     if (activeConversation && String(activeConversation.id) === convId) {
       setSearchParams({}, { replace: true });
       markConversationAsRead(activeConversation.id);
       return;
     }
-    // Cache miss on mount — try again once conversations load from network
     if (conversations.length) {
       const conv = conversations.find(c => String(c.id) === convId);
       if (conv) {
@@ -615,7 +643,7 @@ export default function Chat() {
     return (
       <div className="flex items-center justify-center -m-2 sm:-m-5 md:-m-8 h-[calc(100dvh-3.5rem)] md:h-[calc(100vh-4rem)]">
         <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-6 w-6 animate-spin text-green-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-[#25d366]" />
           <span className="text-xs text-slate-400 font-medium">Loading chats…</span>
         </div>
       </div>
@@ -623,162 +651,182 @@ export default function Chat() {
   }
 
   return (
-    <div className="-m-2 sm:-m-5 md:-m-8 -mb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:-mb-10 h-[calc(100dvh-3.5rem)] md:h-[calc(100vh-4rem)] overflow-hidden flex flex-col bg-white sm:bg-slate-50/50">
+    <div className="-m-2 sm:-m-5 md:-m-8 -mb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:-mb-10 h-[calc(100dvh-3.5rem)] md:h-[calc(100vh-4rem)] overflow-hidden flex flex-col bg-[#efeae2]">
 
       <div className="flex gap-0 md:gap-2 flex-1 min-h-0 overflow-hidden md:p-2">
+
         {/* ─── Left Sidebar ─── */}
         <div className={cn(
-          'w-full md:w-80 min-h-0 shrink-0 flex flex-col overflow-hidden bg-white md:border md:border-slate-200/80 md:rounded-2xl md:shadow-sm',
+          'w-full md:w-80 min-h-0 shrink-0 flex flex-col overflow-hidden bg-white md:rounded-2xl md:shadow-sm md:overflow-hidden',
           isMobile && mobilePane === 'chat' && 'hidden'
         )}>
-          {/* Sidebar header — compact */}
-          <div className="px-3 pt-2.5 pb-2 border-b border-slate-100 space-y-2">
+          {/* Sidebar header — WhatsApp dark green */}
+          <div className="bg-[#075e54] px-3 pt-3 pb-2.5 space-y-2.5 shrink-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-800 flex-1">Chats</h2>
+              <h2 className="text-[15px] font-semibold text-white flex-1">Chats</h2>
               {unreadTotal > 0 && (
-                <span className="min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{unreadTotal}</span>
+                <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#25d366] text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadTotal}
+                </span>
               )}
               <button
                 type="button"
                 onClick={() => setGroupDialogOpen(true)}
-                className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-green-50 hover:text-green-600 active:scale-95 transition-all"
+                title="New Group"
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
               >
-                <UsersRound className="h-3.5 w-3.5" />
+                <UsersRound className="h-4.5 w-4.5" />
               </button>
               <UserPicker users={users} onSelect={handleStartChat} />
             </div>
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <Input
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#9debc7]" />
+              <input
                 placeholder="Search…"
                 value={sidebarSearch}
                 onChange={(e) => setSidebarSearch(e.target.value)}
-                className="pl-8 h-8 text-xs rounded-lg bg-slate-50 border-slate-200"
+                className="w-full pl-8 pr-7 h-8 text-[13px] rounded-lg bg-[#128C7E]/60 border-0 text-white placeholder-[#9debc7]/80 focus:outline-none focus:ring-1 focus:ring-white/20"
               />
               {sidebarSearch && (
                 <button onClick={() => setSidebarSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <X className="h-3 w-3 text-slate-400" />
+                  <X className="h-3 w-3 text-[#9debc7]" />
                 </button>
               )}
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
-            <div className="p-1.5 pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] md:pb-1.5 space-y-0.5">
+          {/* Conversation list */}
+          <div className="flex-1 overflow-y-auto overscroll-contain">
+            <div className="pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] md:pb-0 divide-y divide-slate-100/80">
               {filteredConversations.length === 0 ? (
                 <div className="text-center py-10 px-4">
                   <MessageSquare className="h-8 w-8 text-slate-200 mx-auto mb-2" />
                   <p className="text-xs font-medium text-slate-400">No conversations</p>
                 </div>
               ) : (
-                filteredConversations.map(conv => (
-                  <div key={conv.id} className="group relative">
-                    {(() => {
-                      const canDeleteConversation = !conv?.is_group || String(conv?.created_by || '') === String(user?.id || '');
-                      return (
-                        <>
-                    <ConversationItem
-                      conv={conv}
-                      isActive={activeConversation?.id === conv.id}
-                      unreadCount={unreadCounts[String(conv.id)] || 0}
-                      onClick={() => openConversation(conv)}
-                    />
-                    {canDeleteConversation && <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-white/90 border border-slate-200 flex items-center justify-center opacity-100 pointer-events-auto md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto"
-                        >
-                          <MoreVertical className="h-3 w-3 text-slate-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenuItem
-                          className="text-red-600 focus:text-red-600"
-                          onClick={() => setDeleteConversationConfirm(conv)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-2" />
-                          {conv?.is_group ? 'Delete Group' : 'Delete Chat'}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>}
-                        </>
-                      );
-                    })()}
-                  </div>
-                ))
+                filteredConversations.map(conv => {
+                  const canDeleteConversation = !conv?.is_group || String(conv?.created_by || '') === String(user?.id || '');
+                  return (
+                    <div key={conv.id} className="group relative">
+                      <ConversationItem
+                        conv={conv}
+                        isActive={activeConversation?.id === conv.id}
+                        unreadCount={unreadCounts[String(conv.id)] || 0}
+                        onClick={() => openConversation(conv)}
+                      />
+                      {canDeleteConversation && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute top-2 right-2 h-6 w-6 rounded-full bg-white/90 border border-slate-200 flex items-center justify-center opacity-100 pointer-events-auto md:opacity-0 md:pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto focus:opacity-100 focus:pointer-events-auto shadow-sm"
+                            >
+                              <MoreVertical className="h-3 w-3 text-slate-400" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onClick={() => setDeleteConversationConfirm(conv)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              {conv?.is_group ? 'Delete Group' : 'Delete Chat'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
-          </ScrollArea>
+          </div>
         </div>
 
         {/* ─── Right Chat Panel ─── */}
         <div className={cn(
-          'flex-1 w-full min-h-0 flex flex-col overflow-hidden bg-white md:border md:border-slate-200/80 md:rounded-2xl md:shadow-sm',
+          'flex-1 w-full min-h-0 flex flex-col overflow-hidden bg-[#efeae2] md:rounded-2xl md:shadow-sm md:overflow-hidden',
           isMobile && mobilePane === 'list' && 'hidden'
         )}>
           {activeConversation ? (
             <>
-              <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2 shrink-0 bg-white">
+              {/* Chat header */}
+              <div className="bg-[#075e54] px-3 py-2 flex items-center gap-2.5 shrink-0">
                 {isMobile && (
                   <button
                     type="button"
                     onClick={() => setMobilePane('list')}
-                    className="h-7 w-7 rounded-lg text-slate-500 flex items-center justify-center shrink-0 active:bg-slate-100"
+                    className="h-7 w-7 flex items-center justify-center text-white/80 hover:text-white active:scale-95 transition-all shrink-0"
                     aria-label="Back"
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-5 w-5" />
                   </button>
                 )}
-                <Avatar className="h-8 w-8 shrink-0">
+                <Avatar className="h-9 w-9 shrink-0 ring-1 ring-white/20">
                   {otherUser?.profile_photo ? <AvatarImage src={otherUser.profile_photo} alt={otherUser.name} /> : null}
-                  <AvatarFallback className={cn('bg-linear-to-br text-white font-bold text-xs', ROLE_AVATAR_COLORS[otherUser?.role] || 'from-slate-400 to-slate-600')}>
-                    {isActiveGroup ? <UsersRound className="h-3.5 w-3.5" /> : (activeTitle?.charAt(0)?.toUpperCase() || '?')}
+                  <AvatarFallback className={cn(
+                    'text-white font-bold text-sm',
+                    isActiveGroup
+                      ? 'bg-linear-to-br from-green-400 to-emerald-600'
+                      : (ROLE_AVATAR_COLORS[otherUser?.role]
+                        ? `bg-linear-to-br ${ROLE_AVATAR_COLORS[otherUser.role]}`
+                        : 'bg-linear-to-br from-slate-400 to-slate-600')
+                  )}>
+                    {isActiveGroup ? <UsersRound className="h-4 w-4" /> : (activeTitle?.charAt(0)?.toUpperCase() || '?')}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-slate-800 truncate leading-tight">{activeTitle}</p>
-                  <div className="flex items-center gap-1">
-                    {!isActiveGroup && !!otherUserPhone && (
-                      <span className="text-[10px] text-slate-500 truncate">{otherUserPhone}</span>
-                    )}
-                    {!isActiveGroup && otherUser?.role && (
-                      <span className={cn('text-[9px] font-medium', otherUser.role === 'ADMIN' ? 'text-orange-500' : otherUser.role === 'TEAM_HEAD' ? 'text-violet-500' : 'text-blue-500')}>
-                        · {otherUser.role}
-                      </span>
-                    )}
-                    {isActiveGroup && (
-                      <span className="text-[10px] text-emerald-600 font-medium">
-                        · {(activeConversationData?.participant_count || (activeConversationData?.other_participants?.length || 0) + 1)} members
-                      </span>
-                    )}
-                    {typingDisplay && (
-                      <span className="text-[10px] text-green-500 animate-pulse font-medium ml-1">typing…</span>
+                  <p className="text-[14px] font-semibold text-white truncate leading-tight">{activeTitle}</p>
+                  <div className="flex items-center gap-1 h-4">
+                    {typingDisplay ? (
+                      <span className="text-[11px] text-[#9debc7] font-medium animate-pulse">typing…</span>
+                    ) : (
+                      <>
+                        {!isActiveGroup && !!otherUserPhone && (
+                          <span className="text-[11px] text-[#9debc7]/80 truncate">{otherUserPhone}</span>
+                        )}
+                        {!isActiveGroup && otherUser?.role && (
+                          <span className="text-[11px] text-[#9debc7]/80 font-medium">
+                            {otherUserPhone ? ' · ' : ''}{otherUser.role}
+                          </span>
+                        )}
+                        {isActiveGroup && (
+                          <span className="text-[11px] text-[#9debc7]/80 font-medium">
+                            {(activeConversationData?.participant_count || (activeConversationData?.other_participants?.length || 0) + 1)} members
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
               </div>
 
+              {/* Messages area */}
               <div
-                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 md:px-4 py-2 relative bg-slate-50/30"
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 md:px-4 py-3 relative"
+                style={{ background: '#efeae2' }}
                 onScroll={handleScroll}
                 ref={scrollAreaRef}
               >
                 {messagesLoading && (
                   <div className="flex justify-center py-4">
-                    <Loader2 className="h-5 w-5 animate-spin text-green-400" />
+                    <Loader2 className="h-5 w-5 animate-spin text-[#25d366]" />
                   </div>
                 )}
                 {!messagesLoading && hasMore && messages.length > 0 && (
-                  <button onClick={loadOlderMessages} className="w-full text-center py-2 text-xs text-green-500 hover:text-green-700 font-medium transition-colors">
+                  <button onClick={loadOlderMessages} className="w-full text-center py-2 text-xs text-[#075e54] hover:text-[#128C7E] font-medium transition-colors">
                     Load older messages
                   </button>
                 )}
                 {messages.length === 0 && !messagesLoading && (
-                  <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                    <MessageSquare className="h-8 w-8 text-slate-200 mb-2" />
-                    <p className="text-xs font-medium text-slate-400">No messages yet</p>
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <div className="bg-white/70 rounded-2xl px-5 py-4 flex flex-col items-center gap-2 shadow-sm">
+                      <Lock className="h-5 w-5 text-slate-400" />
+                      <p className="text-xs text-slate-500 font-medium text-center">
+                        Messages are end-to-end encrypted.<br />No messages yet.
+                      </p>
+                    </div>
                   </div>
                 )}
                 {messages.map(msg => (
@@ -796,14 +844,15 @@ export default function Chat() {
                 {showScrollBtn && (
                   <button
                     onClick={scrollToBottom}
-                    className="absolute bottom-16 md:bottom-4 right-4 h-8 w-8 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-lg hover:bg-slate-50 transition-all"
+                    className="absolute bottom-4 right-4 h-9 w-9 bg-white border border-slate-200 rounded-full flex items-center justify-center shadow-lg hover:bg-slate-50 active:scale-95 transition-all"
                   >
                     <ArrowDown className="h-4 w-4 text-slate-600" />
                   </button>
                 )}
               </div>
 
-              <div className="px-2 py-1.5 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-1.5 border-t border-slate-100 shrink-0 bg-white">
+              {/* Input bar */}
+              <div className="px-2 py-2 pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-2 shrink-0 bg-[#f0f0f0]">
                 <div className="flex items-center gap-1.5">
                   <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden"
                     accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.zip,.xlsx,.xls" />
@@ -811,42 +860,49 @@ export default function Chat() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
-                    className="h-8 w-8 rounded-lg shrink-0 text-slate-400 hover:text-green-600 hover:bg-green-50 flex items-center justify-center active:scale-95 transition-all disabled:opacity-50"
+                    className="h-10 w-10 rounded-full shrink-0 text-slate-500 hover:text-[#075e54] hover:bg-white flex items-center justify-center active:scale-95 transition-all disabled:opacity-50"
                   >
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                    {uploading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Paperclip className="h-4.5 w-4.5" />}
                   </button>
-                  <Input
+                  <input
                     ref={inputRef}
                     value={messageInput}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type a message…"
-                    className="flex-1 h-8 text-sm rounded-lg bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+                    placeholder="Type a message"
+                    className="flex-1 h-10 px-4 text-[13.5px] rounded-full bg-white border border-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all placeholder-slate-400 text-slate-800"
                   />
                   <button
                     type="button"
                     onClick={handleSend}
                     disabled={!messageInput.trim()}
-                    className="h-8 w-8 rounded-lg bg-green-600 hover:bg-green-700 text-white shrink-0 flex items-center justify-center active:scale-95 transition-all disabled:opacity-40 shadow-sm"
+                    className="h-10 w-10 rounded-full bg-[#25d366] hover:bg-[#1fab5d] text-white shrink-0 flex items-center justify-center active:scale-95 transition-all disabled:opacity-40 shadow-sm"
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    <Send className="h-4 w-4" />
                   </button>
                 </div>
               </div>
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center px-5 text-center">
-              <MessageSquare className="h-10 w-10 text-slate-200 mb-3" />
-              <p className="text-sm font-medium text-slate-500">Select a conversation</p>
-              {isMobile && (
-                <button
-                  type="button"
-                  className="mt-3 text-xs font-medium text-green-600 hover:text-green-700"
-                  onClick={() => setMobilePane('list')}
-                >
-                  ← Back to chats
-                </button>
-              )}
+              <div className="bg-white/60 backdrop-blur-sm rounded-3xl px-8 py-8 flex flex-col items-center gap-3 shadow-sm max-w-xs">
+                <div className="h-16 w-16 rounded-full bg-[#25d366]/15 flex items-center justify-center">
+                  <MessageSquare className="h-8 w-8 text-[#25d366]" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-slate-700">DG Sales Chat</p>
+                  <p className="text-xs text-slate-500 mt-1">Select a conversation to start messaging</p>
+                </div>
+                {isMobile && (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs font-semibold text-[#075e54] hover:text-[#128C7E] transition-colors"
+                    onClick={() => setMobilePane('list')}
+                  >
+                    ← View Chats
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -854,37 +910,37 @@ export default function Chat() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editingMsg} onOpenChange={() => setEditingMsg(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit Message</DialogTitle>
-          </DialogHeader>
-          <div className="py-3">
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-2xl">
+          <div className="bg-[#075e54] px-5 py-4">
+            <DialogTitle className="text-base font-semibold text-white">Edit Message</DialogTitle>
+          </div>
+          <div className="p-5">
             <Input
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleEditSubmit()}
               placeholder="Edit your message..."
-              className="text-sm"
+              className="text-sm rounded-xl h-10"
               autoFocus
             />
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-5 pb-5">
             <Button variant="outline" onClick={() => setEditingMsg(null)} size="sm">Cancel</Button>
-            <Button onClick={handleEditSubmit} disabled={!editText.trim()} size="sm">
+            <Button onClick={handleEditSubmit} disabled={!editText.trim()} size="sm" className="bg-[#25d366] hover:bg-[#1fab5d] text-white">
               <Check className="h-3.5 w-3.5 mr-1.5" /> Save
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Delete Message Dialog */}
       <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Message</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-slate-500 py-2">Are you sure you want to delete this message? This cannot be undone.</p>
-          <DialogFooter>
+        <DialogContent className="sm:max-w-sm p-0 overflow-hidden rounded-2xl">
+          <div className="bg-[#075e54] px-5 py-4">
+            <DialogTitle className="text-base font-semibold text-white">Delete Message</DialogTitle>
+          </div>
+          <p className="text-sm text-slate-500 px-5 py-4">Are you sure you want to delete this message? This cannot be undone.</p>
+          <DialogFooter className="px-5 pb-5">
             <Button variant="outline" onClick={() => setDeleteConfirm(null)} size="sm">Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} size="sm">
               <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
@@ -893,17 +949,20 @@ export default function Chat() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Conversation Dialog */}
       <Dialog open={!!deleteConversationConfirm} onOpenChange={() => setDeleteConversationConfirm(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{deleteConversationConfirm?.is_group ? 'Delete Group' : 'Delete Chat'}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-slate-500 py-2">
+        <DialogContent className="sm:max-w-sm p-0 overflow-hidden rounded-2xl">
+          <div className="bg-[#075e54] px-5 py-4">
+            <DialogTitle className="text-base font-semibold text-white">
+              {deleteConversationConfirm?.is_group ? 'Delete Group' : 'Delete Chat'}
+            </DialogTitle>
+          </div>
+          <p className="text-sm text-slate-500 px-5 py-4">
             {deleteConversationConfirm?.is_group
               ? 'Are you sure you want to delete this group and all messages? This cannot be undone.'
               : 'Are you sure you want to delete this chat thread and all messages? This cannot be undone.'}
           </p>
-          <DialogFooter>
+          <DialogFooter className="px-5 pb-5">
             <Button variant="outline" onClick={() => setDeleteConversationConfirm(null)} size="sm">Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteConversation} size="sm">
               <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete

@@ -1,4 +1,4 @@
-package com.rivergreen.agent.plugins;
+package com.rivergreen.sales.agentpanel.plugins;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -20,7 +20,7 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import com.rivergreen.agent.R;
+import com.rivergreen.sales.agentpanel.R;
 
 /**
  * Foreground Service that runs in the :call_detector process.

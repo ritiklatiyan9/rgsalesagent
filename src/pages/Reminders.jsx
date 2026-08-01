@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/axios';
-import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
+import { broadcastMutation, onMutation } from '@/lib/mutationBus';
 import { useCallAction } from '@/hooks/useCallAction';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -162,7 +163,7 @@ const ScheduleDialog = ({ lead, open, onClose, onScheduled }) => {
                 ...(form.scheduled_time ? { scheduled_time: form.scheduled_time } : {}),
                 ...(form.notes.trim() ? { notes: form.notes.trim() } : {}),
             });
-            invalidateCache('/followups');
+            broadcastMutation(['followups']);
             toast.success(`Follow-up scheduled for ${lead.client_name}`);
             onScheduled();
             onClose();
@@ -436,13 +437,13 @@ const Reminders = () => {
         initiateCall(phone, { leadId: r.lead_id, name: r.client_name });
     }, [initiateCall]);
 
-    const fetchReminders = useCallback(async (pg = 1, currentFilter, currentSearch) => {
+    const fetchReminders = useCallback(async (pg = 1, currentFilter, currentSearch, force = false) => {
         if (!hasDataRef.current) setLoading(true);
         else setRefreshing(true);
         try {
             const params = new URLSearchParams({ page: pg, limit: 30, filter: currentFilter });
             if (currentSearch) params.set('search', currentSearch);
-            const data = await cachedGet(`/followups/reminders?${params}`, { staleTime: 120_000, cacheTime: 300_000 });
+            const data = await cachedGet(`/followups/reminders?${params}`, { staleTime: 120_000, cacheTime: 300_000, force });
             if (data.success) {
                 setReminders(data.reminders || []);
                 setCounts(data.counts || {});
@@ -456,6 +457,18 @@ const Reminders = () => {
             setRefreshing(false);
         }
     }, []);
+
+    const fetchRemindersRef = useRef(fetchReminders);
+    fetchRemindersRef.current = fetchReminders;
+    const reminderFiltersRef = useRef({ filter, search, page: pagination.page });
+    reminderFiltersRef.current = { filter, search, page: pagination.page };
+
+    useEffect(() => onMutation((entities) => {
+        if (entities.includes('followups')) {
+            const f = reminderFiltersRef.current;
+            fetchRemindersRef.current(f.page, f.filter, f.search, true);
+        }
+    }), []);
 
     useEffect(() => {
         const t = setTimeout(() => fetchReminders(1, filter, search), search ? 300 : 0);
@@ -471,6 +484,7 @@ const Reminders = () => {
             setReminders(prev => prev.map(r => r.id === id ? { ...r, status: 'completed', raw_status: 'COMPLETED' } : r));
             setCounts(p => ({ ...p, pending: Math.max(0, p.pending - 1), completed: p.completed + 1 }));
             toast.success('Marked as completed');
+            broadcastMutation(['followups']);
         } catch { toast.error('Failed to update'); }
         finally { setActionLoading(null); }
     };
@@ -484,6 +498,7 @@ const Reminders = () => {
             setCounts(p => ({ ...p, pending: Math.max(0, p.pending - 1), snoozed: p.snoozed + 1 }));
             const label = minutes < 60 ? `${minutes}m` : minutes < 1440 ? `${minutes / 60}h` : '1d';
             toast.success(`Snoozed for ${label}`);
+            broadcastMutation(['followups']);
         } catch { toast.error('Failed to snooze'); }
         finally { setActionLoading(null); }
     };

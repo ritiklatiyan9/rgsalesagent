@@ -261,6 +261,7 @@ const isPendingProtected = (item) => {
     const id = item?.id != null ? String(item.id) : '';
     if (!id) return false;
     if (id.startsWith('local-')) return true;
+    if (id.startsWith('device-')) return true;
     return pendingIds.has(id);
 };
 

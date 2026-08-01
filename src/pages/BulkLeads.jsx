@@ -81,7 +81,9 @@ const BulkLeads = () => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const wb   = XLSX.read(e.target.result, { type: 'array' });
+                // sheetRows: 11 = header + 10 preview rows; the full file is sent to
+                // the server as-is so large files (5000+ rows) don't freeze the UI
+                const wb   = XLSX.read(e.target.result, { type: 'array', sheetRows: 11 });
                 const ws   = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
                 if (!rows.length) return setParseError('File appears to be empty');

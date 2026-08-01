@@ -58,7 +58,8 @@ const BulkImportContacts = () => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const wb = XLSX.read(e.target.result, { type: 'array' });
+                // sheetRows: 11 = header + 10 preview rows; full file sent to server as-is
+                const wb = XLSX.read(e.target.result, { type: 'array', sheetRows: 11 });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
                 if (!rows.length) return setParseError('File appears to be empty');
@@ -98,6 +99,7 @@ const BulkImportContacts = () => {
             fd.append('file', selectedFile);
             const { data } = await api.post('/contacts/bulk/upload', fd, {
                 headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 120000, // 2 min — server processes all rows synchronously
             });
             if (data.success) {
                 setResult(data);

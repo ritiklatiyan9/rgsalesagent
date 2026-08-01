@@ -34,6 +34,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isTeamHead, setIsTeamHead] = useState(false);
+  const [isTeamHeadLoading, setIsTeamHeadLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [siteLoading, setSiteLoading] = useState(false);
   const [sites, setSites] = useState([]);
@@ -119,10 +120,12 @@ export const AuthProvider = ({ children }) => {
 
   // Resolve whether the user is the team head by checking team.heads array
   const resolveTeamHead = async (userData) => {
+    setIsTeamHeadLoading(true);
     const roleBasedTeamHead = hasTeamHeadRole(userData);
 
     if (!userData?.team_id) {
       setIsTeamHead(roleBasedTeamHead);
+      setIsTeamHeadLoading(false);
       return;
     }
 
@@ -138,6 +141,8 @@ export const AuthProvider = ({ children }) => {
     } catch {
       // Keep role-based access even if team lookup fails intermittently.
       setIsTeamHead(roleBasedTeamHead);
+    } finally {
+      setIsTeamHeadLoading(false);
     }
   };
 
@@ -286,6 +291,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       user,
       isTeamHead,
+      isTeamHeadLoading,
       loading,
       login,
       logout,

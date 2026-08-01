@@ -184,7 +184,7 @@ const LeadSearchWidget = ({ category = 'ALL', dark = false }) => {
           className={`w-full min-w-0 pl-10 pr-9 h-10 text-sm shadow-sm rounded-xl focus-visible:ring-2 transition-all placeholder:text-muted-foreground/60 ${
             dark
               ? 'bg-white/10 border-white/20 text-white placeholder:text-slate-400 focus-visible:ring-violet-500/40 focus-visible:border-violet-400/60'
-              : 'bg-white border-black/40 text-foreground focus-visible:ring-primary/20 focus-visible:border-primary/50'
+              : 'bg-slate-50 border-slate-200 text-foreground rounded-2xl focus-visible:ring-indigo-200/60 focus-visible:border-indigo-300 shadow-sm'
           }`}
           autoComplete="off"
         />

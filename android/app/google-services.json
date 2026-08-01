@@ -28,7 +28,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:536159867120:android:2c94864f394f17fee27235",
         "android_client_info": {
-          "package_name": "com.rivergreen.agent"
+          "package_name": "com.rivergreen.sales.agentpanel"
         }
       },
       "oauth_client": [],

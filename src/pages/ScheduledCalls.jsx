@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/axios';
-import { cachedGet, getCachedSync, invalidateCache } from '@/lib/queryCache';
+import { cachedGet, getCachedSync } from '@/lib/queryCache';
+import { broadcastMutation, onMutation } from '@/lib/mutationBus';
 import { useDialer } from '@/hooks/useDialer';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay } from 'date-fns';
@@ -32,46 +33,6 @@ const WhatsAppIcon = ({ className = 'h-4 w-4' }) => (
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
     </svg>
 );
-
-/* ─── Editorial serif ─── */
-const serif = { fontFamily: 'Georgia, "Times New Roman", serif' };
-
-/* ─── Mini sparkline (editorial stat cards) ─── */
-const SPARK_PATTERNS = {
-    line: [3, 5, 4, 6, 5, 8, 7, 9],
-    bars: [3, 6, 4, 7, 5, 8, 6, 9],
-    down: [9, 7, 8, 5, 6, 3, 4, 2],
-    rise: [2, 4, 3, 5, 6, 7, 8, 9],
-};
-const MiniSpark = ({ color = '#6366f1', pattern = 'line', variant = 'line', uid = 'x' }) => {
-    const data = SPARK_PATTERNS[pattern] || SPARK_PATTERNS.line;
-    const w = 56, h = 24, max = 10, step = w / (data.length - 1);
-    if (variant === 'bars') {
-        const bw = (w - (data.length * 2)) / data.length;
-        return (
-            <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0 opacity-85" preserveAspectRatio="none">
-                {data.map((v, i) => {
-                    const bh = (v / max) * h;
-                    return <rect key={i} x={i * (bw + 2)} y={h - bh} width={bw} height={bh} rx="1" fill={color} opacity={0.55 + (v / max) * 0.45} />;
-                })}
-            </svg>
-        );
-    }
-    const pts = data.map((v, i) => `${i * step},${h - (v / max) * h}`).join(' ');
-    const area = `0,${h} ${pts} ${w},${h}`;
-    return (
-        <svg viewBox={`0 0 ${w} ${h}`} className="w-14 h-6 shrink-0" preserveAspectRatio="none">
-            <defs>
-                <linearGradient id={`sc-${uid}`} x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-            </defs>
-            <polyline points={area} fill={`url(#sc-${uid})`} stroke="none" />
-            <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-    );
-};
 
 /* ─── Design tokens ─── */
 const TYPE_THEME = {
@@ -112,36 +73,16 @@ const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('en-IN', { hour: '2-di
 
 const isOverdue = (dateStr) => dateStr && new Date(dateStr) < new Date();
 
-/* ─── Stat Tile — editorial ─── */
-const StatTile = ({ label, short, value, icon: Icon, tone, hex, spark = 'line', variant = 'line', uid = 'x' }) => (
-    <div className="group relative overflow-hidden rounded-[22px] bg-white ring-1 ring-slate-100 p-3.5 pt-4 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)] transition-all duration-150">
-        <div className={`absolute top-0 left-0 right-0 h-1 bg-linear-to-r ${tone}`} />
-        <div className="flex items-center justify-between">
-            <p className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: hex }}>{short}</p>
-            <div className="h-6 w-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: hex + '1a', color: hex }}>
-                <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
-            </div>
-        </div>
-        <div className="mt-3 flex items-end justify-between gap-2">
-            <p className="text-[30px] font-bold text-slate-900 leading-none tabular-nums tracking-tight" style={serif}>{value}</p>
-            <MiniSpark color={hex} pattern={spark} variant={variant} uid={uid} />
-        </div>
-        <p className="text-[12px] font-semibold text-slate-800 mt-2.5">{label}</p>
-    </div>
-);
-
-/* ─── Card Skeleton ─── */
+/* ─── Row Skeleton ─── */
 const CardSkeleton = () => (
-    <div className="rounded-xl bg-white border border-slate-100 p-3.5 pt-5 overflow-hidden">
+    <div className="rounded-2xl bg-white border border-slate-200 px-3 py-3 shadow-sm">
         <div className="flex items-center gap-3">
-            <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
-            <div className="flex-1 space-y-1.5"><Skeleton className="h-3.5 w-32 rounded" /><Skeleton className="h-3 w-20 rounded" /></div>
-            <Skeleton className="h-5 w-16 rounded-md" />
-        </div>
-        <div className="mt-3 pl-13 space-y-2">
-            <div className="flex gap-1.5"><Skeleton className="h-4 w-16 rounded-md" /><Skeleton className="h-4 w-20 rounded-md" /></div>
-            <Skeleton className="h-3 w-28 rounded" />
-            <div className="flex gap-2 pt-2"><Skeleton className="h-8 flex-1 rounded-lg" /><Skeleton className="h-8 w-8 rounded-lg" /><Skeleton className="h-8 w-8 rounded-lg" /></div>
+            <Skeleton className="w-9 h-9 rounded-xl shrink-0" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+                <Skeleton className="h-4 w-36 rounded" />
+                <Skeleton className="h-3 w-24 rounded" />
+            </div>
+            <Skeleton className="h-8 w-20 rounded-xl" />
         </div>
     </div>
 );
@@ -169,6 +110,10 @@ const ScheduledCalls = () => {
     const [snoozeModal, setSnoozeModal] = useState({ open: false, id: null });
     const [snoozeDate, setSnoozeDate] = useState(null);
     const [snoozeTime, setSnoozeTime] = useState('10:00');
+
+    // ─── Cancel schedule ───
+    const [cancelModal, setCancelModal] = useState({ open: false, id: null, name: '' });
+    const [cancelling, setCancelling] = useState(false);
 
     // ─── Active call state ───
     const [activeCall, setActiveCall] = useState(null);
@@ -203,7 +148,7 @@ const ScheduledCalls = () => {
     }, [datePreset, customDateFrom, customDateTo]);
 
     // ─── Fetch followups ───
-    const fetchData = useCallback(async (page = 1) => {
+    const fetchData = useCallback(async (page = 1, force = false) => {
         // Cancel any in-flight request
         if (abortRef.current) abortRef.current.abort();
         const controller = new AbortController();
@@ -218,7 +163,7 @@ const ScheduledCalls = () => {
             const range = getDateRange();
             if (range.from) params.set('date_from', range.from);
             if (range.to) params.set('date_to', range.to);
-            const data = await cachedGet(`/followups/scheduled?${params}`, { staleTime: 120_000, cacheTime: 300_000 });
+            const data = await cachedGet(`/followups/scheduled?${params}`, { staleTime: 120_000, cacheTime: 300_000, force });
             if (data.success) {
                 setFollowups(data.followups);
                 setPagination(data.pagination || { page: 1, totalPages: 1, total: data.followups?.length || 0 });
@@ -244,8 +189,20 @@ const ScheduledCalls = () => {
         } catch { /* ignore */ }
     }, []);
 
-    // Auto-fetch when date filters change
-    useEffect(() => { fetchData(1); }, [datePreset, customDateFrom, customDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
+    const fetchDataRef = useRef(fetchData);
+    fetchDataRef.current = fetchData;
+    const scPageRef = useRef(pagination.page);
+    scPageRef.current = pagination.page;
+
+    useEffect(() => onMutation((entities) => {
+        if (entities.some(e => e === 'followups' || e === 'calls')) {
+            fetchDataRef.current(scPageRef.current, true);
+        }
+    }), []);
+
+    // Force-refresh on mount and whenever date filters change so newly-created
+    // followups (from other pages) always appear without a stale-cache delay.
+    useEffect(() => { fetchData(1, true); }, [datePreset, customDateFrom, customDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { fetchOutcomes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cleanup abort controller on unmount
@@ -372,7 +329,7 @@ const ScheduledCalls = () => {
                 toast.success('Call completed & saved', { description: `${formatDuration(finalDuration)} with ${activeCall.leadName}` });
                 setFollowups(prev => prev.filter(f => f.id !== activeCall.followupId));
             }
-            invalidateCache('/followups');
+            broadcastMutation(['followups', 'calls']);
             setActiveCall(null);
             setCapturedDurationSec(null);
             setEndCallModal(false);
@@ -389,12 +346,30 @@ const ScheduledCalls = () => {
             const { data } = await api.put(`/followups/${snoozeModal.id}/snooze`, { snooze_until: snoozeUntil });
             if (data.success) {
                 toast.success('Follow-up snoozed');
-                invalidateCache('/followups');
+                broadcastMutation(['followups']);
                 setFollowups(prev => prev.map(f => f.id === snoozeModal.id ? { ...f, status: 'SNOOZED', scheduled_at: snoozeUntil } : f));
                 setSnoozeModal({ open: false, id: null });
             }
         } catch (err) { toast.error(err?.response?.data?.message || 'Failed to snooze'); }
         finally { setActionLoading(null); }
+    };
+
+    // ─── Cancel (remove) schedule ───
+    const handleCancelSchedule = async () => {
+        if (!cancelModal.id) return;
+        setCancelling(true);
+        try {
+            await api.put(`/followups/${cancelModal.id}`, { status: 'CANCELLED' });
+            toast.success('Schedule cancelled');
+            setFollowups(prev => prev.filter(f => f.id !== cancelModal.id));
+            setCounts(prev => ({ ...prev, pending: Math.max(0, prev.pending - 1), total: Math.max(0, prev.total - 1) }));
+            setCancelModal({ open: false, id: null, name: '' });
+            broadcastMutation(['followups']);
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to cancel schedule');
+        } finally {
+            setCancelling(false);
+        }
     };
 
     /* ═══════════════════════════ JSX ═══════════════════════════ */
@@ -408,32 +383,59 @@ const ScheduledCalls = () => {
     })();
 
     return (
-        <div className="space-y-5 pb-6">
+        <div className="space-y-3 pb-6">
 
-            {/* ══════ HEADER — editorial ══════ */}
-            <header className="space-y-1.5">
-                <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-slate-400">Follow-ups</p>
-                <h1 className="leading-[1.05] tracking-tight flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[28px] font-bold text-slate-900">Scheduled</span>
-                    <span className="text-[28px] font-normal italic text-indigo-600" style={serif}>calls.</span>
-                </h1>
-                <p className="text-[13px] text-slate-500 italic leading-snug max-w-70" style={serif}>
-                    {descriptiveLine}
-                </p>
+            {/* App header */}
+            <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="relative px-3.5 py-3.5 sm:px-4">
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-linear-to-r from-indigo-500 via-sky-500 to-emerald-400" />
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200" />
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Follow-ups</p>
+                            </div>
+                            <h1 className="mt-0.5 truncate text-[22px] font-semibold leading-tight tracking-tight text-slate-950">
+                                Scheduled Calls
+                            </h1>
+                            <p className="mt-0.5 truncate text-xs font-medium text-slate-500">{descriptiveLine}</p>
+                        </div>
+                        <button
+                            onClick={() => fetchData(1, true)}
+                            disabled={loading || refreshing}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-600 ring-1 ring-slate-200 transition hover:bg-white active:scale-95 disabled:opacity-60"
+                            aria-label="Refresh scheduled calls"
+                        >
+                            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-indigo-500' : ''}`} />}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-px border-t border-slate-100 bg-slate-100">
+                    {[
+                        { label: 'Total', value: counts.total, icon: CalendarClock, tone: 'text-indigo-700 bg-indigo-50' },
+                        { label: 'Pending', value: counts.pending, icon: Clock, tone: 'text-amber-700 bg-amber-50' },
+                        { label: 'Snoozed', value: counts.snoozed, icon: AlarmClock, tone: 'text-sky-700 bg-sky-50' },
+                        { label: 'Done', value: counts.done_today, icon: CheckCircle2, tone: 'text-emerald-700 bg-emerald-50' },
+                    ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                            <div key={item.label} className="bg-white px-2 py-2.5 text-center">
+                                <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-lg ${item.tone}`}>
+                                    <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                                </div>
+                                <p className="mt-1 text-lg font-semibold leading-none text-slate-950 tabular-nums">{item.value}</p>
+                                <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">{item.label}</p>
+                            </div>
+                        );
+                    })}
+                </div>
             </header>
 
-            {/* ══════ STAT TILES — editorial 2x2 ══════ */}
-            <div className="grid grid-cols-2 gap-3">
-                <StatTile label="Total" short="ALL · RANGE" value={counts.total} icon={CalendarClock} tone="from-blue-500 via-indigo-500 to-violet-500" hex="#6366f1" spark="rise" variant="line" uid="t1" />
-                <StatTile label="Pending" short="OPEN" value={counts.pending} icon={Clock} tone="from-orange-500 via-amber-500 to-yellow-500" hex="#f59e0b" spark="bars" variant="bars" uid="t2" />
-                <StatTile label="Snoozed" short="LATER" value={counts.snoozed} icon={AlarmClock} tone="from-sky-500 via-cyan-500 to-blue-500" hex="#0ea5e9" spark="line" variant="line" uid="t3" />
-                <StatTile label="Done Today" short="COMPLETED" value={counts.done_today} icon={CheckCircle2} tone="from-emerald-500 via-teal-500 to-cyan-500" hex="#10b981" spark="rise" variant="line" uid="t4" />
-            </div>
-
-            {/* ══════ FILTERS — editorial pills ══════ */}
-            <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Filter range</p>
+            {/* Filters */}
+            <section className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Filter range</p>
                     {refreshing && (
                         <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -441,53 +443,42 @@ const ScheduledCalls = () => {
                         </span>
                     )}
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                    {DATE_PRESETS.map(p => {
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+                    {[...DATE_PRESETS, { value: 'custom', label: 'Custom', icon: CalendarDays }].map(p => {
                         const PresetIcon = p.icon;
                         const active = datePreset === p.value;
                         return (
                             <button key={p.value} onClick={() => setDatePreset(p.value)}
-                                className={`shrink-0 h-9 pl-2.5 pr-3.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
+                                className={`h-9 min-w-0 rounded-xl text-[11px] font-semibold leading-none flex items-center justify-center gap-1.5 active:scale-95 transition-all duration-150 ${
                                     active
-                                        ? 'bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-sm shadow-indigo-300/40 ring-transparent'
-                                        : 'bg-white text-slate-600 ring-slate-200'
+                                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
+                                        : 'bg-slate-50 text-slate-600 ring-1 ring-inset ring-slate-200 hover:bg-white'
                                 }`}>
-                                <PresetIcon className={`h-3 w-3 ${active ? 'text-white/80' : 'text-slate-400'}`} />
-                                {p.label}
+                                <PresetIcon className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-white/85' : 'text-slate-400'}`} />
+                                <span className="truncate">{p.label}</span>
                             </button>
                         );
                     })}
-                    <button onClick={() => setDatePreset('custom')}
-                        className={`shrink-0 h-9 pl-2.5 pr-3.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap flex items-center gap-1.5 ring-1 ring-inset active:scale-95 transition-all duration-150 ${
-                            datePreset === 'custom'
-                                ? 'bg-linear-to-r from-indigo-600 to-violet-600 text-white shadow-sm shadow-indigo-300/40 ring-transparent'
-                                : 'bg-white text-slate-600 ring-slate-200'
-                        }`}>
-                        <CalendarDays className={`h-3 w-3 ${datePreset === 'custom' ? 'text-white/80' : 'text-slate-400'}`} />
-                        Custom
-                    </button>
                 </div>
 
-                {/* Custom from/to pickers */}
                 {datePreset === 'custom' && (
-                    <div className="flex items-center gap-2">
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                         <Popover>
                             <PopoverTrigger asChild>
-                                <button className="flex-1 h-10 px-3 rounded-xl text-[12px] font-semibold ring-1 ring-slate-200 bg-white text-slate-700 flex items-center gap-2">
-                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                                    {customDateFrom ? format(customDateFrom, 'dd MMM yyyy') : 'From date'}
+                                <button className="h-10 min-w-0 px-3 rounded-xl text-xs font-semibold ring-1 ring-slate-200 bg-slate-50 text-slate-700 flex items-center gap-2">
+                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                    <span className="truncate">{customDateFrom ? format(customDateFrom, 'dd MMM yyyy') : 'From date'}</span>
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
                                 <Calendar mode="single" selected={customDateFrom} onSelect={setCustomDateFrom} />
                             </PopoverContent>
                         </Popover>
-                        <span className="text-slate-300 text-xs">→</span>
                         <Popover>
                             <PopoverTrigger asChild>
-                                <button className="flex-1 h-10 px-3 rounded-xl text-[12px] font-semibold ring-1 ring-slate-200 bg-white text-slate-700 flex items-center gap-2">
-                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                                    {customDateTo ? format(customDateTo, 'dd MMM yyyy') : 'To date'}
+                                <button className="h-10 min-w-0 px-3 rounded-xl text-xs font-semibold ring-1 ring-slate-200 bg-slate-50 text-slate-700 flex items-center gap-2">
+                                    <CalendarDays className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                    <span className="truncate">{customDateTo ? format(customDateTo, 'dd MMM yyyy') : 'To date'}</span>
                                 </button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="end">
@@ -496,72 +487,62 @@ const ScheduledCalls = () => {
                         </Popover>
                     </div>
                 )}
+            </section>
 
-                <Button onClick={() => fetchData(1)} disabled={loading}
-                    className="w-full h-10 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-[12px] font-bold ring-1 ring-indigo-100 shadow-none">
-                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    Refresh results
-                </Button>
-            </div>
-
-            {/* ══════ Active Call Banner — editorial ══════ */}
+            {/* Active call banner */}
             {activeCall && (
-                <div className="relative overflow-hidden rounded-[22px] bg-white ring-1 ring-emerald-200 shadow-[0_10px_26px_-12px_rgba(16,185,129,0.35)] animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-500 via-teal-500 to-cyan-500" />
-                    <div className="p-4 pt-5">
-                        <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0 ring-1 ring-emerald-100 animate-pulse">
-                                <PhoneCall className="h-5 w-5 text-emerald-600" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-[0.22em]">Active Call</p>
-                                <p className="text-[15px] font-bold text-slate-900 truncate leading-tight mt-0.5" style={serif}>{activeCall.leadName}</p>
-                                <p className="text-[11px] text-slate-500 font-mono mt-0.5">{activeCall.leadPhone}</p>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 shadow-sm shadow-emerald-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shrink-0 ring-1 ring-emerald-100 animate-pulse">
+                            <PhoneCall className="h-4.5 w-4.5 text-emerald-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-[0.16em]">Active Call</p>
+                            <p className="text-sm font-semibold text-slate-950 truncate leading-tight mt-0.5">{activeCall.leadName}</p>
+                            <p className="text-xs text-slate-600 mt-0.5">{activeCall.leadPhone}</p>
                                 {isNativeApp && !activeCall.isConnected && (
-                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">Ringing…</p>
+                                <p className="text-[11px] text-amber-600 font-semibold mt-1">Ringing…</p>
                                 )}
-                            </div>
-                            <div className="text-right shrink-0">
-                                <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-[0.22em]">Duration</p>
-                                <p className="text-[26px] font-bold text-slate-900 tabular-nums leading-none mt-1" style={serif}>{formatDuration(callTimer)}</p>
-                            </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                            <p className="text-[10px] text-emerald-700 font-semibold uppercase tracking-[0.16em]">Duration</p>
+                            <p className="text-xl font-semibold text-slate-950 tabular-nums leading-none mt-1">{formatDuration(callTimer)}</p>
                         </div>
                         <Button onClick={handleEndCallClick}
-                            className="w-full h-11 mt-4 bg-linear-to-r from-rose-500 to-red-500 hover:from-rose-600 hover:to-red-600 text-white rounded-xl shadow-md shadow-rose-200/50 gap-2 font-bold text-sm">
-                            <PhoneOff className="h-4 w-4" /> End Call
+                            className="h-10 rounded-xl bg-rose-500 hover:bg-rose-600 text-white gap-1.5 px-3 text-xs font-semibold">
+                            <PhoneOff className="h-4 w-4" /> End
                         </Button>
                     </div>
                 </div>
             )}
 
-            {/* ══════ List header ══════ */}
-            <div className="flex items-end justify-between pt-2">
-                <h2 className="text-[18px] font-bold text-slate-900 tracking-tight" style={serif}>
-                    Follow-up
-                    <span className="italic text-slate-500 ml-1.5 font-normal">queue</span>
+            {/* List header */}
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm">
+                <h2 className="text-sm font-semibold text-slate-950 tracking-tight">
+                    Follow-up Queue
                 </h2>
                 {!loading && followups.length > 0 && (
-                    <span className="text-[10px] font-bold tracking-[0.22em] text-slate-400 uppercase tabular-nums pb-1">
+                    <span className="text-xs font-semibold text-slate-500 tabular-nums">
                         {pagination.total} total
                     </span>
                 )}
             </div>
 
-            {/* ── Follow-up Cards ── */}
+            {/* Follow-up rows */}
             {loading ? (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                     {Array(5).fill(0).map((_, i) => <CardSkeleton key={i} />)}
                 </div>
             ) : followups.length === 0 ? (
-                <div className="rounded-[22px] bg-linear-to-br from-indigo-50/60 to-violet-50/40 py-14 flex flex-col items-center ring-1 ring-indigo-100/60">
-                    <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 py-12 flex flex-col items-center">
+                    <div className="h-12 w-12 rounded-2xl bg-white flex items-center justify-center mb-3 shadow-sm ring-1 ring-indigo-100">
                         <CalendarClock className="h-6 w-6 text-indigo-400" strokeWidth={2} />
                     </div>
-                    <p className="text-sm font-bold text-slate-800" style={serif}>No follow-ups found</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Try a different date range.</p>
+                    <p className="text-sm font-semibold text-slate-800">No follow-ups found</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Try a different date range.</p>
                 </div>
             ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                     {followups.map((f) => {
                         const theme = TYPE_THEME[f.followup_type] || TYPE_THEME.DEFAULT;
                         const TypeIcon = theme.icon;
@@ -571,124 +552,123 @@ const ScheduledCalls = () => {
 
                         return (
                             <div key={f.id}
-                                className={`relative overflow-hidden rounded-[22px] bg-white transition-all duration-200 ${
+                                className={`relative overflow-hidden rounded-2xl border bg-white px-3 py-3 shadow-sm transition-all duration-150 sm:px-4 ${
                                     isCalling
-                                        ? 'ring-1 ring-emerald-300 shadow-[0_10px_26px_-12px_rgba(16,185,129,0.35)]'
+                                        ? 'border-emerald-300 bg-emerald-50/50 shadow-emerald-100'
                                         : overdue
-                                        ? 'ring-1 ring-rose-200 shadow-[0_6px_20px_-12px_rgba(244,63,94,0.25)]'
-                                        : 'ring-1 ring-slate-100 shadow-[0_2px_10px_-2px_rgba(15,23,42,0.04)] hover:ring-slate-200 hover:shadow-[0_10px_26px_-12px_rgba(15,23,42,0.14)]'
+                                        ? 'border-rose-200 bg-rose-50/40 shadow-rose-100/70'
+                                        : 'border-slate-200 hover:border-indigo-100 hover:bg-slate-50/50 hover:shadow-md'
                                 }`}>
-                                {/* Top accent bar */}
-                                <div className="absolute top-0 left-0 right-0 h-1"
+                                <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full"
                                     style={{ backgroundColor: isCalling ? '#10b981' : overdue ? '#f43f5e' : theme.accent }} />
 
-                                <div className="p-3.5 pt-4">
-                                    {/* Header: avatar + name/phone + date-time */}
-                                    <div className="flex items-center gap-3">
-                                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
-                                            isCalling ? 'bg-emerald-100 text-emerald-600' : theme.iconCls
-                                        }`}>
-                                            {isCalling
-                                                ? <PhoneCall className="h-4.5 w-4.5" />
-                                                : <span className="text-sm font-bold">{initials}</span>}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            {editingLeadId === f.lead_id ? (
-                                                <input
-                                                    autoFocus
-                                                    className="text-sm font-semibold text-slate-900 bg-slate-50 border border-slate-300 rounded-lg px-2 py-0.5 w-full outline-none focus:border-indigo-400"
-                                                    value={editingName}
-                                                    onChange={e => setEditingName(e.target.value)}
-                                                    onBlur={() => saveLeadName(f.lead_id)}
-                                                    onKeyDown={e => { if (e.key === 'Enter') saveLeadName(f.lead_id); if (e.key === 'Escape') setEditingLeadId(null); }}
-                                                />
-                                            ) : (
-                                                <button
-                                                    className="text-sm font-semibold text-slate-800 truncate group flex items-center gap-1 hover:text-indigo-600 max-w-full"
-                                                    onClick={() => startEditName(f.lead_id, f.lead_name)}>
-                                                    <span className="truncate">{f.lead_name || 'Unknown'}</span>
-                                                    <Pencil className="h-3 w-3 text-slate-300 group-hover:text-indigo-400 shrink-0" />
-                                                </button>
-                                            )}
-                                            <p className="text-[11px] text-slate-400 font-mono mt-px">{f.lead_phone || '—'}</p>
-                                        </div>
-                                        {/* Date chip */}
-                                        {f.scheduled_at && (
-                                            <div className={`text-right shrink-0 px-2 py-1 rounded-lg border ${
-                                                overdue
-                                                    ? 'bg-rose-50 border-rose-200'
-                                                    : isCalling
-                                                    ? 'bg-emerald-50 border-emerald-200'
-                                                    : 'bg-slate-50 border-slate-200'
-                                            }`}>
-                                                <p className={`text-[11px] font-bold leading-tight ${overdue ? 'text-rose-700' : isCalling ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                                    {fmtDate(f.scheduled_at)}
-                                                </p>
-                                                <p className={`text-[10px] ${overdue ? 'text-rose-500' : 'text-slate-400'}`}>
-                                                    {fmtTime(f.scheduled_at)}
-                                                </p>
-                                            </div>
-                                        )}
+                                <div className="flex items-center gap-3">
+                                    <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                        isCalling ? 'bg-emerald-100 text-emerald-600' : theme.iconCls
+                                    }`}>
+                                        {isCalling
+                                            ? <PhoneCall className="h-4.5 w-4.5" />
+                                            : <span className="text-sm font-semibold">{initials}</span>}
                                     </div>
-
-                                    {/* Meta badges */}
-                                    <div className="flex items-center gap-1.5 mt-2.5 pl-13 flex-wrap">
-                                        <Badge variant="outline" className={`text-[9px] font-semibold px-1.5 py-0 rounded-md ${theme.badgeCls}`}>
-                                            <TypeIcon className="h-2.5 w-2.5 mr-0.5 inline" />
-                                            {theme.label}
-                                        </Badge>
-                                        <Badge variant="outline" className={`text-[9px] font-semibold px-1.5 py-0 rounded-md ${
-                                            isCalling ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : STATUS_BADGE[f.status] || 'bg-slate-50 text-slate-500 border-slate-200'
-                                        }`}>
-                                            {isCalling ? 'ON CALL' : f.status}
-                                        </Badge>
-                                        {overdue && (
-                                            <Badge variant="outline" className="text-[9px] font-bold px-1.5 py-0 rounded-md bg-rose-50 text-rose-700 border-rose-200">
-                                                OVERDUE
-                                            </Badge>
-                                        )}
-                                        {f.notes && (
-                                            <span className="text-[10px] text-slate-400 italic truncate flex-1 pl-1">{f.notes}</span>
-                                        )}
-                                    </div>
-
-                                    {/* Action buttons */}
-                                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 pl-13">
-                                        {isCalling ? (
-                                            <Button onClick={handleEndCallClick}
-                                                className="flex-1 h-8 rounded-lg text-xs bg-red-500 hover:bg-red-600 text-white gap-1 font-semibold animate-pulse">
-                                                <PhoneOff className="h-3.5 w-3.5" /> End Call
-                                            </Button>
+                                    <div className="flex-1 min-w-0">
+                                        {editingLeadId === f.lead_id ? (
+                                            <input
+                                                autoFocus
+                                                className="text-sm font-semibold text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 w-full outline-none focus:border-indigo-400"
+                                                value={editingName}
+                                                onChange={e => setEditingName(e.target.value)}
+                                                onBlur={() => saveLeadName(f.lead_id)}
+                                                onKeyDown={e => { if (e.key === 'Enter') saveLeadName(f.lead_id); if (e.key === 'Escape') setEditingLeadId(null); }}
+                                            />
                                         ) : (
-                                            <>
-                                                <Button size="sm"
-                                                    className="flex-1 h-8 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
-                                                    disabled={!!activeCall || actionLoading === f.id}
-                                                    onClick={() => handleStartCall(f)}>
-                                                    {actionLoading === f.id
-                                                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                                        : <PhoneCall className="h-3.5 w-3.5" />}
-                                                    Call
-                                                </Button>
-                                                {f.lead_phone && (
-                                                    <Button size="sm" variant="outline"
-                                                        className="h-8 w-8 p-0 rounded-lg border-emerald-200 text-emerald-600 hover:bg-emerald-50 shrink-0"
-                                                        onClick={() => {
-                                                            const cleaned = f.lead_phone.replace(/[^0-9]/g, '');
-                                                            const waNum = cleaned.startsWith('91') ? cleaned : `91${cleaned}`;
-                                                            window.open(`https://wa.me/${waNum}`, '_blank');
-                                                        }}>
-                                                        <WhatsAppIcon className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                                <Button size="sm" variant="outline"
-                                                    className="h-8 w-8 p-0 rounded-lg border-slate-200 text-slate-400 hover:bg-slate-50 shrink-0"
-                                                    onClick={() => setSnoozeModal({ open: true, id: f.id })}>
-                                                    <Timer className="h-4 w-4" />
-                                                </Button>
-                                            </>
+                                            <button
+                                                className="text-sm font-semibold text-slate-950 truncate group flex items-center gap-1 hover:text-indigo-600 max-w-full"
+                                                onClick={() => startEditName(f.lead_id, f.lead_name)}>
+                                                <span className="truncate">{f.lead_name || 'Unknown'}</span>
+                                                <Pencil className="h-3 w-3 text-slate-300 group-hover:text-indigo-400 shrink-0" />
+                                            </button>
                                         )}
+                                        <p className="text-xs text-slate-500 mt-0.5">{f.lead_phone || '—'}</p>
                                     </div>
+                                    {f.scheduled_at && (
+                                        <div className={`text-right shrink-0 px-2.5 py-1.5 rounded-xl border ${
+                                            overdue
+                                                ? 'bg-rose-50 border-rose-200'
+                                                : isCalling
+                                                ? 'bg-emerald-50 border-emerald-200'
+                                                : 'bg-slate-50 border-slate-200'
+                                        }`}>
+                                            <p className={`text-xs font-semibold leading-tight ${overdue ? 'text-rose-700' : isCalling ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                                {fmtDate(f.scheduled_at)}
+                                            </p>
+                                            <p className={`text-[10px] ${overdue ? 'text-rose-500' : 'text-slate-400'}`}>
+                                                {fmtTime(f.scheduled_at)}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-2.5 flex items-center gap-1.5 flex-wrap sm:ml-[3.25rem]">
+                                    <Badge variant="outline" className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg ${theme.badgeCls}`}>
+                                        <TypeIcon className="h-2.5 w-2.5 mr-1 inline" />
+                                        {theme.label}
+                                    </Badge>
+                                    <Badge variant="outline" className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg ${
+                                        isCalling ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : STATUS_BADGE[f.status] || 'bg-slate-50 text-slate-500 border-slate-200'
+                                    }`}>
+                                        {isCalling ? 'ON CALL' : f.status}
+                                    </Badge>
+                                    {overdue && (
+                                        <Badge variant="outline" className="text-[10px] font-semibold px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border-rose-200">
+                                            OVERDUE
+                                        </Badge>
+                                    )}
+                                    {f.notes && (
+                                        <span className="text-xs text-slate-500 truncate flex-1 min-w-0">{f.notes}</span>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2 mt-3 sm:ml-[3.25rem]">
+                                    {isCalling ? (
+                                        <Button onClick={handleEndCallClick}
+                                            className="flex-1 h-9 rounded-xl text-xs bg-red-500 hover:bg-red-600 text-white gap-1.5 font-semibold animate-pulse">
+                                            <PhoneOff className="h-3.5 w-3.5" /> End Call
+                                        </Button>
+                                    ) : (
+                                        <>
+                                            <Button size="sm"
+                                                className="flex-1 h-9 rounded-xl text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold"
+                                                disabled={!!activeCall || actionLoading === f.id}
+                                                onClick={() => handleStartCall(f)}>
+                                                {actionLoading === f.id
+                                                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    : <PhoneCall className="h-3.5 w-3.5" />}
+                                                Call
+                                            </Button>
+                                            {f.lead_phone && (
+                                                <Button size="sm" variant="outline"
+                                                    className="h-9 w-9 p-0 rounded-xl border-emerald-200 text-emerald-600 hover:bg-emerald-50 shrink-0"
+                                                    onClick={() => {
+                                                        const cleaned = f.lead_phone.replace(/[^0-9]/g, '');
+                                                        const waNum = cleaned.startsWith('91') ? cleaned : `91${cleaned}`;
+                                                        window.open(`https://wa.me/${waNum}`, '_blank');
+                                                    }}>
+                                                    <WhatsAppIcon className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                            <Button size="sm" variant="outline"
+                                                className="h-9 w-9 p-0 rounded-xl border-slate-200 text-slate-500 hover:bg-slate-50 shrink-0"
+                                                onClick={() => setSnoozeModal({ open: true, id: f.id })}>
+                                                <Timer className="h-4 w-4" />
+                                            </Button>
+                                            <Button size="sm" variant="outline"
+                                                className="h-9 w-9 p-0 rounded-xl border-rose-200 text-rose-500 hover:bg-rose-50 hover:border-rose-300 shrink-0"
+                                                disabled={!!activeCall}
+                                                onClick={() => setCancelModal({ open: true, id: f.id, name: f.lead_name || 'this follow-up' })}>
+                                                <X className="h-4 w-4" />
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -927,6 +907,36 @@ const ScheduledCalls = () => {
                             className="flex-1 h-10 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-sm gap-2">
                             {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Timer className="h-4 w-4" />}
                             Snooze
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Cancel Schedule Dialog ── */}
+            <Dialog open={cancelModal.open} onOpenChange={(o) => !cancelling && setCancelModal({ open: o, id: null, name: '' })}>
+                <DialogContent className="max-w-sm rounded-2xl p-5">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                            <div className="h-8 w-8 rounded-lg bg-rose-100 flex items-center justify-center shrink-0">
+                                <X className="h-4 w-4 text-rose-600" />
+                            </div>
+                            Cancel Schedule
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-500 pl-10">
+                            Cancel the follow-up for <span className="font-semibold text-slate-700">{cancelModal.name}</span>? This cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex gap-2 pt-1">
+                        <Button variant="outline" className="flex-1 h-10 rounded-xl text-sm"
+                            disabled={cancelling}
+                            onClick={() => setCancelModal({ open: false, id: null, name: '' })}>
+                            Keep it
+                        </Button>
+                        <Button className="flex-1 h-10 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm gap-2"
+                            disabled={cancelling}
+                            onClick={handleCancelSchedule}>
+                            {cancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                            Cancel schedule
                         </Button>
                     </div>
                 </DialogContent>
